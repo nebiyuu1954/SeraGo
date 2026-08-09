@@ -1,0 +1,12 @@
+# Markdown documentation — kept local, not tracked
+*.md
+
+# Architecture docs — any file/folder with 'architect' in the name
+*architect*
+*Architect*
+*ARCHITECT*
+
+# Environment variables (never commit secrets)
+.env
+.env.*
+!.env.example
