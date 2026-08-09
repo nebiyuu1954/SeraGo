@@ -1,0 +1,214 @@
+@import 'tailwindcss';
+
+/* Class-based dark mode, toggled by ThemeProvider on the <html> element. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* ★ "Trust and Action" palette (SeraGo) ★
+     Primary:  Royal Blue #1A73E8 — primary text, trusted brand, highlights
+     Accent:   Action Orange #FF6600 — STRICTLY for primary CTAs
+     Background: Ash White #F5F5F5 — main page/section backgrounds
+     Surface/Cards: Clean White #FFFFFF — cards, accordions, inputs, nav/footer
+     Text: Charcoal #333333 — headings, body & secondary information */
+  --color-primary: #1a73e8;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #e8f0fe;
+  --color-on-primary-container: #0b57d0;
+  --color-primary-fixed: #e8f0fe;
+  --color-primary-fixed-dim: #d2e3fc;
+  --color-on-primary-fixed: #0b57d0;
+  --color-on-primary-fixed-variant: #0b57d0;
+  --color-inverse-primary: #8ab4f8;
+  --color-accent: #ff6600;
+  --color-on-accent: #ffffff;
+  --color-secondary: #5f6368;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #e8eaed;
+  --color-on-secondary-container: #3c4043;
+  --color-secondary-fixed: #e8eaed;
+  --color-secondary-fixed-dim: #dadce0;
+  --color-on-secondary-fixed: #3c4043;
+  --color-on-secondary-fixed-variant: #3c4043;
+  --color-tertiary: #333333;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #eceef0;
+  --color-on-tertiary-container: #333333;
+  --color-tertiary-fixed: #eceef0;
+  --color-tertiary-fixed-dim: #dadce0;
+  --color-on-tertiary-fixed: #333333;
+  --color-on-tertiary-fixed-variant: #3c4043;
+  --color-error: #d93025;
+  --color-on-error: #ffffff;
+  --color-error-container: #fce8e6;
+  --color-on-error-container: #870000;
+  --color-background: #f5f5f5;
+  --color-on-background: #333333;
+  --color-surface: #f5f5f5;
+  --color-on-surface: #333333;
+  --color-surface-dim: #e4e4e4;
+  --color-surface-bright: #f5f5f5;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f0f1f2;
+  --color-surface-container: #e9eaec;
+  --color-surface-container-high: #e0e2e4;
+  --color-surface-container-highest: #d5d7da;
+  --color-on-surface-variant: #5f6368;
+  --color-surface-variant: #e4e6e8;
+  --color-outline: #747478;
+  --color-outline-variant: #dadce0;
+  --color-inverse-surface: #333333;
+  --color-inverse-on-surface: #f5f5f5;
+  --color-surface-tint: #1a73e8;
+
+  /* Type scale */
+  --font-body-md: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-body-lg: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-display-lg: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-display-lg-mobile:
+    'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-headline-md: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-headline-lg: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-label-md: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-label-sm: 'Geist', ui-sans-serif, system-ui, sans-serif;
+
+  --text-body-md: 16px;
+  --text-body-lg: 18px;
+  --text-display-lg: 64px;
+  --text-display-lg-mobile: 40px;
+  --text-headline-md: 24px;
+  --text-headline-lg: 32px;
+  --text-label-md: 14px;
+  --text-label-sm: 12px;
+
+  /* Shape scale */
+  --radius-DEFAULT: 0.125rem;
+  --radius-lg: 0.25rem;
+  --radius-xl: 0.5rem;
+  --radius-full: 0.75rem;
+
+  /* Spacing scale */
+  --spacing-gutter: 32px;
+  --spacing-container-max: 1280px;
+  --spacing-unit: 8px;
+  --spacing-margin-desktop: 64px;
+  --spacing-margin-mobile: 24px;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-surface font-body-md text-on-surface antialiased;
+  }
+
+  ::selection {
+    @apply bg-primary text-on-primary;
+  }
+}
+
+/* For Candidates: tunable grid split between the left text and the right
+   image feed (--left-span / --right-span are set inline from JS) */
+@media (min-width: 1024px) {
+  .candidates-left {
+    grid-column: span var(--left-span, 5) / span var(--left-span, 5);
+  }
+
+  .candidates-right {
+    grid-column: span var(--right-span, 7) / span var(--right-span, 7);
+  }
+}
+
+/* For Employers: mirrored candidate layout — image feed LEFT, text RIGHT.
+   Text stays first in the DOM for mobile; `order: -1` flips the feed to
+   the left on desktop. (--feed-span / --text-span set inline from JS) */
+@media (min-width: 1024px) {
+  .employers-feed {
+    grid-column: span var(--feed-span, 6) / span var(--feed-span, 6);
+    order: -1;
+  }
+
+  .employers-text {
+    grid-column: span var(--text-span, 6) / span var(--text-span, 6);
+  }
+}
+
+/* For Employers: the feed bleeds to the page's LEFT edge — the text is on
+   the right, so it can only overflow leftward. The width/margin calc
+   reaches the viewport's left edge at every screen width while keeping the
+   feed's right edge fixed at its grid column, so the text never moves and
+   the section height never changes. */
+.employers-feed-bleed {
+  width: calc(
+    100% + max(0px, (100vw - var(--spacing-container-max)) / 2) + 24px
+  );
+  margin-left: calc(
+    -1 * (max(0px, (100vw - var(--spacing-container-max)) / 2) + 24px)
+  );
+}
+
+@media (min-width: 1024px) {
+  .employers-feed-bleed {
+    width: calc(
+      100% + max(0px, (100vw - var(--spacing-container-max)) / 2) + 64px
+    );
+    margin-left: calc(
+      -1 * (max(0px, (100vw - var(--spacing-container-max)) / 2) + 64px)
+    );
+  }
+}
+
+/* Typewriter caret — blinks while the tagline types, fades out when done */
+.typewriter-caret {
+  animation: typewriter-caret-blink 1s step-end infinite;
+  transition: opacity 0.4s ease;
+}
+
+.typewriter-caret--hidden {
+  animation: none;
+  opacity: 0;
+}
+
+@keyframes typewriter-caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Step description — fades/slides in only while its step is active */
+@keyframes step-desc-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.step-desc-in {
+  animation: step-desc-in 0.35s ease-out;
+}
+
+/* Material Symbols Outlined icon font */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  display: inline-block;
+  line-height: 1;
+  text-transform: none;
+  letter-spacing: normal;
+  word-wrap: normal;
+  white-space: nowrap;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'liga';
+}
