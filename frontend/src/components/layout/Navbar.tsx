@@ -1,11 +1,16 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '../ui/Button.tsx'
+import { getStoredAuthTokens } from '../../api'
 
 const navLinks = ['Platform', 'Solutions', 'Developers', 'Pricing']
 
 export default function Navbar() {
   const [open, setOpen] = useState(false)
+  // Checked at render time. This is always fresh: signing in/out happens on
+  // standalone auth pages or via the dashboard sign-out, both of which
+  // unmount the Layout (and thus the Navbar) before navigating.
+  const signedIn = getStoredAuthTokens() !== null
 
   return (
     <header className="sticky top-0 z-50 w-full bg-surface-container-lowest">
@@ -31,10 +36,21 @@ export default function Navbar() {
           ))}
         </nav>
 
-        <div className="hidden items-center gap-4 md:flex">
-          <Button to="/about" variant="primary">
-            Get Started
-          </Button>
+        <div className="hidden items-center gap-3 md:flex">
+          {signedIn ? (
+            <Button to="/dashboard" variant="primary">
+              Dashboard
+            </Button>
+          ) : (
+            <>
+              <Button to="/login" variant="secondary">
+                Log in
+              </Button>
+              <Button to="/signup" variant="primary">
+                Sign up
+              </Button>
+            </>
+          )}
         </div>
 
         {/* Mobile toggle */}
@@ -64,14 +80,35 @@ export default function Navbar() {
               {link}
             </a>
           ))}
-          <Button
-            to="/about"
-            variant="primary"
-            className="mt-2 w-full"
-            onClick={() => setOpen(false)}
-          >
-            Get Started
-          </Button>
+          {signedIn ? (
+            <Button
+              to="/dashboard"
+              variant="primary"
+              className="mt-2 w-full"
+              onClick={() => setOpen(false)}
+            >
+              Dashboard
+            </Button>
+          ) : (
+            <>
+              <Button
+                to="/login"
+                variant="secondary"
+                className="mt-2 w-full"
+                onClick={() => setOpen(false)}
+              >
+                Log in
+              </Button>
+              <Button
+                to="/signup"
+                variant="primary"
+                className="mt-2 w-full"
+                onClick={() => setOpen(false)}
+              >
+                Sign up
+              </Button>
+            </>
+          )}
         </div>
       )}
     </header>
