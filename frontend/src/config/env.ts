@@ -13,9 +13,11 @@ export const config = {
   appVersion: env.VITE_APP_VERSION ?? '0.1.0',
   /**
    * Base URL for the SeraGo API. Override per environment via
-   * `VITE_API_BASE_URL` (see `.env.example`).
+   * `VITE_API_BASE_URL` (see `.env.example`). The default matches the
+   * backend's `launchSettings.json` (SeraGo.API profile → HTTPS on port 5191).
+   * HTTPS is required for Google sign-in: Aufy's OAuth cookie is Secure-only.
    */
-  apiBaseUrl: env.VITE_API_BASE_URL ?? 'http://localhost:3000/api',
+  apiBaseUrl: env.VITE_API_BASE_URL ?? 'https://localhost:5191/api',
   isDev: import.meta.env.DEV,
   isProd: import.meta.env.PROD,
 } as const
