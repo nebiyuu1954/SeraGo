@@ -10,3 +10,16 @@
 .env
 .env.*
 !.env.example
+
+# .NET build artifacts
+backend/**/bin/
+backend/**/obj/
+.vs/
+
+# SQLite database files (local dev)
+*.db
+*.db-shm
+*.db-wal
+
+# Runtime logs & dev emails
+backend/**/logs/
