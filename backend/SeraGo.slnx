@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="SeraGo.API/SeraGo.API.csproj" />
+  <Project Path="SeraGo.Core/SeraGo.Core.csproj" />
+  <Project Path="SeraGo.Infrastructure/SeraGo.Infrastructure.csproj" />
+</Solution>
