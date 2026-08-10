@@ -41,6 +41,8 @@
   --color-on-error: #ffffff;
   --color-error-container: #fce8e6;
   --color-on-error-container: #870000;
+  --color-success: #1e8e3e;
+  --color-on-success: #ffffff;
   --color-background: #f5f5f5;
   --color-on-background: #333333;
   --color-surface: #f5f5f5;
