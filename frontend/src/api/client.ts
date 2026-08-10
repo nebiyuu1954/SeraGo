@@ -20,6 +20,12 @@ export interface RequestOptions {
   /** JSON body — serialized automatically. */
   body?: unknown
   signal?: AbortSignal
+  /**
+   * Cookie behavior. The Google OAuth flow relies on the backend-set
+   * sign-in cookie, so those calls pass `credentials: 'include'`.
+   * Defaults to the fetch default ('same-origin').
+   */
+  credentials?: RequestCredentials
 }
 
 /**
@@ -65,5 +71,29 @@ export async function request<T>(
     return undefined as T
   }
 
-  return (await response.json()) as T
+  // Some endpoints (e.g. password forgot/reset) return 200 with an EMPTY body.
+  const text = await response.text()
+  if (!text) {
+    return undefined as T
+  }
+  return JSON.parse(text) as T
+}
+
+/**
+ * Best-effort human-readable message for any thrown error — especially
+ * Aufy's RFC 7807 ProblemDetails (`detail` / `title` / field `errors`).
+ */
+export function getApiErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    const payload = error.payload
+    if (payload?.errors) {
+      const messages = Object.values(payload.errors).flat()
+      if (messages.length > 0) return messages.join(' ')
+    }
+    return (
+      payload?.detail ?? payload?.title ?? payload?.message ?? error.message
+    )
+  }
+  if (error instanceof Error) return error.message
+  return 'Something went wrong. Please try again.'
 }
