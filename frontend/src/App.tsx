@@ -6,6 +6,7 @@ import SignupPage from './pages/auth/SignupPage.tsx'
 import LoginPage from './pages/auth/LoginPage.tsx'
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage.tsx'
 import ResetPasswordPage from './pages/auth/ResetPasswordPage.tsx'
+import ConfirmEmailPage from './pages/auth/ConfirmEmailPage.tsx'
 import GoogleCallbackPage from './pages/auth/GoogleCallbackPage.tsx'
 import DashboardRedirect from './pages/dashboard/DashboardRedirect.tsx'
 import TalentDashboardPage from './pages/dashboard/TalentDashboardPage.tsx'
@@ -34,6 +35,7 @@ function App() {
       <Route path="login" element={<LoginPage />} />
       <Route path="forgot-password" element={<ForgotPasswordPage />} />
       <Route path="reset-password" element={<ResetPasswordPage />} />
+      <Route path="confirm-email" element={<ConfirmEmailPage />} />
       <Route path="auth/google/callback" element={<GoogleCallbackPage />} />
     </Routes>
   )
