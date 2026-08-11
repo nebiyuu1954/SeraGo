@@ -69,6 +69,31 @@ export function forgotPassword(payload: ForgotPasswordRequest): Promise<void> {
 }
 
 /**
+ * Confirms the account email using the code + userId from the emailed link.
+ * Returns 200 on success; a bad/expired code returns 404. Body is EMPTY.
+ *
+ * GET /api/account/email/confirm?code=…&userId=…
+ */
+export function confirmEmail(code: string, userId: string): Promise<void> {
+  const params = new URLSearchParams({ code, userId })
+  return request<void>(`${API_ENDPOINTS.account.emailConfirm}?${params.toString()}`)
+}
+
+/**
+ * Resends the email-confirmation link. Always returns 200 (no user
+ * enumeration — the email is only sent when the account exists and is
+ * unconfirmed). Body is EMPTY.
+ *
+ * POST /api/account/email/confirm/resend
+ */
+export function resendConfirmationEmail(email: string): Promise<void> {
+  return request<void>(API_ENDPOINTS.account.emailConfirmResend, {
+    method: 'POST',
+    body: { email },
+  })
+}
+
+/**
  * Completes the password reset using the code from the emailed link.
  * Response body is EMPTY; a bad/expired code returns a 400 ProblemDetails.
  *
@@ -102,6 +127,21 @@ export function signOut(accessToken: string): Promise<void> {
   return request<void>(API_ENDPOINTS.auth.signout, {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}` },
+  })
+}
+
+/**
+ * Exchanges the httpOnly `Aufy.RefreshToken` cookie for a fresh access token
+ * pair (the cookie is rotated server-side). No body or Bearer header needed.
+ *
+ * Called automatically by the API client on 401 — see client.ts.
+ *
+ * POST /api/auth/token/refresh (cookie auth)
+ */
+export function refreshAccessToken(): Promise<AuthTokenResponse> {
+  return request<AuthTokenResponse>(API_ENDPOINTS.auth.tokenRefresh, {
+    method: 'POST',
+    credentials: 'include',
   })
 }
 
