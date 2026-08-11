@@ -11,7 +11,8 @@ import {
 } from '../../api'
 import type { SignUpRole } from '../../types'
 import { cn } from '../../lib/cn.ts'
-import TextInput from '../../components/auth/TextInput.tsx'
+import PasswordInput from '../../components/auth/PasswordInput.tsx'
+import { meetsPasswordRules } from '../../components/auth/passwordRules.ts'
 
 type Stage = 'loading' | 'profile' | 'error' | 'done'
 
@@ -92,18 +93,33 @@ export default function GoogleCallbackPage() {
     }
   }, [])
 
+  // Google provides the name via its claims (backend uses them), so a brand-
+  // new Google user only chooses their role and a password — the account is
+  // created WITH the password so email + password login works too.
   const formik = useFormik({
     initialValues: {
-      firstName: '',
-      lastName: '',
       role: 'Talent' as SignUpRole,
+      password: '',
+      confirmPassword: '',
     },
     validationSchema: object({
-      firstName: string().trim().required('Please enter your first name.'),
-      lastName: string().trim().required('Please enter your last name.'),
       role: mixed<SignUpRole>()
         .oneOf(['Talent', 'Recruiter'], 'Please choose a role.')
         .required('Please choose a role.'),
+      password: string()
+        .required('Please choose a password.')
+        .test(
+          'password-rules',
+          'Password does not meet all requirements.',
+          (value) => (value ? meetsPasswordRules(value) : false),
+        ),
+      confirmPassword: string()
+        .required('Please confirm your password.')
+        .test(
+          'passwords-match',
+          'Passwords do not match.',
+          (value, ctx) => value === ctx.parent.password,
+        ),
     }),
     validateOnBlur: true,
     validateOnChange: true,
@@ -111,9 +127,8 @@ export default function GoogleCallbackPage() {
       setError(null)
       try {
         const tokens = await signUpExternal({
-          firstName: values.firstName,
-          lastName: values.lastName,
           role: values.role,
+          password: values.password,
         })
         storeAuthTokens(tokens)
         setStage('done')
@@ -126,11 +141,6 @@ export default function GoogleCallbackPage() {
       }
     },
   })
-
-  const fieldError = (name: 'firstName' | 'lastName') =>
-    formik.touched[name] && formik.errors[name]
-      ? formik.errors[name]
-      : undefined
 
   return (
     <div className="flex min-h-svh items-center justify-center bg-surface px-4 py-10">
@@ -217,6 +227,11 @@ export default function GoogleCallbackPage() {
                   Your Google account is verified — tell us how you&rsquo;ll use
                   SeraGo.
                 </p>
+                <p className="mt-2 font-label-sm text-label-sm text-on-surface-variant">
+                  Choose a password so you can also sign in with email. We
+                  &rsquo;ll use your name from Google — and if your email already
+                  has an account, you&rsquo;ll be signed into it instead.
+                </p>
               </div>
 
               {error && (
@@ -278,32 +293,36 @@ export default function GoogleCallbackPage() {
                   </div>
                 </fieldset>
 
-                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                  <TextInput
-                    id="firstName"
-                    name="firstName"
-                    label="First name"
-                    icon="person"
-                    autoComplete="given-name"
-                    placeholder="John"
-                    value={formik.values.firstName}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    error={fieldError('firstName')}
-                  />
-                  <TextInput
-                    id="lastName"
-                    name="lastName"
-                    label="Last name"
-                    icon="badge"
-                    autoComplete="family-name"
-                    placeholder="Doe"
-                    value={formik.values.lastName}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    error={fieldError('lastName')}
-                  />
-                </div>
+                <PasswordInput
+                  id="password"
+                  name="password"
+                  label="Password"
+                  autoComplete="new-password"
+                  placeholder="••••••••"
+                  showStrength
+                  value={formik.values.password}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  error={
+                    formik.touched.password ? formik.errors.password : undefined
+                  }
+                />
+
+                <PasswordInput
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  label="Confirm password"
+                  autoComplete="new-password"
+                  placeholder="••••••••"
+                  value={formik.values.confirmPassword}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  error={
+                    formik.touched.confirmPassword
+                      ? formik.errors.confirmPassword
+                      : undefined
+                  }
+                />
 
                 <button
                   type="submit"
