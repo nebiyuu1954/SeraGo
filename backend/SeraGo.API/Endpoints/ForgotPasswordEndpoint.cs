@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
+using SeraGo.API.Email;
 using SeraGo.Core.Domain.Entities;
 
 namespace SeraGo.API.Endpoints;
@@ -17,8 +18,10 @@ namespace SeraGo.API.Endpoints;
 /// so it reaches <c>GeneratePasswordResetTokenAsync(null)</c> and returns 500 —
 /// which also leaks account existence.
 ///
-/// This version keeps the same "don't leak" contract: always 200, and only
-/// sends the reset email when the account actually exists.
+/// Product decision: unknown emails get an explicit 404 "No account found"
+/// instead of a fake "check your inbox" — so users immediately know the email
+/// isn't registered (this does allow account enumeration, which the classic
+/// always-200 contract prevents). Existing accounts receive the reset email.
 /// </summary>
 public static class ForgotPasswordEndpoint
 {
@@ -31,6 +34,7 @@ public static class ForgotPasswordEndpoint
                 [FromServices] IOptions<IdentityOptions> identityOptions,
                 [FromServices] IOptions<AufyOptions> options,
                 [FromServices] ILoggerFactory loggerFactory,
+                [FromServices] EmailThrottleService throttle,
                 HttpRequest httpRequest) =>
             {
                 var logger = loggerFactory.CreateLogger("SeraGo.ForgotPassword");
@@ -39,14 +43,25 @@ public static class ForgotPasswordEndpoint
                 var user = await manager.FindByEmailAsync(req.Email);
                 if (user is null)
                 {
-                    // Don't leak whether the account exists.
-                    return Results.Ok();
+                    // Explicit existence check: tell the user no account was found.
+                    return Results.Problem(
+                        "No account found with this email address.",
+                        statusCode: StatusCodes.Status404NotFound);
                 }
 
                 if (identityOptions.Value.SignIn.RequireConfirmedEmail && user is not { EmailConfirmed: true })
                 {
                     // Don't leak whether the account exists.
                     return Results.Ok();
+                }
+
+                // Per-email budget so one address can't drain the email sender
+                // (EmailJS credits) by re-requesting reset links on a loop.
+                if (!throttle.TryAllow(req.Email, out var retryAfterMessage))
+                {
+                    return Results.Problem(
+                        retryAfterMessage,
+                        statusCode: StatusCodes.Status429TooManyRequests);
                 }
 
                 var code = await manager.GeneratePasswordResetTokenAsync(user);
