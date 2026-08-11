@@ -4,8 +4,10 @@ using Aufy.Core.Endpoints;
 using Aufy.EntityFrameworkCore;
 using Aufy.FluentEmail;
 using FluentEmail.Core.Interfaces;
+using FluentEmail.SendGrid;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using SeraGo.API.Auth;
 using SeraGo.API.Email;
@@ -43,6 +45,16 @@ public static class ServicesExtensions
         services.AddScoped<ISignUpEndpointEvents<ApplicationUser, SeraGoSignUpRequest>, SeraGoSignUpExtension>();
         services.AddScoped<ISignUpExternalEndpointEvents<ApplicationUser, SeraGoSignUpExternalRequest>, SeraGoSignUpExternalExtension>();
 
+        // Aufy 1.0.0's RefreshTokenStore has a bug: SaveAsync passes the
+        // CancellationToken as a second key to FindAsync (the AufyRefreshTokens
+        // PK is UserId alone), so the existing row is never found and every
+        // sign-in INSERTs a duplicate -> UNIQUE constraint failure on the
+        // second login. Swap in a corrected store that rotates the token in
+        // place instead (see SeraGoRefreshTokenStore). RemoveAll is defensive:
+        // ours is registered last either way, so it wins constructor injection.
+        services.RemoveAll<IRefreshTokenStore>();
+        services.AddScoped<IRefreshTokenStore, SeraGoRefreshTokenStore>();
+
         // Aufy 1.0.0's PasswordForgotEndpoint 500s on unknown emails (missing
         // null guard before GeneratePasswordResetTokenAsync). Remove it from DI
         // so MapAufyEndpoints skips it; the fixed replacement is mapped in
@@ -53,6 +65,72 @@ public static class ServicesExtensions
         if (forgotDescriptor is not null)
         {
             services.Remove(forgotDescriptor);
+        }
+
+        // Replace Aufy's TokenEndpoint: the shipped one returns the same
+        // "Invalid email or password" for lockouts too. Our replacement
+        // (SeraGoTokenEndpoint) keeps the identical sign-in flow but explains
+        // lockout / deactivated states. Remove from DI so MapAufyEndpoints
+        // skips it; the replacement is mapped in Program.cs. Matched on the
+        // open generic so the removal can't silently miss if the closed type
+        // ever changes (a miss would map both endpoints -> ambiguous route).
+        var tokenDescriptor = services.FirstOrDefault(d =>
+            d.ServiceType == typeof(IAuthEndpoint) &&
+            d.ImplementationType?.GetGenericTypeDefinition() == typeof(TokenEndpoint<>));
+        if (tokenDescriptor is not null)
+        {
+            services.Remove(tokenDescriptor);
+        }
+
+        // Replace Aufy's SignUpExternalEndpoint: the shipped one doesn't check
+        // whether the account's EMAIL already exists, so "Continue with Google"
+        // on an email/password account errors with a duplicate-account failure.
+        // Our replacement (SeraGoExternalSignUpEndpoint) links the Google login
+        // to the existing account and signs it in. Remove from DI so
+        // MapAufyEndpoints skips it; the replacement is mapped in Program.cs.
+        var externalSignUpDescriptor = services.FirstOrDefault(d =>
+            d.ServiceType == typeof(IAuthEndpoint) &&
+            d.ImplementationType?.GetGenericTypeDefinition() == typeof(SignUpExternalEndpoint<,>));
+        if (externalSignUpDescriptor is not null)
+        {
+            services.Remove(externalSignUpDescriptor);
+        }
+
+        // Replace Aufy's WhoAmIEndpoint: the shipped one builds its response
+        // from JWT claims only, so it can't report emailConfirmed — needed to
+        // keep unconfirmed users out of the dashboards. Our replacement
+        // (SeraGoWhoAmIEndpoint) loads the user row and adds that flag.
+        var whoAmIDescriptor = services.FirstOrDefault(d =>
+            d.ServiceType == typeof(IAuthEndpoint) &&
+            d.ImplementationType?.GetGenericTypeDefinition() == typeof(WhoAmIEndpoint<>));
+        if (whoAmIDescriptor is not null)
+        {
+            services.Remove(whoAmIDescriptor);
+        }
+
+        // Replace Aufy's EmailConfirmationResendEndpoint: the shipped one
+        // always returns 200 with no body, so the UI can't tell users whether
+        // the account exists or is already verified. Our replacement
+        // (SeraGoEmailConfirmationResendEndpoint) surfaces 404/409/200.
+        var resendDescriptor = services.FirstOrDefault(d =>
+            d.ServiceType == typeof(IAccountEndpoint) &&
+            d.ImplementationType?.GetGenericTypeDefinition() == typeof(EmailConfirmationResendEndpoint<>));
+        if (resendDescriptor is not null)
+        {
+            services.Remove(resendDescriptor);
+        }
+
+        // Replace Aufy's EmailConfirmEndpoint: the shipped one returns 404 for
+        // ALREADY-confirmed emails too, so re-clicking a confirmation link
+        // shows the same misleading "invalid or expired" screen as a bad code.
+        // Our replacement (SeraGoEmailConfirmEndpoint) treats already-confirmed
+        // as an idempotent 200 success.
+        var confirmDescriptor = services.FirstOrDefault(d =>
+            d.ServiceType == typeof(IAccountEndpoint) &&
+            d.ImplementationType?.GetGenericTypeDefinition() == typeof(EmailConfirmEndpoint<>));
+        if (confirmDescriptor is not null)
+        {
+            services.Remove(confirmDescriptor);
         }
 
         // CORS for the frontend. Always registers a policy so app.UseCors() can never
@@ -82,8 +160,8 @@ public static class ServicesExtensions
             configuration["FluentEmail:FromEmail"] ?? "noreply@serago.local",
             configuration["FluentEmail:FromName"] ?? "SeraGo");
 
-        // Dev-only: write emails to disk (see SeraGo.API/logs/emails) instead of SMTP.
-        // Remove "FluentEmail:SaveEmailsOnDisk" and configure FluentEmail:Smtp* to send for real.
+        // Dev-only: write emails to disk (see SeraGo.API/logs/emails) instead of
+        // sending them. Keep "FluentEmail:SaveEmailsOnDisk" for local development.
         var emailDir = configuration["FluentEmail:SaveEmailsOnDisk"];
         if (!string.IsNullOrWhiteSpace(emailDir))
         {
@@ -91,7 +169,65 @@ public static class ServicesExtensions
             services.Replace(ServiceDescriptor.Scoped<ISender>(_ => new SaveToDiskSender(emailDir)));
         }
 
+        // Real email delivery: when a SendGrid API key is present
+        // (SENDGRID_API_KEY env var, or FluentEmail:SendGridApiKey config),
+        // replace the dev disk sender with SendGrid. The env var is preferred
+        // first: appsettings.json carries an EMPTY SendGridApiKey, so it must
+        // never shadow a real key from the environment. Note: the "from"
+        // address must be a verified sender in the SendGrid account (domain
+        // auth or single sender) or sends are rejected.
+        var sendGridApiKey = ReadFirstNonEmpty(configuration, "SENDGRID_API_KEY", "FluentEmail:SendGridApiKey");
+        if (!string.IsNullOrWhiteSpace(sendGridApiKey))
+        {
+            // RemoveAll is defensive: no other ISender registration (disk
+            // sender, NullSender, ...) can silently win over SendGrid.
+            services.RemoveAll<ISender>();
+            services.AddScoped<ISender>(_ => new SendGridSender(sendGridApiKey));
+        }
+
+        // EmailJS relay — for regions where classic providers are unreachable
+        // (e.g. Ethiopia). When EmailJs:ServiceId/TemplateId/PublicKey are
+        // configured (or their env vars), every email goes through EmailJS's
+        // cloud REST API instead. Registered LAST so it wins over SendGrid/disk
+        // when both are set. See EmailJsSender for the one-time template setup.
+        var emailJsServiceId = ReadFirstNonEmpty(configuration, "EMAILJS_SERVICE_ID", "EmailJs:ServiceId");
+        var emailJsTemplateId = ReadFirstNonEmpty(configuration, "EMAILJS_TEMPLATE_ID", "EmailJs:TemplateId");
+        var emailJsPublicKey = ReadFirstNonEmpty(configuration, "EMAILJS_PUBLIC_KEY", "EmailJs:PublicKey");
+        if (!string.IsNullOrWhiteSpace(emailJsServiceId)
+            && !string.IsNullOrWhiteSpace(emailJsTemplateId)
+            && !string.IsNullOrWhiteSpace(emailJsPublicKey))
+        {
+            var emailJsOptions = new EmailJsSenderOptions
+            {
+                ServiceId = emailJsServiceId,
+                TemplateId = emailJsTemplateId,
+                PublicKey = emailJsPublicKey,
+                PrivateKey = ReadFirstNonEmpty(configuration, "EMAILJS_PRIVATE_KEY", "EmailJs:PrivateKey") ?? string.Empty,
+                FromName = configuration["FluentEmail:FromName"] ?? "SeraGo",
+                FromEmail = configuration["FluentEmail:FromEmail"] ?? string.Empty,
+            };
+            services.RemoveAll<ISender>();
+            services.AddScoped<ISender>(sp => new EmailJsSender(
+                emailJsOptions,
+                sp.GetRequiredService<IHttpClientFactory>(),
+                sp.GetRequiredService<ILogger<EmailJsSender>>()));
+        }
+
         return services;
+    }
+
+    /// <summary>Returns the first configured (non-empty) value among the keys.</summary>
+    private static string? ReadFirstNonEmpty(IConfiguration configuration, params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            var value = configuration[key];
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+        return null;
     }
 
     /// <summary>Swagger/OpenAPI with JWT Bearer support for testing protected endpoints.</summary>
