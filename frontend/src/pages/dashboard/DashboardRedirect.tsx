@@ -16,6 +16,11 @@ export default function DashboardRedirect() {
       navigate('/login', { replace: true })
       return
     }
+    // Account inactive until the email is confirmed — nothing else is usable.
+    if (auth.status === 'authenticated' && !auth.user.emailConfirmed) {
+      navigate('/confirm-email?required=1', { replace: true })
+      return
+    }
     const target = auth.user.roles.includes('Admin')
       ? 'admin'
       : auth.user.roles.includes('Recruiter')
