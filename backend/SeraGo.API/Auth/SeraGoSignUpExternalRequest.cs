@@ -4,9 +4,13 @@ using Aufy.Core.Endpoints;
 namespace SeraGo.API.Auth;
 
 /// <summary>
-/// Body of POST /api/auth/signup/external — the role + display-name step a
-/// brand-new Google user completes after the OAuth handshake. Email and the
-/// provider identity come from Google's claims, never from this payload.
+/// Body of POST /api/auth/signup/external — the role step a brand-new Google
+/// user completes after the OAuth handshake. Email and the provider identity
+/// come from Google's claims, never from this payload.
+///
+/// First/Last name are OPTIONAL here: Google's given_name/family_name claims
+/// are used when they're not sent (see <see cref="SeraGoSignUpExternalExtension"/>),
+/// so the UI only has to ask for the role.
 ///
 /// Inherits Aufy's <see cref="SignUpExternalRequest"/> because Aufy 1.0.0's
 /// <see cref="ISignUpExternalEndpointEvents{TUser,TModel}"/> constrains TModel
@@ -14,11 +18,11 @@ namespace SeraGo.API.Auth;
 /// </summary>
 public class SeraGoSignUpExternalRequest : SignUpExternalRequest
 {
-    [Required, MaxLength(100)]
-    public string FirstName { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string? FirstName { get; set; }
 
-    [Required, MaxLength(100)]
-    public string LastName { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string? LastName { get; set; }
 
     /// <summary>
     /// Must be "Talent" or "Recruiter" (validated server-side against the
@@ -26,4 +30,14 @@ public class SeraGoSignUpExternalRequest : SignUpExternalRequest
     /// </summary>
     [Required]
     public string? Role { get; set; }
+
+    /// <summary>
+    /// Chosen on the role step so the account is created WITH a password from
+    /// the start (Google users can then also sign in with email + password).
+    /// Validated + hashed in <see cref="SeraGoSignUpExternalExtension"/>
+    /// (mirrors Identity's default policy).
+    /// </summary>
+    [Required]
+    [StringLength(100, MinimumLength = 6)]
+    public string? Password { get; set; }
 }
