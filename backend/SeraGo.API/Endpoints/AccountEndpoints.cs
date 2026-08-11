@@ -32,11 +32,13 @@ public static class AccountEndpoints
 
         group.MapPost("/deactivate", DeactivateAccountAsync).WithOpenApi();
         group.MapDelete("/", DeleteAccountAsync).WithOpenApi();
+        group.MapPost("/password/set", SetPasswordAsync).WithOpenApi();
 
         return app;
     }
 
     public sealed record DeleteAccountRequest(string Password);
+    public sealed record SetPasswordRequest(string Password);
 
     [Authorize]
     private static async Task<IResult> DeactivateAccountAsync(
@@ -106,6 +108,57 @@ public static class AccountEndpoints
         }
 
         return Results.NoContent();
+    }
+
+    /// <summary>
+    /// Sets a password on an account that doesn't have one yet (e.g. a Google
+    /// sign-up). Once set, the user can sign in with email + password on any
+    /// device and use the regular forgot-password flow.
+    ///
+    /// POST /api/account/password/set — authenticated.
+    /// </summary>
+    [Authorize]
+    private static async Task<IResult> SetPasswordAsync(
+        [FromBody] SetPasswordRequest request,
+        ClaimsPrincipal claims,
+        UserManager<ApplicationUser> userManager)
+    {
+        var user = await userManager.GetUserAsync(claims);
+        if (user is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Password))
+        {
+            return Results.Problem(
+                "Password is required.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        // Defense-in-depth: this endpoint is guarded only by the bearer token,
+        // so require a confirmed email before letting a session plant a
+        // password. Google-created accounts are always EmailConfirmed = true
+        // (the OAuth handshake confirms it), so the legitimate flow is never
+        // blocked — this only stops unconfirmed/abandoned sessions.
+        if (!user.EmailConfirmed)
+        {
+            return Results.Problem(
+                "Confirm your email address before setting a password.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        // Fails with "User already has a password." when one exists — for
+        // changing an existing password use the Aufy change-password endpoint.
+        var result = await userManager.AddPasswordAsync(user, request.Password);
+        if (!result.Succeeded)
+        {
+            return Results.Problem(
+                string.Join(", ", result.Errors.Select(e => e.Description)),
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        return Results.Ok();
     }
 
     /// <summary>AufyRefreshTokens has no FK to AspNetUsers — remove rows explicitly.</summary>
