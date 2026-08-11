@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useFormik } from 'formik'
 import { object, string } from 'yup'
-import { getApiErrorMessage, signIn, storeAuthTokens } from '../../api'
+import { ApiError, getApiErrorMessage, signIn, storeAuthTokens } from '../../api'
 import AuthShell from '../../components/auth/AuthShell.tsx'
 import ErrorBanner from '../../components/auth/ErrorBanner.tsx'
 import TextInput from '../../components/auth/TextInput.tsx'
@@ -16,11 +16,6 @@ interface LoginValues {
   password: string
 }
 
-const initialValues: LoginValues = {
-  email: '',
-  password: '',
-}
-
 const validationSchema = object<LoginValues>({
   email: string()
     .trim()
@@ -31,15 +26,29 @@ const validationSchema = object<LoginValues>({
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [error, setError] = useState<string | null>(null)
+  // True when the backend reports the email has no account (404) — show a
+  // "create an account" CTA right in the error banner.
+  const [noAccount, setNoAccount] = useState(false)
+  // True when the account exists but its email isn't verified yet (403) — only
+  // then is the "Didn't get a confirmation email? Resend it" link shown.
+  const [unconfirmed, setUnconfirmed] = useState(false)
+
+  // Pre-filled when the signup page detects the account already exists and
+  // sends the user here with the email they typed (state: { email }).
+  const prefillEmail =
+    (location.state as { email?: string } | null)?.email ?? ''
 
   const formik = useFormik<LoginValues>({
-    initialValues,
+    initialValues: { email: prefillEmail, password: '' },
     validationSchema,
     validateOnBlur: true,
     validateOnChange: true,
     onSubmit: async (values) => {
       setError(null)
+      setNoAccount(false)
+      setUnconfirmed(false)
       try {
         const tokens = await signIn({
           email: values.email,
@@ -49,6 +58,13 @@ export default function LoginPage() {
         // /dashboard resolves the user's role and lands them on their page.
         navigate('/dashboard')
       } catch (err) {
+        // The token endpoint 404s only when no account has that email — treat
+        // it as a signup prompt rather than a plain "try again" failure. A 403
+        // means the account exists but the email is unverified — that's the
+        // only case where the resend-confirmation link makes sense.
+        const apiErr = err instanceof ApiError ? err : null
+        setNoAccount(apiErr?.status === 404)
+        setUnconfirmed(apiErr?.status === 403)
         setError(getApiErrorMessage(err))
       }
     },
@@ -75,7 +91,34 @@ export default function LoginPage() {
         </p>
       }
     >
-      {error && <ErrorBanner message={error} />}
+      {noAccount ? (
+        <div
+          role="alert"
+          className="mb-5 flex items-start gap-2.5 rounded-xl border border-error/30 bg-error-container p-3.5 font-label-md text-label-md text-on-error-container"
+        >
+          <span
+            aria-hidden="true"
+            className="material-symbols-outlined mt-0.5 text-lg"
+          >
+            error
+          </span>
+          <span>
+            {/* The backend detail already ends with a period — strip it before
+                appending the signup prompt to avoid "address.. Would you" */}
+            {(error ?? '').replace(/\.+$/, '')}. Would you like to{' '}
+            <Link
+              to="/signup"
+              state={{ email: formik.values.email }}
+              className="font-semibold underline transition-opacity hover:opacity-80"
+            >
+              create an account
+            </Link>
+            ?
+          </span>
+        </div>
+      ) : (
+        error && <ErrorBanner message={error} />
+      )}
 
       <form onSubmit={formik.handleSubmit} noValidate className="space-y-5">
         <TextInput
@@ -118,6 +161,18 @@ export default function LoginPage() {
           loadingLabel="Logging in…"
           idleLabel="Log in"
         />
+
+        {unconfirmed && (
+          <p className="-mt-2 text-center">
+            <Link
+              to="/confirm-email"
+              state={{ email: formik.values.email }}
+              className="font-label-sm text-label-sm font-medium text-primary transition-opacity hover:opacity-80"
+            >
+              Didn&rsquo;t get a confirmation email? Resend it
+            </Link>
+          </p>
+        )}
 
         <Divider />
 
