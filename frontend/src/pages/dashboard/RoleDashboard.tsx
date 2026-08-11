@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { clearStoredAuthTokens, getStoredAuthTokens, signOut } from '../../api'
+import PasswordSetupCard from '../../components/dashboard/PasswordSetupCard.tsx'
 import { useRequireRole } from '../../hooks'
 import type { RequiredRole } from '../../hooks'
 import { cn } from '../../lib/cn.ts'
@@ -108,6 +109,8 @@ export default function RoleDashboard({
             </li>
           ))}
         </ul>
+
+        <PasswordSetupCard />
 
         <div className="mt-8 flex flex-wrap items-center gap-3 border-t border-outline-variant pt-6">
           <button
