@@ -70,7 +70,7 @@ export default function ForgotPasswordPage() {
       {submittedEmail ? (
         <AuthSuccess
           title="Check your inbox"
-          message={`If an account exists for ${submittedEmail}, a password reset link is on its way. The link expires after a short time.`}
+          message={`A password reset link is on its way to ${submittedEmail}. The link expires after a short time.`}
         />
       ) : (
         <>
