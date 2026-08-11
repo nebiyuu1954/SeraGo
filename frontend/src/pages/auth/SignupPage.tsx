@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useFormik } from 'formik'
-import { mixed, object, string } from 'yup'
-import { getApiErrorMessage, signIn, signUp, storeAuthTokens } from '../../api'
+import { mixed, object, ref, string } from 'yup'
+import {
+  ApiError,
+  getApiErrorMessage,
+  signIn,
+  signUp,
+  storeAuthTokens,
+} from '../../api'
 import type { SignUpRole } from '../../types'
 import { cn } from '../../lib/cn.ts'
 import AuthShell from '../../components/auth/AuthShell.tsx'
+import AccountExistsBanner from '../../components/auth/AccountExistsBanner.tsx'
 import ErrorBanner from '../../components/auth/ErrorBanner.tsx'
 import TextInput from '../../components/auth/TextInput.tsx'
 import PasswordInput from '../../components/auth/PasswordInput.tsx'
@@ -35,13 +42,29 @@ const ROLE_OPTIONS: {
   },
 ]
 
-const FIELD_ORDER = ['firstName', 'lastName', 'email', 'password'] as const
+const FIELD_ORDER = [
+  'firstName',
+  'lastName',
+  'email',
+  'password',
+  'confirmPassword',
+] as const
+
+/**
+ * Aufy's SignUpEndpoint returns 400 ProblemDetails with
+ * detail = "Account with this email already exists" for duplicate emails.
+ */
+function isDuplicateEmailError(err: unknown): boolean {
+  if (!(err instanceof ApiError) || err.status !== 400) return false
+  return err.payload?.detail === 'Account with this email already exists'
+}
 
 type SignUpValues = {
   firstName: string
   lastName: string
   email: string
   password: string
+  confirmPassword: string
   role: SignUpRole
 }
 
@@ -50,6 +73,7 @@ const initialValues: SignUpValues = {
   lastName: '',
   email: '',
   password: '',
+  confirmPassword: '',
   role: 'Talent',
 }
 
@@ -68,6 +92,9 @@ const validationSchema = object<SignUpValues>({
       'Password does not meet all requirements.',
       (value) => (value ? meetsPasswordRules(value) : false),
     ),
+  confirmPassword: string()
+    .required('Please confirm your password.')
+    .oneOf([ref('password')], 'Passwords do not match.'),
   role: mixed<SignUpRole>()
     .oneOf(['Talent', 'Recruiter'], 'Please choose a role.')
     .required('Please choose a role.'),
@@ -75,22 +102,31 @@ const validationSchema = object<SignUpValues>({
 
 export default function SignupPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const successTimerRef = useRef<number | null>(null)
 
+  // Pre-filled when the login page detects no account for the typed email and
+  // sends the user here to create one (state: { email }).
+  const prefillEmail =
+    (location.state as { email?: string } | null)?.email ?? ''
+
   const [error, setError] = useState<string | null>(null)
+  const [accountExists, setAccountExists] = useState(false)
   const [success, setSuccess] = useState(false)
+  // True when the backend requires email confirmation — the user must click
+  // the emailed link before the account works, so we DON'T auto sign in.
+  const [needsConfirmation, setNeedsConfirmation] = useState(false)
 
   const formik = useFormik<SignUpValues>({
-    initialValues,
+    initialValues: { ...initialValues, email: prefillEmail },
     validationSchema,
     validateOnBlur: true,
     validateOnChange: true,
     onSubmit: async (values) => {
       setError(null)
+      setAccountExists(false)
       try {
-        // Email confirmation is disabled in this MVP — the account is usable
-        // immediately, so sign the user straight in after creating it.
-        await signUp({
+        const signUpResponse = await signUp({
           firstName: values.firstName,
           lastName: values.lastName,
           email: values.email,
@@ -98,8 +134,18 @@ export default function SignupPage() {
           role: values.role,
         })
 
-        // Sign-in is best-effort here: the account is already created, so even
-        // if this transiently fails the user should land on the success state.
+        if (signUpResponse.requiresEmailConfirmation) {
+          // The account is created but inactive until the emailed link is
+          // clicked — show "check your inbox", never auto sign in (Identity
+          // would refuse it anyway).
+          setNeedsConfirmation(true)
+          setSuccess(true)
+          return
+        }
+
+        // Confirmation not required — the account is usable immediately, so
+        // sign the user straight in. Best-effort: the account is already
+        // created, so even a transient sign-in failure still celebrates.
         try {
           const tokens = await signIn({
             email: values.email,
@@ -116,7 +162,11 @@ export default function SignupPage() {
           1600,
         )
       } catch (err) {
-        setError(getApiErrorMessage(err))
+        if (isDuplicateEmailError(err)) {
+          setAccountExists(true)
+        } else {
+          setError(getApiErrorMessage(err))
+        }
       }
       // No manual setSubmitting(false) — Formik resets isSubmitting itself
       // when onSubmit settles.
@@ -166,12 +216,28 @@ export default function SignupPage() {
       }
     >
       {success ? (
-        <AuthSuccess
-          title="Welcome to SeraGo!"
-          message="Your account was created successfully. Taking you home…"
-        />
+        needsConfirmation ? (
+          <AuthSuccess
+            title="Check your inbox"
+            message={`We sent a confirmation link to ${formik.values.email}. Click it to activate your account before signing in.`}
+            action={
+              <Link
+                to="/confirm-email"
+                className="inline-block rounded-xl bg-accent px-6 py-3 font-label-md text-label-md font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90"
+              >
+                Resend confirmation email
+              </Link>
+            }
+          />
+        ) : (
+          <AuthSuccess
+            title="Welcome to SeraGo!"
+            message="Your account was created successfully. Taking you home…"
+          />
+        )
       ) : (
         <>
+          {accountExists && <AccountExistsBanner email={formik.values.email} />}
           {error && <ErrorBanner message={error} />}
 
           <form onSubmit={formik.handleSubmit} noValidate className="space-y-5">
@@ -277,6 +343,18 @@ export default function SignupPage() {
               onChange={formik.handleChange}
               onBlur={formik.handleBlur}
               error={fieldError('password')}
+            />
+
+            <PasswordInput
+              id="confirmPassword"
+              name="confirmPassword"
+              label="Confirm password"
+              autoComplete="new-password"
+              placeholder="••••••••"
+              value={formik.values.confirmPassword}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+              error={fieldError('confirmPassword')}
             />
 
             <SubmitButton
