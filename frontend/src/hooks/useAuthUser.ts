@@ -49,6 +49,8 @@ export function useAuthUser(): AuthUserState {
 /**
  * Role guard for dashboard pages. Redirects:
  * - signed-out users → /login
+ * - signed-in users with an unconfirmed email → /confirm-email (the account is
+ *   inactive until they click the emailed link — nothing else is accessible)
  * - signed-in users without `role` → /dashboard (which resolves their own page)
  */
 export function useRequireRole(role: RequiredRole): AuthUserState {
@@ -58,6 +60,8 @@ export function useRequireRole(role: RequiredRole): AuthUserState {
   useEffect(() => {
     if (auth.status === 'unauthenticated') {
       navigate('/login', { replace: true })
+    } else if (auth.status === 'authenticated' && !auth.user.emailConfirmed) {
+      navigate('/confirm-email?required=1', { replace: true })
     } else if (
       auth.status === 'authenticated' &&
       !auth.user.roles.includes(role)
