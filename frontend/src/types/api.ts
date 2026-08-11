@@ -42,11 +42,17 @@ export interface SignUpResponse {
   requiresEmailConfirmation: boolean
 }
 
-/** Body of POST /api/auth/signup/external — role/name step for new Google users. */
+/**
+ * Body of POST /api/auth/signup/external — role + password step for new Google
+ * users. First/last name are optional: the backend pulls them from Google's
+ * claims. The password is required so the account is created WITH one from
+ * the start (email + password login works on any device).
+ */
 export interface SignUpExternalRequest {
-  firstName: string
-  lastName: string
+  firstName?: string
+  lastName?: string
   role: SignUpRole
+  password: string
 }
 
 /** Body of POST /api/account/password/forgot. */
@@ -93,4 +99,59 @@ export interface WhoAmIResponse {
   username: string | null
   email: string | null
   roles: string[]
+  /** False until the account email is confirmed — blocks dashboard access. */
+  emailConfirmed: boolean
+}
+
+/** Response of GET /api/account/profile — mirrors ProfileEndpoints.ProfileResponse. */
+export interface ProfileResponse {
+  firstName: string
+  lastName: string
+  email: string
+  role: string
+  avatarUrl: string
+  city: string
+  country: string
+  /** True when the account has a password (Google-only accounts don't). */
+  hasPassword: boolean
+  talent: TalentProfileResponse | null
+  recruiter: RecruiterProfileResponse | null
+  completion: ProfileCompletionResponse | null
+}
+
+/** Role-specific section of the profile — kept minimal until the profile UI lands. */
+export interface TalentProfileResponse {
+  headline: string
+  about: string
+  experienceLevel: string | null
+  yearsOfExperience: number | null
+  desiredRoles: string[]
+  skills: string[]
+  desiredJobTypes: string[]
+  workMode: string | null
+  availability: string | null
+  resumeUrl: string
+  linkedInUrl: string
+  githubUrl: string
+  portfolioUrl: string
+}
+
+export interface RecruiterProfileResponse {
+  companyName: string
+  companyLogoUrl: string
+  industry: string
+  companySize: string
+  websiteUrl: string
+  about: string
+}
+
+export interface ProfileCompletionResponse {
+  isComplete: boolean
+  percentComplete: number
+  missingFields: string[]
+}
+
+/** Body of POST /api/account/password/set — first-time password for Google users. */
+export interface SetPasswordRequest {
+  password: string
 }
