@@ -51,7 +51,8 @@ public static class ProfileEndpoints
     public sealed record ProfileResponse(
         string FirstName, string LastName, string Email, string Role, string AvatarUrl,
         string City, string Country, TalentProfileResponse? Talent,
-        RecruiterProfileResponse? Recruiter, ProfileCompletionResponse? Completion);
+        RecruiterProfileResponse? Recruiter, ProfileCompletionResponse? Completion,
+        bool HasPassword);
 
     public sealed class UpdateProfileRequest
     {
@@ -260,7 +261,8 @@ public static class ProfileEndpoints
 
         return new ProfileResponse(
             user.FirstName, user.LastName, user.Email ?? string.Empty, user.UserType.ToString(),
-            user.AvatarUrl, user.City, user.Country, talent, recruiter, completion);
+            user.AvatarUrl, user.City, user.Country, talent, recruiter, completion,
+            user.PasswordHash is not null);
     }
 
     /// <summary>Fields the matching engine needs. Links/resume are optional extras.</summary>
