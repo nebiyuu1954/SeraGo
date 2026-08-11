@@ -24,8 +24,14 @@ export const API_ENDPOINTS = {
   },
   account: {
     info: '/account/info',
+    profile: '/account/profile',
     passwordForgot: '/account/password/forgot',
     passwordReset: '/account/password/reset',
+    passwordSet: '/account/password/set',
+    /** GET — confirm email from the emailed link: ?code=…&userId=… */
+    emailConfirm: '/account/email/confirm',
+    /** POST — resend the confirmation email: { email } */
+    emailConfirmResend: '/account/email/confirm/resend',
   },
 } as const
 
