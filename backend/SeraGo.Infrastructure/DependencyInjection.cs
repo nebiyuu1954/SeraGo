@@ -13,9 +13,17 @@ public static class DependencyInjection
         var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
-        // SQLite for now. Moving to PostgreSQL (Neon) later = change this one line
-        // to UseNpgsql + add the Npgsql package, and update the connection string.
-        services.AddDbContext<ApplicationDbContext>(options => options.UseSqlite(connectionString));
+        // PostgreSQL (Neon). Connection string comes from configuration
+        // (appsettings.json default, overridden by the DATABASE_URL / .env).
+        services.AddDbContext<ApplicationDbContext>(options =>
+            options.UseNpgsql(connectionString, npgsql =>
+            {
+                // Serverless Postgres can reset connections while waking from
+                // sleep or during network blips — retry transient failures
+                // (connection resets, socket errors) instead of surfacing
+                // random 500s. Recommended Npgsql/Neon setting.
+                npgsql.EnableRetryOnFailure();
+            }));
 
         services.AddScoped<AuthSeeder>();
 
