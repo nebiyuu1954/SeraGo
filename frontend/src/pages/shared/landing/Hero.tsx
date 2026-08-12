@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { cn } from '../../lib/cn.ts'
-import afriworkLogo from '../../assets/logos/afriwork.png'
-import ethiojobsLogo from '../../assets/logos/ethiojobs.png'
-import ethioreporterjobsLogo from '../../assets/logos/ethioreporterjobs.png'
-import geezjobsLogo from '../../assets/logos/geezjobs.png'
-import hahuLogo from '../../assets/logos/hahu.png'
+import { cn } from '../../../lib/cn.ts'
+import afriworkLogo from '../../../assets/logos/afriwork.png'
+import ethiojobsLogo from '../../../assets/logos/ethiojobs.png'
+import ethioreporterjobsLogo from '../../../assets/logos/ethioreporterjobs.png'
+import geezjobsLogo from '../../../assets/logos/geezjobs.png'
+import hahuLogo from '../../../assets/logos/hahu.png'
 
 interface HubNode {
   name: string

@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useFormik } from 'formik'
 import { object, string } from 'yup'
-import { forgotPassword, getApiErrorMessage } from '../../api'
-import AuthShell from '../../components/auth/AuthShell.tsx'
-import ErrorBanner from '../../components/auth/ErrorBanner.tsx'
-import TextInput from '../../components/auth/TextInput.tsx'
-import SubmitButton from '../../components/auth/SubmitButton.tsx'
-import AuthSuccess from '../../components/auth/AuthSuccess.tsx'
+import { forgotPassword, getApiErrorMessage } from '../../../api'
+import AuthShell from '../../../components/auth/AuthShell.tsx'
+import ErrorBanner from '../../../components/auth/ErrorBanner.tsx'
+import TextInput from '../../../components/auth/TextInput.tsx'
+import SubmitButton from '../../../components/auth/SubmitButton.tsx'
+import AuthSuccess from '../../../components/auth/AuthSuccess.tsx'
 
 interface ForgotValues {
   email: string

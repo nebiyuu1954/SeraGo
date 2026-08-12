@@ -8,19 +8,19 @@ import {
   signIn,
   signUp,
   storeAuthTokens,
-} from '../../api'
-import type { SignUpRole } from '../../types'
-import { cn } from '../../lib/cn.ts'
-import AuthShell from '../../components/auth/AuthShell.tsx'
-import AccountExistsBanner from '../../components/auth/AccountExistsBanner.tsx'
-import ErrorBanner from '../../components/auth/ErrorBanner.tsx'
-import TextInput from '../../components/auth/TextInput.tsx'
-import PasswordInput from '../../components/auth/PasswordInput.tsx'
-import SubmitButton from '../../components/auth/SubmitButton.tsx'
-import Divider from '../../components/auth/Divider.tsx'
-import GoogleButton from '../../components/auth/GoogleButton.tsx'
-import AuthSuccess from '../../components/auth/AuthSuccess.tsx'
-import { meetsPasswordRules } from '../../components/auth/passwordRules.ts'
+} from '../../../api'
+import type { SignUpRole } from '../../../types'
+import { cn } from '../../../lib/cn.ts'
+import AuthShell from '../../../components/auth/AuthShell.tsx'
+import AccountExistsBanner from '../../../components/auth/AccountExistsBanner.tsx'
+import ErrorBanner from '../../../components/auth/ErrorBanner.tsx'
+import TextInput from '../../../components/auth/TextInput.tsx'
+import PasswordInput from '../../../components/auth/PasswordInput.tsx'
+import SubmitButton from '../../../components/auth/SubmitButton.tsx'
+import Divider from '../../../components/auth/Divider.tsx'
+import GoogleButton from '../../../components/auth/GoogleButton.tsx'
+import AuthSuccess from '../../../components/auth/AuthSuccess.tsx'
+import { meetsPasswordRules } from '../../../components/auth/passwordRules.ts'
 
 const ROLE_OPTIONS: {
   value: SignUpRole
@@ -51,12 +51,12 @@ const FIELD_ORDER = [
 ] as const
 
 /**
- * Aufy's SignUpEndpoint returns 400 ProblemDetails with
- * detail = "Account with this email already exists" for duplicate emails.
+ * Aufy's SignUpEndpoint returns a 400 for duplicate emails; the envelope
+ * middleware flattens the ProblemDetails into the Failed envelope's `message`.
  */
 function isDuplicateEmailError(err: unknown): boolean {
   if (!(err instanceof ApiError) || err.status !== 400) return false
-  return err.payload?.detail === 'Account with this email already exists'
+  return err.payload?.message === 'Account with this email already exists'
 }
 
 type SignUpValues = {

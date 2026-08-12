@@ -1,6 +1,6 @@
-import { Badge } from '../../components/ui/Badge.tsx'
-import { Button } from '../../components/ui/Button.tsx'
-import { Container } from '../../components/ui/Container.tsx'
+import { Badge } from '../../../components/ui/Badge.tsx'
+import { Button } from '../../../components/ui/Button.tsx'
+import { Container } from '../../../components/ui/Container.tsx'
 
 const stack = [
   { name: 'React 19', role: 'UI framework' },

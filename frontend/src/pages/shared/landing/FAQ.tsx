@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { cn } from '../../lib/cn.ts'
+import { cn } from '../../../lib/cn.ts'
 
 /**
  * ★ FAQ LAYOUT KNOBS ★

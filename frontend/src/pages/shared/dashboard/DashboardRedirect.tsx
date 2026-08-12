@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuthUser } from '../../hooks'
+import { useAuthUser } from '../../../hooks'
 
 /**
  * Entry point after sign-in. Resolves the user's role via /api/auth/whoami

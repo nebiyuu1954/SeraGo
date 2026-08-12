@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { cn } from '../../lib/cn.ts'
-import employer1 from '../../assets/steps/employer1.png'
-import employer2 from '../../assets/steps/employer2.png'
-import employer3 from '../../assets/steps/employer3.png'
-import applicant1 from '../../assets/steps/applicant1.png'
-import applicant2 from '../../assets/steps/applicant2.png'
-import applicant3 from '../../assets/steps/applicant3.png'
+import { cn } from '../../../lib/cn.ts'
+import employer1 from '../../../assets/steps/employer1.png'
+import employer2 from '../../../assets/steps/employer2.png'
+import employer3 from '../../../assets/steps/employer3.png'
+import applicant1 from '../../../assets/steps/applicant1.png'
+import applicant2 from '../../../assets/steps/applicant2.png'
+import applicant3 from '../../../assets/steps/applicant3.png'
 
 /**
  * ★ LAYOUT KNOBS ★

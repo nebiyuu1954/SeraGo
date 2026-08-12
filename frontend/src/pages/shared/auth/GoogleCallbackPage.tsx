@@ -8,11 +8,11 @@ import {
   signInExternal,
   signUpExternal,
   storeAuthTokens,
-} from '../../api'
-import type { SignUpRole } from '../../types'
-import { cn } from '../../lib/cn.ts'
-import PasswordInput from '../../components/auth/PasswordInput.tsx'
-import { meetsPasswordRules } from '../../components/auth/passwordRules.ts'
+} from '../../../api'
+import type { SignUpRole } from '../../../types'
+import { cn } from '../../../lib/cn.ts'
+import PasswordInput from '../../../components/auth/PasswordInput.tsx'
+import { meetsPasswordRules } from '../../../components/auth/passwordRules.ts'
 
 type Stage = 'loading' | 'profile' | 'error' | 'done'
 

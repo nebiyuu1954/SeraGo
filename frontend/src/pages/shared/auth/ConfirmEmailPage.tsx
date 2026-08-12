@@ -8,12 +8,12 @@ import {
   confirmEmail,
   getApiErrorMessage,
   resendConfirmationEmail,
-} from '../../api'
-import AuthShell from '../../components/auth/AuthShell.tsx'
-import AuthSuccess from '../../components/auth/AuthSuccess.tsx'
-import ErrorBanner from '../../components/auth/ErrorBanner.tsx'
-import TextInput from '../../components/auth/TextInput.tsx'
-import SubmitButton from '../../components/auth/SubmitButton.tsx'
+} from '../../../api'
+import AuthShell from '../../../components/auth/AuthShell.tsx'
+import AuthSuccess from '../../../components/auth/AuthSuccess.tsx'
+import ErrorBanner from '../../../components/auth/ErrorBanner.tsx'
+import TextInput from '../../../components/auth/TextInput.tsx'
+import SubmitButton from '../../../components/auth/SubmitButton.tsx'
 
 type Stage = 'confirming' | 'success' | 'error' | 'resend'
 

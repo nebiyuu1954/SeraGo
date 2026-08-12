@@ -1,9 +1,8 @@
-import { useNavigate } from 'react-router-dom'
-import { clearStoredAuthTokens, getStoredAuthTokens, signOut } from '../../api'
-import PasswordSetupCard from '../../components/dashboard/PasswordSetupCard.tsx'
-import { useRequireRole } from '../../hooks'
-import type { RequiredRole } from '../../hooks'
-import { cn } from '../../lib/cn.ts'
+import PasswordSetupCard from '../../../components/dashboard/PasswordSetupCard.tsx'
+import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
+import { useRequireRole } from '../../../hooks'
+import type { RequiredRole } from '../../../hooks'
+import { cn } from '../../../lib/cn.ts'
 
 const ROLE_META: Record<RequiredRole, { icon: string; badgeClass: string }> = {
   Talent: { icon: 'work', badgeClass: 'bg-primary-container/60 text-primary' },
@@ -24,16 +23,16 @@ interface RoleDashboardProps {
 }
 
 /**
- * Shared "you're signed in" screen used by the three role dashboards.
+ * Shared "you're signed in" screen used by the talent and admin dashboards.
  * Resolves the current user (via the stored token + /api/auth/whoami),
- * redirects signed-out/wrong-role visitors, and renders the greeting.
+ * redirects signed-out/wrong-role visitors, and renders the greeting inside
+ * the standard sidebar shell (same chrome as the recruiter workspace).
  */
 export default function RoleDashboard({
   role,
   blurb,
   features,
 }: RoleDashboardProps) {
-  const navigate = useNavigate()
   const auth = useRequireRole(role)
   const meta = ROLE_META[role]
 
@@ -50,23 +49,8 @@ export default function RoleDashboard({
 
   const displayName = auth.user.username ?? auth.user.email ?? 'there'
 
-  const handleSignOut = () => {
-    const tokens = getStoredAuthTokens()
-    if (tokens) {
-      // Best-effort: revoke the refresh token server-side, then clear locally
-      // regardless of the outcome.
-      signOut(tokens.accessToken).catch(() => {
-        // Offline / already-expired token — local sign-out still proceeds.
-      })
-    }
-    clearStoredAuthTokens()
-    // Navigate to the standalone login page so the app chrome (and the
-    // signed-in navbar state) remounts fresh.
-    navigate('/login', { replace: true })
-  }
-
   return (
-    <div className="mx-auto max-w-container-max px-margin-mobile py-16 md:px-margin-desktop">
+    <DashboardShell role={role} authUser={auth.user}>
       <div className="rounded-2xl border border-outline-variant bg-surface-container-lowest p-8 shadow-sm sm:p-10">
         {/* Role badge */}
         <span
@@ -112,19 +96,10 @@ export default function RoleDashboard({
 
         <PasswordSetupCard />
 
-        <div className="mt-8 flex flex-wrap items-center gap-3 border-t border-outline-variant pt-6">
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="rounded-xl border border-outline-variant bg-surface-container-lowest px-5 py-2.5 font-label-md text-label-md font-medium text-on-surface transition-colors duration-200 hover:border-error/40 hover:bg-error-container/40 hover:text-error"
-          >
-            Sign out
-          </button>
-          <p className="font-label-sm text-label-sm text-on-surface-variant">
-            Your role-based workspace is under construction — more coming soon.
-          </p>
-        </div>
+        <p className="mt-8 border-t border-outline-variant pt-6 font-label-sm text-label-sm text-on-surface-variant">
+          Your role-based workspace is under construction — more coming soon.
+        </p>
       </div>
-    </div>
+    </DashboardShell>
   )
 }
