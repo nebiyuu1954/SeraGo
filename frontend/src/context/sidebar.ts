@@ -2,8 +2,8 @@ import { createContext, useContext } from 'react'
 
 export interface SidebarContextValue {
   /**
-   * Desktop sidebar column — also drives the header: when it's open the
-   * header hides its nav links, when it's collapsed they reappear.
+   * Desktop sidebar column. Expanded shows labels; collapsed becomes a
+   * narrow icon-only rail. Toggled from the sidebar itself (under Settings).
    */
   sidebarOpen: boolean
   setSidebarOpen: (open: boolean) => void

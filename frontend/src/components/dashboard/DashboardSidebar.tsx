@@ -13,9 +13,10 @@ interface DashboardSidebarProps {
 }
 
 /**
- * Dashboard sidebar. On md+ screens it's a collapsible column whose state is
- * shared with the header (open → header hides its nav links, and the header's
- * toggle is the only open/close control); on mobile it's a slide-in drawer
+ * Dashboard sidebar. On md+ screens it's a collapsible column: expanded it
+ * shows labels, collapsed it shrinks to a narrow icon-only rail (tooltips
+ * keep the items discoverable). The collapse/expand toggle lives at the
+ * bottom of the nav, right under Settings. On mobile it's a slide-in drawer
  * opened from the shell's menu button and closed via the backdrop or the
  * header's hamburger. The two states are independent so resizing across the
  * md breakpoint never surprises the user.
@@ -26,15 +27,15 @@ export default function DashboardSidebar({
   userCompany,
   onSignOut,
 }: DashboardSidebarProps) {
-  const { sidebarOpen, drawerOpen, setDrawerOpen } = useSidebar()
+  const { sidebarOpen, toggleSidebar, drawerOpen, setDrawerOpen } = useSidebar()
 
   return (
     <>
-      {/* Desktop sidebar column — only while the sidebar is open */}
+      {/* Desktop sidebar column — always visible on md+, collapses to an icon rail */}
       <aside
         className={cn(
-          'w-64 flex-shrink-0 flex-col border-r border-surface-variant bg-surface-container-lowest',
-          sidebarOpen ? 'hidden md:flex' : 'hidden',
+          'hidden flex-shrink-0 flex-col overflow-hidden border-r border-surface-variant bg-surface-container-lowest transition-[width] duration-300 ease-in-out md:flex',
+          sidebarOpen ? 'w-64' : 'w-20',
         )}
       >
         <SidebarBody
@@ -42,10 +43,12 @@ export default function DashboardSidebar({
           userName={userName}
           userCompany={userCompany}
           onSignOut={onSignOut}
+          collapsed={!sidebarOpen}
+          onToggle={toggleSidebar}
         />
       </aside>
 
-      {/* Mobile drawer */}
+      {/* Mobile drawer — always shows the full labels */}
       {drawerOpen && (
         <>
           <div
@@ -59,6 +62,7 @@ export default function DashboardSidebar({
               userName={userName}
               userCompany={userCompany}
               onSignOut={onSignOut}
+              collapsed={false}
             />
           </aside>
         </>
@@ -72,82 +76,142 @@ function SidebarBody({
   userName,
   userCompany,
   onSignOut,
+  collapsed,
+  onToggle,
 }: {
   role: RequiredRole
   userName: string
   userCompany?: string
   onSignOut: () => void
+  /** Icon-rail mode: labels hidden, icons centered, tooltips on hover. */
+  collapsed: boolean
+  /** Desktop only — the collapse/expand toggle rendered under Settings. */
+  onToggle?: () => void
 }) {
   const location = useLocation()
   // Longest prefix match wins — nested pages highlight their own item, not
   // the role home. E.g. on the profile page only Profile is lit.
   const activeTo = activeNavTo(ROLE_NAV[role], location.pathname)
 
+  const itemClasses = (isActive: boolean) =>
+    cn(
+      'flex items-center gap-3 rounded-lg px-4 py-3 font-label-md text-label-md transition-colors',
+      collapsed && 'justify-center px-0',
+      isActive
+        ? 'bg-surface-container-low font-semibold text-primary'
+        : 'text-on-surface-variant hover:bg-surface-container-low hover:text-primary',
+    )
+
   return (
     <>
       <nav className="flex-1 space-y-1.5 px-4 py-6">
         {ROLE_NAV[role].map((item) => {
-          const classes = (isActive: boolean) =>
-            cn(
-              'flex items-center gap-3 rounded-lg px-4 py-3 font-label-md text-label-md transition-colors',
-              isActive
-                ? 'bg-surface-container-low font-semibold text-primary'
-                : 'text-on-surface-variant hover:bg-surface-container-low hover:text-primary',
-            )
           const isActive = item.to === activeTo
+          const content = (
+            <>
+              <span
+                className={cn(
+                  'material-symbols-outlined',
+                  isActive && 'fill',
+                )}
+              >
+                {item.icon}
+              </span>
+              {!collapsed && item.label}
+            </>
+          )
           return item.to ? (
             <Link
               key={item.label}
               to={item.to}
               aria-current={isActive ? 'page' : undefined}
-              className={classes(isActive)}
+              title={collapsed ? item.label : undefined}
+              className={itemClasses(isActive)}
             >
-              <span
-                className={cn('material-symbols-outlined', isActive && 'fill')}
-              >
-                {item.icon}
-              </span>
-              {item.label}
+              {content}
             </Link>
           ) : (
             <a
               key={item.label}
               href="#"
               onClick={(e) => e.preventDefault()}
-              className={classes(false)}
+              title={collapsed ? item.label : undefined}
+              className={itemClasses(false)}
             >
-              <span className="material-symbols-outlined">{item.icon}</span>
-              {item.label}
+              {content}
             </a>
           )
         })}
+
+        {/* Collapse/expand toggle — sits under Settings (desktop only) */}
+        {onToggle && (
+          <button
+            type="button"
+            onClick={onToggle}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-lg px-4 py-3 font-label-md text-label-md text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-primary',
+              collapsed && 'justify-center px-0',
+            )}
+          >
+            {/* menu_open points left when expanded (collapse); rotated 180° it
+                points right when collapsed, signaling "click to expand". */}
+            <span
+              className={cn(
+                'material-symbols-outlined transition-transform duration-300',
+                collapsed && 'rotate-180',
+              )}
+            >
+              menu_open
+            </span>
+            {!collapsed && 'Collapse'}
+          </button>
+        )}
       </nav>
 
       <div className="border-t border-surface-variant p-4">
-        <div className="flex items-center gap-3 rounded-lg px-2 py-2">
-          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary font-label-md text-label-md font-bold text-on-primary">
-            {initialsOf(userName)}
-          </span>
-          <div className="min-w-0">
-            <p className="truncate font-label-sm text-label-sm font-medium text-on-surface">
-              {userName}
-            </p>
-            {userCompany && (
-              <p className="truncate font-label-sm text-label-sm text-on-surface-variant">
-                {userCompany}
-              </p>
-            )}
+        {collapsed ? (
+          <div className="flex flex-col items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary font-label-md text-label-md font-bold text-on-primary">
+              {initialsOf(userName)}
+            </span>
+            <button
+              type="button"
+              onClick={onSignOut}
+              title="Sign out"
+              aria-label="Sign out"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
+            >
+              <span className="material-symbols-outlined">logout</span>
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onSignOut}
-            title="Sign out"
-            aria-label="Sign out"
-            className="ml-auto flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
-          >
-            <span className="material-symbols-outlined">logout</span>
-          </button>
-        </div>
+        ) : (
+          <div className="flex items-center gap-3 rounded-lg px-2 py-2">
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary font-label-md text-label-md font-bold text-on-primary">
+              {initialsOf(userName)}
+            </span>
+            <div className="min-w-0">
+              <p className="truncate font-label-sm text-label-sm font-medium text-on-surface">
+                {userName}
+              </p>
+              {userCompany && (
+                <p className="truncate font-label-sm text-label-sm text-on-surface-variant">
+                  {userCompany}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={onSignOut}
+              title="Sign out"
+              aria-label="Sign out"
+              className="ml-auto flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
+            >
+              <span className="material-symbols-outlined">logout</span>
+            </button>
+          </div>
+        )}
       </div>
     </>
   )

@@ -3,9 +3,9 @@ import type { ReactNode } from 'react'
 import { SidebarContext } from './sidebar.ts'
 
 /**
- * Shares the dashboard sidebar's open/closed state between the header and
- * the dashboard pages: when the desktop sidebar is open the header hides its
- * nav links; when it's collapsed they reappear.
+ * Shares the dashboard sidebar's expanded/collapsed state. Expanded shows
+ * labels; collapsed shrinks it to an icon-only rail. The toggle lives in
+ * the sidebar itself (under Settings), so the header no longer controls it.
  *
  * The desktop column opens by default on desktop (it's the primary dashboard
  * nav); the mobile drawer always starts closed.
