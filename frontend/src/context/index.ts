@@ -1,3 +1,6 @@
 export { ThemeProvider } from './ThemeProvider.tsx'
 export { useTheme } from './theme.ts'
 export type { Theme, ThemeContextValue } from './theme.ts'
+export { SidebarProvider } from './SidebarProvider.tsx'
+export { useSidebar } from './sidebar.ts'
+export type { SidebarContextValue } from './sidebar.ts'

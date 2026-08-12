@@ -214,3 +214,8 @@
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: 'liga';
 }
+
+/* Filled variant for active navigation icons */
+.material-symbols-outlined.fill {
+  font-variation-settings: 'FILL' 1;
+}

@@ -72,29 +72,14 @@ export default function PasswordSetupCard() {
     },
   })
 
-  if (state === 'loading' || state === 'hidden') return null
+  // Users who already have a password don't need this card at all.
+  if (state === 'loading' || state === 'hidden' || state === 'hasPassword') {
+    return null
+  }
 
   return (
     <section className="mt-8 rounded-xl border border-outline-variant bg-surface-container-lowest p-5 sm:p-6">
-      {state === 'hasPassword' ? (
-        <div className="flex items-start gap-3">
-          <span
-            aria-hidden="true"
-            className="material-symbols-outlined mt-0.5 text-xl text-success"
-          >
-            check_circle
-          </span>
-          <div>
-            <h2 className="font-label-md text-label-md font-semibold text-on-surface">
-              Password set
-            </h2>
-            <p className="mt-1 font-label-sm text-label-sm leading-relaxed text-on-surface-variant">
-              You have a password, so you can sign in with your email and
-              password on any device.
-            </p>
-          </div>
-        </div>
-      ) : done ? (
+      {done ? (
         <div className="flex items-start gap-3">
           <span
             aria-hidden="true"

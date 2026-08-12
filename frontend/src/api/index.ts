@@ -2,7 +2,18 @@ export { ApiError, getApiErrorMessage, request } from './client.ts'
 export type { RequestOptions } from './client.ts'
 export { API_ENDPOINTS } from './endpoints.ts'
 export type { ApiEndpoint } from './endpoints.ts'
-export { fetchProfile, setPassword } from './profile.ts'
+export { fetchProfile, setPassword, updateProfile } from './profile.ts'
+export {
+  approveJob,
+  createJob,
+  deleteJob,
+  fetchJob,
+  fetchJobs,
+  rejectJob,
+  restoreJob,
+  submitJob,
+  updateJob,
+} from './jobs.ts'
 export {
   AUTH_TOKENS_KEY,
   buildGoogleChallengeUrl,

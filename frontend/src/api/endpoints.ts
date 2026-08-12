@@ -33,6 +33,10 @@ export const API_ENDPOINTS = {
     /** POST — resend the confirmation email: { email } */
     emailConfirmResend: '/account/email/confirm/resend',
   },
+  jobs: {
+    /** GET/POST /api/jobs — item routes (/api/jobs/{id}, .../submit) are built in api/jobs.ts. */
+    list: '/jobs',
+  },
 } as const
 
 export type ApiEndpoint = (typeof API_ENDPOINTS)[keyof typeof API_ENDPOINTS]

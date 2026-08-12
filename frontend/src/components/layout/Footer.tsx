@@ -1,8 +1,12 @@
 import { Link } from 'react-router-dom'
 import { Container } from '../ui/Container.tsx'
 import { config } from '../../config'
+import { getStoredAuthTokens } from '../../api'
+import { useAuthUser } from '../../hooks'
+import type { RequiredRole } from '../../hooks'
+import { pickRole, roleHome } from '../dashboard/roleNav.ts'
 
-const columns = [
+const publicColumns = [
   {
     title: 'Product',
     links: ['Job search', 'Smart matches', 'Job alerts', 'Salary insights'],
@@ -17,14 +21,57 @@ const columns = [
   },
 ]
 
+/** Columns shared by every signed-in footer. */
+const sharedColumns = [
+  { title: 'Company', links: ['About', 'Blog', 'Careers', 'Press'] },
+  { title: 'Legal', links: ['Privacy', 'Terms'] },
+]
+
+/** The role-specific first column — each role sees its own footer. */
+const roleColumns: Record<RequiredRole, { title: string; links: string[] }[]> = {
+  Recruiter: [
+    {
+      title: 'For recruiters',
+      links: ['Post a job', 'Manage applications', 'Recruiter pricing', 'Help center'],
+    },
+  ],
+  Talent: [
+    {
+      title: 'For talent',
+      links: ['Find jobs', 'Saved jobs', 'Job alerts', 'Resume tips'],
+    },
+  ],
+  Admin: [
+    {
+      title: 'Operations',
+      links: ['Job moderation', 'Users', 'Reports', 'Settings'],
+    },
+  ],
+}
+
+function linkTo(link: string): string {
+  return link === 'About' ? '/about' : '#'
+}
+
+/**
+ * Page footer. Public visitors get the marketing footer; signed-in users get
+ * a role-specific footer (their own column + shared company/legal columns).
+ */
 export default function Footer() {
+  const auth = useAuthUser()
+  const role = auth.status === 'authenticated' ? pickRole(auth.user.roles) : null
+  const columns =
+    getStoredAuthTokens() && role
+      ? [...roleColumns[role], ...sharedColumns]
+      : publicColumns
+
   return (
     <footer className="border-t border-outline-variant bg-surface-container-lowest">
       <Container className="py-14">
         <div className="grid gap-10 md:grid-cols-[1.5fr_repeat(3,1fr)]">
           <div>
             <Link
-              to="/"
+              to={role ? roleHome(role) : '/'}
               className="font-headline-md text-headline-md font-bold tracking-tight text-primary"
               aria-label="SeraGo home"
             >
@@ -44,7 +91,7 @@ export default function Footer() {
                 {col.links.map((link) => (
                   <li key={link}>
                     <Link
-                      to={link === 'About' ? '/about' : '#'}
+                      to={linkTo(link)}
                       className="text-body-md text-on-surface-variant transition-colors hover:text-on-surface"
                     >
                       {link}

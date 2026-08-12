@@ -5,7 +5,7 @@ import {
   refreshAccessToken,
   storeAuthTokens,
 } from './auth'
-import type { ApiErrorPayload } from '../types'
+import type { ApiErrorPayload, ApiResponse } from '../types'
 
 /** Error thrown for non-2xx responses from the SeraGo API. */
 export class ApiError extends Error {
@@ -66,30 +66,39 @@ async function doRefresh(): Promise<boolean> {
 }
 
 async function readResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    let payload: ApiErrorPayload | undefined
-    try {
-      payload = (await response.json()) as ApiErrorPayload
-    } catch {
-      // Non-JSON error body — leave payload undefined.
-    }
-    throw new ApiError(
-      payload?.message ?? `Request failed with status ${response.status}`,
-      response.status,
-      payload,
-    )
-  }
-
   if (response.status === 204) {
     return undefined as T
   }
 
-  // Some endpoints (e.g. password forgot/reset) return 200 with an EMPTY body.
   const text = await response.text()
   if (!text) {
+    // Some endpoints (e.g. password forgot/reset) return 200 with an EMPTY
+    // body (pre-envelope) — nothing to unwrap.
     return undefined as T
   }
-  return JSON.parse(text) as T
+
+  let envelope: ApiResponse<unknown>
+  try {
+    envelope = JSON.parse(text) as ApiResponse<unknown>
+  } catch {
+    // Non-JSON body — surface as an error for non-2xx, pass through otherwise.
+    if (!response.ok) {
+      throw new ApiError(`Request failed with status ${response.status}`, response.status)
+    }
+    return text as T
+  }
+
+  // Every API response carries the envelope; a non-2xx status or a "Failed"
+  // status header means the call failed. Unwrap `data` on success.
+  if (!response.ok || envelope.responseStatus === 'Failed') {
+    throw new ApiError(
+      envelope.message ?? `Request failed with status ${response.status}`,
+      response.status,
+      envelope as unknown as ApiErrorPayload,
+    )
+  }
+
+  return envelope.data as T
 }
 
 /**
@@ -140,19 +149,15 @@ export async function request<T>(
 }
 
 /**
- * Best-effort human-readable message for any thrown error — especially
- * Aufy's RFC 7807 ProblemDetails (`detail` / `title` / field `errors`).
+ * Best-effort human-readable message for any thrown error. Failed responses
+ * arrive as the envelope — `message` holds the human-readable text (the
+ * middleware flattened ProblemDetails title/detail/field errors into it) and
+ * `messageCode` is the stable code fallback.
  */
 export function getApiErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     const payload = error.payload
-    if (payload?.errors) {
-      const messages = Object.values(payload.errors).flat()
-      if (messages.length > 0) return messages.join(' ')
-    }
-    return (
-      payload?.detail ?? payload?.title ?? payload?.message ?? error.message
-    )
+    return payload?.message ?? payload?.messageCode ?? error.message
   }
   if (error instanceof Error) return error.message
   return 'Something went wrong. Please try again.'

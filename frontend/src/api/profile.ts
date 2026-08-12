@@ -1,10 +1,31 @@
 import { request } from './client.ts'
 import { API_ENDPOINTS } from './endpoints.ts'
-import type { ProfileResponse, SetPasswordRequest } from '../types'
+import type {
+  ProfileResponse,
+  SetPasswordRequest,
+  UpdateProfileRequest,
+} from '../types'
 
 /** Returns the current user's profile, including whether they have a password. */
 export function fetchProfile(accessToken: string): Promise<ProfileResponse> {
   return request<ProfileResponse>(API_ENDPOINTS.account.profile, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+}
+
+/**
+ * Full-replace save of the current user's profile (common fields + the
+ * section matching their role). Returns the updated profile.
+ *
+ * PUT /api/account/profile (Bearer auth)
+ */
+export function updateProfile(
+  accessToken: string,
+  payload: UpdateProfileRequest,
+): Promise<ProfileResponse> {
+  return request<ProfileResponse>(API_ENDPOINTS.account.profile, {
+    method: 'PUT',
+    body: payload,
     headers: { Authorization: `Bearer ${accessToken}` },
   })
 }

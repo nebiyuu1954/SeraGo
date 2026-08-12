@@ -1,22 +1,27 @@
-/** Standard envelope returned by the SeraGo API. */
-export interface ApiResponse<T> {
-  data: T
-  message?: string
-}
+/** Status header on every API response. */
+export type ApiResponseStatus = 'Success' | 'Failed'
 
 /**
- * Shape of an error payload returned by the SeraGo API.
- * Aufy returns RFC 7807 ProblemDetails (`title`/`detail`/`errors`);
- * plain `{ message }` payloads are tolerated for other endpoints.
+ * Standard envelope returned by the SeraGo API. The response-shaping
+ * middleware wraps every endpoint: success = `{ responseStatus: "Success",
+ * messageCode: null, message: null, data }`; failure = `{ responseStatus:
+ * "Failed", messageCode, message, data: null }`.
  */
+export interface ApiResponse<T> {
+  responseStatus: ApiResponseStatus
+  /** Stable machine-readable code, e.g. "NOT_FOUND" / "VALIDATION_ERROR". */
+  messageCode: string | null
+  /** Human-readable message (ProblemDetails title/detail/errors flattened). */
+  message: string | null
+  data: T | null
+}
+
+/** Shape of an error payload — the Failed envelope. */
 export interface ApiErrorPayload {
-  type?: string
-  title?: string
-  status?: number
-  detail?: string
-  message?: string
-  /** Field → list of validation messages (ASP.NET Identity / DataAnnotations). */
-  errors?: Record<string, string[]>
+  responseStatus: 'Failed'
+  messageCode: string | null
+  message: string | null
+  data: null
 }
 
 /** Example health-check response. */
@@ -154,4 +159,138 @@ export interface ProfileCompletionResponse {
 /** Body of POST /api/account/password/set — first-time password for Google users. */
 export interface SetPasswordRequest {
   password: string
+}
+
+/**
+ * Body of PUT /api/account/profile — mirrors ProfileEndpoints.UpdateProfileRequest.
+ *
+ * Common fields (null = leave unchanged). The role-specific section matching
+ * the caller's role is applied as a full replace: strings null → "", lists
+ * null → [], enums null → unset. Send the whole form and the result matches.
+ */
+export interface UpdateProfileRequest {
+  firstName?: string
+  lastName?: string
+  avatarUrl?: string
+  city?: string
+  country?: string
+  talent?: TalentProfileUpdate
+  recruiter?: RecruiterProfileUpdate
+}
+
+/** Talent section of PUT /api/account/profile. Enums are PascalCase names. */
+export interface TalentProfileUpdate {
+  headline?: string
+  about?: string
+  /** Entry | Junior | Mid | Senior | Lead — null/blank unsets. */
+  experienceLevel?: string | null
+  yearsOfExperience?: number | null
+  desiredRoles?: string[]
+  skills?: string[]
+  /** PascalCase JobType names: FullTime | PartTime | Contract | ... */
+  desiredJobTypes?: string[]
+  /** Onsite | Remote | Hybrid — null/blank unsets. */
+  workMode?: string | null
+  /** Immediate | WithinTwoWeeks | WithinOneMonth | MoreThanOneMonth — null/blank unsets. */
+  availability?: string | null
+  resumeUrl?: string
+  linkedInUrl?: string
+  githubUrl?: string
+  portfolioUrl?: string
+}
+
+/** Recruiter section of PUT /api/account/profile. CompanyName is required. */
+export interface RecruiterProfileUpdate {
+  companyName: string
+  companyLogoUrl?: string
+  industry?: string
+  companySize?: string
+  websiteUrl?: string
+  about?: string
+}
+
+// ---------------------------------------------------------------- Jobs
+
+/** Job lifecycle status — lowerCamel, matches the API's JobStatus. */
+export type JobStatus = 'draft' | 'pendingApproval' | 'published' | 'rejected'
+
+/** Job type — lowerCamel, matches the API's JobType. */
+export type JobType =
+  | 'fullTime'
+  | 'partTime'
+  | 'contract'
+  | 'contractual'
+  | 'remote'
+  | 'internship'
+  | 'freelance'
+  | 'temporary'
+  | 'other'
+
+/** A single job posting — the data item of GET /api/jobs. */
+export interface JobResponse {
+  id: string
+  title: string
+  description: string
+  company: string
+  location: string
+  jobType: JobType | string
+  url: string
+  salary: string
+  /** UTC ISO-8601, e.g. "2026-09-15T14:00:00Z" — or null. */
+  publishedAt: string | null
+  deadline: string | null
+  status: JobStatus
+  isActive: boolean
+  isOwner: boolean
+  /** null when empty. */
+  rejectionReason: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PaginationResponse {
+  page: number
+  pageSize: number
+  totalCount: number
+  totalPages: number
+  hasNextPage: boolean
+}
+
+/** The `data` payload of GET /api/jobs. */
+export interface JobListData {
+  items: JobResponse[]
+  pagination: PaginationResponse
+}
+
+/** Query parameters of GET /api/jobs. */
+export interface JobListParams {
+  q?: string
+  jobType?: string
+  location?: string
+  /** newest | oldest | title_asc | title_desc | deadline */
+  sort?: string
+  page?: number
+  pageSize?: number
+  /** true → the caller's own jobs (any status) — owner only. */
+  mine?: boolean
+  /** Status filter — admins, or combined with mine. */
+  status?: string
+  /** Include inactive jobs — admins only. */
+  includeInactive?: boolean
+}
+
+/** Body of POST /api/jobs and PUT /api/jobs/{id}. */
+export interface JobWriteRequest {
+  title: string
+  description?: string
+  company?: string
+  location?: string
+  jobType?: string
+  url?: string
+  salary?: string
+  /** UTC ISO-8601 datetime. */
+  publishedAt?: string
+  deadline?: string
+  /** true → hidden draft; false → submit for review (admins publish directly). */
+  saveAsDraft?: boolean
 }

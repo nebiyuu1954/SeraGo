@@ -1,18 +1,22 @@
 import { Route, Routes } from 'react-router-dom'
 import Layout from './components/layout/Layout.tsx'
-import LandingPage from './pages/landing/LandingPage.tsx'
-import AboutPage from './pages/about/AboutPage.tsx'
-import SignupPage from './pages/auth/SignupPage.tsx'
-import LoginPage from './pages/auth/LoginPage.tsx'
-import ForgotPasswordPage from './pages/auth/ForgotPasswordPage.tsx'
-import ResetPasswordPage from './pages/auth/ResetPasswordPage.tsx'
-import ConfirmEmailPage from './pages/auth/ConfirmEmailPage.tsx'
-import GoogleCallbackPage from './pages/auth/GoogleCallbackPage.tsx'
-import DashboardRedirect from './pages/dashboard/DashboardRedirect.tsx'
-import TalentDashboardPage from './pages/dashboard/TalentDashboardPage.tsx'
-import RecruiterDashboardPage from './pages/dashboard/RecruiterDashboardPage.tsx'
-import AdminDashboardPage from './pages/dashboard/AdminDashboardPage.tsx'
-import NotFoundPage from './pages/not-found/NotFoundPage.tsx'
+import LandingPage from './pages/shared/landing/LandingPage.tsx'
+import AboutPage from './pages/shared/generic/AboutPage.tsx'
+import SignupPage from './pages/shared/auth/SignupPage.tsx'
+import LoginPage from './pages/shared/auth/LoginPage.tsx'
+import ForgotPasswordPage from './pages/shared/auth/ForgotPasswordPage.tsx'
+import ResetPasswordPage from './pages/shared/auth/ResetPasswordPage.tsx'
+import ConfirmEmailPage from './pages/shared/auth/ConfirmEmailPage.tsx'
+import GoogleCallbackPage from './pages/shared/auth/GoogleCallbackPage.tsx'
+import DashboardRedirect from './pages/shared/dashboard/DashboardRedirect.tsx'
+import TalentDashboardPage from './pages/talent/dashboard/TalentDashboardPage.tsx'
+import JobsPage from './pages/recruiter/jobs/JobsPage.tsx'
+import JobFormPage from './pages/recruiter/jobs/JobFormPage.tsx'
+import AdminDashboardPage from './pages/admin/dashboard/AdminDashboardPage.tsx'
+import RecruiterProfilePage from './pages/recruiter/profile/ProfilePage.tsx'
+import TalentProfilePage from './pages/talent/profile/ProfilePage.tsx'
+import AdminProfilePage from './pages/admin/profile/ProfilePage.tsx'
+import NotFoundPage from './pages/shared/generic/NotFoundPage.tsx'
 
 function App() {
   return (
@@ -23,11 +27,25 @@ function App() {
         {/* Signed-in role dashboards — resolve the user's role from whoami */}
         <Route path="dashboard" element={<DashboardRedirect />} />
         <Route path="dashboard/talent" element={<TalentDashboardPage />} />
+        <Route path="dashboard/recruiter" element={<JobsPage />} />
         <Route
-          path="dashboard/recruiter"
-          element={<RecruiterDashboardPage />}
+          path="dashboard/recruiter/jobs/new"
+          element={<JobFormPage />}
+        />
+        <Route
+          path="dashboard/recruiter/jobs/:jobId/edit"
+          element={<JobFormPage />}
         />
         <Route path="dashboard/admin" element={<AdminDashboardPage />} />
+        <Route
+          path="dashboard/recruiter/profile"
+          element={<RecruiterProfilePage />}
+        />
+        <Route
+          path="dashboard/talent/profile"
+          element={<TalentProfilePage />}
+        />
+        <Route path="dashboard/admin/profile" element={<AdminProfilePage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
       {/* Standalone auth screens — full-viewport, outside the app chrome */}
