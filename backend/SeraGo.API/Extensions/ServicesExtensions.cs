@@ -6,6 +6,7 @@ using Aufy.FluentEmail;
 using FluentEmail.Core.Interfaces;
 using FluentEmail.SendGrid;
 using Microsoft.AspNetCore.Authentication.Google;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
@@ -13,6 +14,7 @@ using SeraGo.API.Auth;
 using SeraGo.API.Email;
 using SeraGo.Core.Domain.Entities;
 using SeraGo.Infrastructure.Context;
+using System.Threading.RateLimiting;
 
 namespace SeraGo.API.Extensions;
 
@@ -266,4 +268,81 @@ public static class ServicesExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// API rate limiting (throttling). Policies are keyed per remote IP with a
+    /// fixed window; read and write traffic get their own limits. Endpoints opt
+    /// in via <c>.RequireRateLimiting("jobs_read")</c> / "jobs_write" (see
+    /// JobEndpoints). Limits come from the "RateLimiting" config section.
+    /// </summary>
+    public static IServiceCollection AddRateLimiting(this IServiceCollection services, IConfiguration configuration)
+    {
+        var options = configuration.GetSection("RateLimiting").Get<RateLimitOptions>() ?? new RateLimitOptions();
+
+        services.AddRateLimiter(limiter =>
+        {
+            limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            limiter.OnRejected = async (context, cancellationToken) =>
+            {
+                context.HttpContext.Response.ContentType = "application/json";
+                await context.HttpContext.Response.WriteAsJsonAsync(
+                    new { message = "Too many requests — please slow down and try again shortly." },
+                    cancellationToken);
+            };
+
+            limiter.AddPolicy("jobs_read", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+                PartitionKey(httpContext),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = options.JobsRead.PermitLimit,
+                    Window = TimeSpan.FromMinutes(options.JobsRead.WindowMinutes),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }));
+
+            limiter.AddPolicy("jobs_write", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+                PartitionKey(httpContext),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = options.JobsWrite.PermitLimit,
+                    Window = TimeSpan.FromMinutes(options.JobsWrite.WindowMinutes),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }));
+        });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Buckets clients by their real IP: the first X-Forwarded-For hop when
+    /// present (reverse proxies), otherwise the connection's remote address.
+    /// Without this, every client behind a proxy would share one bucket.
+    /// </summary>
+    private static string PartitionKey(HttpContext context)
+    {
+        var forwarded = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(forwarded))
+        {
+            return forwarded.Split(',')[0].Trim();
+        }
+        return context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    }
+}
+
+/// <summary>Config-bound options for <c>AddRateLimiting</c> ("RateLimiting" section).</summary>
+public sealed class RateLimitOptions
+{
+    public RateLimitPolicyOptions JobsRead { get; set; } = new();
+    public RateLimitPolicyOptions JobsWrite { get; set; } = new();
+}
+
+/// <summary>Fixed-window policy settings for one endpoint group.</summary>
+public sealed class RateLimitPolicyOptions
+{
+    /// <summary>Max requests per window (defaults apply when the config key is absent).</summary>
+    public int PermitLimit { get; set; } = 60;
+
+    /// <summary>Window length in minutes.</summary>
+    public int WindowMinutes { get; set; } = 1;
 }

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using SeraGo.API.Email;
 using SeraGo.API.Endpoints;
 using SeraGo.API.Extensions;
+using SeraGo.API.Middleware;
 using SeraGo.Infrastructure;
 using SeraGo.Infrastructure.Context;
 using SeraGo.Infrastructure.Data;
@@ -30,6 +31,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerWithJwt();
 builder.Services.AddHttpClient(); // HttpClient factory for the EmailJS relay
 builder.Services.AddSingleton<EmailThrottleService>(); // per-email throttle for email-sending flows
+builder.Services.AddRateLimiting(builder.Configuration); // API throttling (fixed-window per IP)
 
 builder.Services.AddInfrastructure(builder.Configuration); // SQLite DbContext + AuthSeeder
 builder.Services.SetupAufy(builder.Configuration);         // Aufy: Identity + JWT + custom signup
@@ -90,7 +92,14 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// Standard response envelope — every endpoint (including Aufy's auth) returns
+// { responseStatus, messageCode, message, data }. Registered after Swagger so
+// the API docs stay unwrapped, before everything else so all responses (auth
+// 401s, rate-limit 429s, unhandled 500s) come out in the one format.
+app.UseMiddleware<ResponseEnvelopeMiddleware>();
+
 app.UseCors();
+app.UseRateLimiter(); // throttling for endpoints that opt in via RequireRateLimiting
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -105,6 +114,8 @@ app.MapSeraGoExternalSignUpEndpoint(); // POST /api/auth/signup/external — lin
 app.MapSeraGoWhoAmIEndpoint();         // GET /api/auth/whoami — adds emailConfirmed for the dashboard guard
 app.MapSeraGoEmailConfirmationResendEndpoint(); // POST /api/account/email/confirm/resend — surfaces 404/409/200
 app.MapSeraGoEmailConfirmEndpoint();             // GET /api/account/email/confirm — already-confirmed is a 200, not a 404
+
+app.MapJobEndpoints(); // /api/jobs — browse, search, post (draft flow), moderate
 
 app.MapGet("/", () => Results.Ok(new { service = "SeraGo API", docs = "/swagger" }));
 

@@ -105,5 +105,6 @@ public class AuthSeeder(
                     adminEmail, string.Join(", ", roleResult.Errors.Select(e => e.Description)));
             }
         }
+
     }
 }
