@@ -30,6 +30,7 @@ export {
   syncScrapedJobs,
   updateSector,
 } from './sectors.ts'
+export { fetchTopStats } from './stats.ts'
 export {
   AUTH_TOKENS_KEY,
   buildGoogleChallengeUrl,

@@ -381,3 +381,28 @@ export interface SyncScrapedJobsResult {
   deactivated: number
   unknownSectors: string[]
 }
+
+/** One ranked entry of the top-sectors stat. */
+export interface SectorCountStat {
+  name: string
+  count: number
+}
+
+/** One ranked entry of the top-websites stat. */
+export interface WebsiteStat {
+  slug: string
+  name: string
+  itemsFound: number
+  itemsInserted: number
+  runCount: number
+  apiHits: number
+}
+
+/** Result of GET /api/admin/stats/top — top sectors + websites for a period. */
+export interface StatsTopResponse {
+  period: 'day' | 'week' | 'month' | 'year'
+  start: string
+  end: string
+  topSectors: SectorCountStat[]
+  topWebsites: WebsiteStat[]
+}

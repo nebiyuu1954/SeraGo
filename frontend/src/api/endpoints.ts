@@ -49,6 +49,10 @@ export const API_ENDPOINTS = {
     /** POST /api/admin/sync/scraped-jobs — import + normalize scraped jobs. */
     syncScrapedJobs: '/admin/sync/scraped-jobs',
   },
+  stats: {
+    /** GET /api/admin/stats/top?period=day|week|month|year — top sectors + websites (admin). */
+    top: '/admin/stats/top',
+  },
 } as const
 
 export type ApiEndpoint = (typeof API_ENDPOINTS)[keyof typeof API_ENDPOINTS]

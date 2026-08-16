@@ -169,6 +169,7 @@ app.MapSeraGoEmailConfirmEndpoint();             // GET /api/account/email/confi
 app.MapJobEndpoints();   // /api/jobs — browse, search, post (draft flow), moderate
 app.MapSavedJobEndpoints(); // /api/saved-jobs — save/unsave/list with lifecycle status
 app.MapSectorEndpoints(); // /api/sectors + admin sector management + scraped-job sync
+app.MapStatsEndpoints();  // /api/admin/stats — top sectors + websites per period (scraper DB)
 
 app.MapGet("/", () => Results.Ok(new { service = "SeraGo API", docs = "/swagger" }));
 
