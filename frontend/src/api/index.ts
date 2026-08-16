@@ -2,6 +2,11 @@ export { ApiError, getApiErrorMessage, request } from './client.ts'
 export type { RequestOptions } from './client.ts'
 export { API_ENDPOINTS } from './endpoints.ts'
 export type { ApiEndpoint } from './endpoints.ts'
+export {
+  fetchSavedJobs,
+  saveJob,
+  unsaveJob,
+} from './savedJobs.ts'
 export { fetchProfile, setPassword, updateProfile } from './profile.ts'
 export {
   approveJob,
@@ -11,9 +16,20 @@ export {
   fetchJobs,
   rejectJob,
   restoreJob,
+  setJobSector,
   submitJob,
   updateJob,
 } from './jobs.ts'
+export {
+  addSectorAliases,
+  createSector,
+  deleteSector,
+  fetchAdminSectors,
+  fetchSectors,
+  removeSectorAlias,
+  syncScrapedJobs,
+  updateSector,
+} from './sectors.ts'
 export {
   AUTH_TOKENS_KEY,
   buildGoogleChallengeUrl,

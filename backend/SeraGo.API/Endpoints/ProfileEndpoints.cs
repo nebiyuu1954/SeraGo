@@ -41,7 +41,7 @@ public static class ProfileEndpoints
     public sealed record TalentProfileResponse(
         string Headline, string About, string? ExperienceLevel, int? YearsOfExperience,
         List<string> DesiredRoles, List<string> Skills, List<string> DesiredJobTypes,
-        string? WorkMode, string? Availability,
+        string? WorkMode, string? Availability, List<Guid> PreferredSectorIds,
         string ResumeUrl, string LinkedInUrl, string GitHubUrl, string PortfolioUrl);
 
     public sealed record RecruiterProfileResponse(
@@ -77,6 +77,9 @@ public static class ProfileEndpoints
         public List<string>? DesiredRoles { get; set; }
         public List<string>? Skills { get; set; }
         public List<string>? DesiredJobTypes { get; set; }
+
+        /// <summary>Canonical sector ids the talent wants in their feed.</summary>
+        public List<Guid>? PreferredSectorIds { get; set; }
         public string? WorkMode { get; set; }
         public string? Availability { get; set; }
         public string? ResumeUrl { get; set; }
@@ -171,6 +174,24 @@ public static class ProfileEndpoints
                 {
                     return Results.Problem(jobTypeError, statusCode: StatusCodes.Status400BadRequest);
                 }
+                if (request.Talent.PreferredSectorIds is not null)
+                {
+                    var ids = request.Talent.PreferredSectorIds.Distinct().ToList();
+                    if (ids.Count > 0)
+                    {
+                        var existing = await db.Sectors
+                            .Where(s => ids.Contains(s.Id))
+                            .Select(s => s.Id)
+                            .ToListAsync();
+                        if (existing.Count != ids.Count)
+                        {
+                            return Results.Problem(
+                                "One or more preferredSectorIds don't exist.",
+                                statusCode: StatusCodes.Status400BadRequest);
+                        }
+                    }
+                    profile.PreferredSectorIds = ids;
+                }
                 profile.WorkMode = workMode;
                 profile.Availability = availability;
                 profile.ResumeUrl = request.Talent.ResumeUrl?.Trim() ?? string.Empty;
@@ -243,6 +264,7 @@ public static class ProfileEndpoints
                     profile.DesiredRoles, profile.Skills,
                     profile.DesiredJobTypes.Select(j => j.ToString()).ToList(),
                     profile.WorkMode?.ToString(), profile.Availability?.ToString(),
+                    profile.PreferredSectorIds,
                     profile.ResumeUrl, profile.LinkedInUrl, profile.GitHubUrl, profile.PortfolioUrl);
                 completion = ComputeTalentCompletion(profile);
             }
@@ -278,8 +300,9 @@ public static class ProfileEndpoints
         if (profile.DesiredJobTypes.Count == 0) missing.Add("desiredJobTypes");
         if (profile.WorkMode is null) missing.Add("workMode");
         if (profile.Availability is null) missing.Add("availability");
+        if (profile.PreferredSectorIds.Count == 0) missing.Add("preferredSectors");
 
-        const int total = 9;
+        const int total = 10;
         return Completion(missing, total);
     }
 

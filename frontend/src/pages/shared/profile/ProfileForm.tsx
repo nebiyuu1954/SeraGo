@@ -3,6 +3,7 @@ import { useFormik } from 'formik'
 import { object, string } from 'yup'
 import {
   fetchProfile,
+  fetchSectors,
   getApiErrorMessage,
   getStoredAuthTokens,
   updateProfile,
@@ -48,6 +49,7 @@ const MISSING_LABELS: Record<string, string> = {
   desiredJobTypes: 'Desired job types',
   workMode: 'Work mode',
   availability: 'Availability',
+  preferredSectors: 'Preferred sectors',
   companyName: 'Company name',
   industry: 'Industry',
   companySize: 'Company size',
@@ -115,6 +117,7 @@ interface ProfileFormValues {
   desiredJobTypes: string[]
   workMode: string
   availability: string
+  preferredSectorIds: string[]
   resumeUrl: string
   linkedInUrl: string
   githubUrl: string
@@ -142,6 +145,7 @@ const initialValues: ProfileFormValues = {
   desiredJobTypes: [],
   workMode: '',
   availability: '',
+  preferredSectorIds: [],
   resumeUrl: '',
   linkedInUrl: '',
   githubUrl: '',
@@ -294,6 +298,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [sectors, setSectors] = useState<{ id: string; name: string }[]>([])
 
   // Auto-dismiss the saved confirmation.
   useEffect(() => {
@@ -304,6 +309,18 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
 
   const isTalent = role === 'Talent'
   const isRecruiter = role === 'Recruiter'
+
+  // The sector vocabulary for the Job preferences picker (talent only).
+  useEffect(() => {
+    if (auth.status !== 'authenticated' || !isTalent) return
+    const tokens = getStoredAuthTokens()
+    if (!tokens) return
+    fetchSectors(tokens.accessToken)
+      .then((list) => setSectors(list))
+      .catch(() => {
+        /* Picker stays empty — the profile still saves; sectors re-fetch next visit. */
+      })
+  }, [auth.status, isTalent])
 
   const validationSchema =
     role === 'Talent'
@@ -348,6 +365,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
           desiredRoles: p.talent?.desiredRoles ?? [],
           skills: p.talent?.skills ?? [],
           desiredJobTypes: p.talent?.desiredJobTypes ?? [],
+          preferredSectorIds: p.talent?.preferredSectorIds ?? [],
           workMode: p.talent?.workMode ?? '',
           availability: p.talent?.availability ?? '',
           resumeUrl: p.talent?.resumeUrl ?? '',
@@ -402,6 +420,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
         desiredRoles: values.desiredRoles,
         skills: values.skills,
         desiredJobTypes: values.desiredJobTypes,
+        preferredSectorIds: values.preferredSectorIds,
         workMode: values.workMode || null,
         availability: values.availability || null,
         resumeUrl: values.resumeUrl.trim(),
@@ -434,6 +453,13 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
       ? formik.values.desiredJobTypes.filter((t) => t !== value)
       : [...formik.values.desiredJobTypes, value]
     formik.setFieldValue('desiredJobTypes', next)
+  }
+
+  const toggleSector = (id: string) => {
+    const next = formik.values.preferredSectorIds.includes(id)
+      ? formik.values.preferredSectorIds.filter((s) => s !== id)
+      : [...formik.values.preferredSectorIds, id]
+    formik.setFieldValue('preferredSectorIds', next)
   }
 
   if (auth.status !== 'authenticated') {
@@ -709,6 +735,45 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                   placeholder="What does your company do?"
                   className={cn(inputClass, 'resize-y')}
                 />
+              </Field>
+            </SectionCard>
+          )}
+
+          {isTalent && (
+            <SectionCard
+              title="Job preferences"
+              description="Pick the sectors you want in your feed — only matching jobs will be shown to you."
+            >
+              <Field full label="Preferred sectors">
+                {sectors.length === 0 ? (
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">
+                    No sectors available yet.
+                  </p>
+                ) : (
+                  <div className="mt-1.5 flex flex-wrap gap-2">
+                    {sectors.map((sector) => {
+                      const checked = formik.values.preferredSectorIds.includes(
+                        sector.id,
+                      )
+                      return (
+                        <button
+                          key={sector.id}
+                          type="button"
+                          aria-pressed={checked}
+                          onClick={() => toggleSector(sector.id)}
+                          className={cn(
+                            'rounded-full px-3.5 py-1.5 font-label-sm text-label-sm font-medium transition-colors',
+                            checked
+                              ? 'bg-primary text-on-primary'
+                              : 'border border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low',
+                          )}
+                        >
+                          {sector.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </Field>
             </SectionCard>
           )}

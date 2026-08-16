@@ -8,7 +8,10 @@ import type {
 } from '../types'
 
 /** /api/jobs/{id} or /api/jobs/{id}/{action}. */
-function jobPath(id: string, action?: 'submit' | 'approve' | 'reject' | 'restore') {
+function jobPath(
+  id: string,
+  action?: 'submit' | 'approve' | 'reject' | 'restore' | 'sector',
+) {
   return `${API_ENDPOINTS.jobs.list}/${id}${action ? `/${action}` : ''}`
 }
 
@@ -24,6 +27,11 @@ function toQuery(params: JobListParams): string {
   if (params.status) search.set('status', params.status)
   if (params.includeInactive !== undefined) {
     search.set('includeInactive', String(params.includeInactive))
+  }
+  if (params.forMe !== undefined) search.set('forMe', String(params.forMe))
+  if (params.sectorId) search.set('sectorId', params.sectorId)
+  if (params.uncategorized !== undefined) {
+    search.set('uncategorized', String(params.uncategorized))
   }
   const qs = search.toString()
   return qs ? `?${qs}` : ''
@@ -121,6 +129,22 @@ export function rejectJob(
 export function restoreJob(id: string, accessToken: string): Promise<JobResponse> {
   return request<JobResponse>(jobPath(id, 'restore'), {
     method: 'PATCH',
+    headers: auth(accessToken),
+  })
+}
+
+/**
+ * PATCH /api/jobs/{id}/sector — admin (re)assigns a job's sector.
+ * Pass sectorId: null to clear it (back to the review queue).
+ */
+export function setJobSector(
+  id: string,
+  sectorId: string | null,
+  accessToken: string,
+): Promise<JobResponse> {
+  return request<JobResponse>(jobPath(id, 'sector'), {
+    method: 'PATCH',
+    body: { sectorId },
     headers: auth(accessToken),
   })
 }

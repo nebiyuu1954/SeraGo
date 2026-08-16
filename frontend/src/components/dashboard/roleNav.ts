@@ -24,7 +24,7 @@ export const ROLE_NAV: Record<RequiredRole, RoleNavItem[]> = {
   ],
   Talent: [
     { label: 'Find jobs', icon: 'search', to: '/dashboard/talent' },
-    { label: 'Saved jobs', icon: 'bookmark' },
+    { label: 'Saved jobs', icon: 'bookmark', to: '/dashboard/talent/saved' },
     { label: 'Applications', icon: 'description' },
     { label: 'Profile', icon: 'person', to: '/dashboard/talent/profile' },
     { label: 'Settings', icon: 'settings', sidebarOnly: true },
@@ -33,6 +33,7 @@ export const ROLE_NAV: Record<RequiredRole, RoleNavItem[]> = {
     { label: 'Overview', icon: 'dashboard', to: '/dashboard/admin' },
     { label: 'Jobs', icon: 'work' },
     { label: 'Users', icon: 'group' },
+    { label: 'Sectors', icon: 'category', to: '/dashboard/admin/sectors' },
     { label: 'Profile', icon: 'person', to: '/dashboard/admin/profile' },
     { label: 'Settings', icon: 'settings', sidebarOnly: true },
   ],

@@ -44,6 +44,35 @@ public class Job
     public DateTimeOffset? RejectedAt { get; set; }
     public string RejectionReason { get; set; } = string.Empty;
 
+    // --------------------------------------------------- Source attribution
+    //
+    // Jobs imported from the scraper's database (sources / scraped_items)
+    // carry where they came from. All null for jobs posted directly on
+    // SeraGo by a recruiter.
+
+    /// <summary>Display name of the source website, e.g. "EthioJobs" — null for SeraGo-posted jobs.</summary>
+    public string? SourceName { get; set; }
+
+    /// <summary>The original listing URL on the source website.</summary>
+    public string? SourceUrl { get; set; }
+
+    /// <summary>The source's own id for this listing — dedup key together with <see cref="SourceName"/>.</summary>
+    public string? ExternalId { get; set; }
+
+    /// <summary>Company logo URL from the source (GeezJobs/HaHuJobs/EthioJobs carry one).</summary>
+    public string? CompanyLogoUrl { get; set; }
+
+    /// <summary>Canonical sector this job belongs to (standardized at import). Null = uncategorized.</summary>
+    public Guid? SectorId { get; set; }
+    public Sector? Sector { get; set; }
+
+    /// <summary>Canonical sector display name, e.g. "Technology &amp; IT". Kept as a string for cheap
+    /// display on cards; the authoritative match key is <see cref="SectorId"/>.</summary>
+    public string? SectorName { get; set; }
+
+    /// <summary>Normalized experience level, e.g. "Entry", "Junior", "Senior" — or "3+ years".</summary>
+    public string? ExperienceLevel { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

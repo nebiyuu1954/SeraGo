@@ -9,10 +9,13 @@ import ResetPasswordPage from './pages/shared/auth/ResetPasswordPage.tsx'
 import ConfirmEmailPage from './pages/shared/auth/ConfirmEmailPage.tsx'
 import GoogleCallbackPage from './pages/shared/auth/GoogleCallbackPage.tsx'
 import DashboardRedirect from './pages/shared/dashboard/DashboardRedirect.tsx'
-import TalentDashboardPage from './pages/talent/dashboard/TalentDashboardPage.tsx'
-import JobsPage from './pages/recruiter/jobs/JobsPage.tsx'
+import TalentJobsPage from './pages/talent/jobs/JobsPage.tsx'
+import JobDetailPage from './pages/talent/jobs/JobDetailPage.tsx'
+import SavedJobsPage from './pages/talent/saved/SavedJobsPage.tsx'
+import RecruiterJobsPage from './pages/recruiter/jobs/JobsPage.tsx'
 import JobFormPage from './pages/recruiter/jobs/JobFormPage.tsx'
 import AdminDashboardPage from './pages/admin/dashboard/AdminDashboardPage.tsx'
+import AdminSectorsPage from './pages/admin/sectors/SectorsPage.tsx'
 import RecruiterProfilePage from './pages/recruiter/profile/ProfilePage.tsx'
 import TalentProfilePage from './pages/talent/profile/ProfilePage.tsx'
 import AdminProfilePage from './pages/admin/profile/ProfilePage.tsx'
@@ -26,17 +29,20 @@ function App() {
         <Route path="about" element={<AboutPage />} />
         {/* Signed-in role dashboards — resolve the user's role from whoami */}
         <Route path="dashboard" element={<DashboardRedirect />} />
-        <Route path="dashboard/talent" element={<TalentDashboardPage />} />
-        <Route path="dashboard/recruiter" element={<JobsPage />} />
+        <Route path="dashboard/talent" element={<TalentJobsPage />} />
         <Route
-          path="dashboard/recruiter/jobs/new"
-          element={<JobFormPage />}
+          path="dashboard/talent/jobs/:jobId"
+          element={<JobDetailPage />}
         />
+        <Route path="dashboard/talent/saved" element={<SavedJobsPage />} />
+        <Route path="dashboard/recruiter" element={<RecruiterJobsPage />} />
+        <Route path="dashboard/recruiter/jobs/new" element={<JobFormPage />} />
         <Route
           path="dashboard/recruiter/jobs/:jobId/edit"
           element={<JobFormPage />}
         />
         <Route path="dashboard/admin" element={<AdminDashboardPage />} />
+        <Route path="dashboard/admin/sectors" element={<AdminSectorsPage />} />
         <Route
           path="dashboard/recruiter/profile"
           element={<RecruiterProfilePage />}

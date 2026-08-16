@@ -58,6 +58,7 @@ public static class JobEndpoints
         group.MapPatch("/{id:guid}/approve", ApproveJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();
         group.MapPatch("/{id:guid}/reject", RejectJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();
         group.MapPatch("/{id:guid}/restore", RestoreJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();
+        group.MapPatch("/{id:guid}/sector", SetJobSectorAsync).RequireRateLimiting("jobs_write").WithOpenApi();
 
         return app;
     }
@@ -71,17 +72,20 @@ public static class JobEndpoints
         public string? Q { get; set; }          // free-text: title / company / description
         public string? JobType { get; set; }    // "FULL_TIME" or "FullTime"
         public string? Location { get; set; }   // substring of the location field
+        public Guid? SectorId { get; set; }     // canonical sector filter
+        public bool? ForMe { get; set; }        // personalize to the caller's preferred sectors
         public string? Sort { get; set; }       // newest | oldest | title_asc | title_desc | deadline
-
-        // Pagination
-        public int? Page { get; set; }          // default 1
-        public int? PageSize { get; set; }      // default 10
 
         // Scope (recruiter/admin) — nullable so the binder never treats a
         // missing parameter as required.
         public bool? Mine { get; set; }            // my own jobs (any status) — owner only
         public string? Status { get; set; }        // status filter — admin (or with Mine)
         public bool? IncludeInactive { get; set; } // include hidden jobs — admin only
+        public bool? Uncategorized { get; set; }   // jobs without a sector — admin only
+
+        // Pagination
+        public int? Page { get; set; }          // default 1
+        public int? PageSize { get; set; }      // default 10
     }
 
     public sealed class JobWriteRequest
@@ -98,7 +102,20 @@ public static class JobEndpoints
 
         /// <summary>true → keep as a hidden draft (default). false → submit for review (or publish directly for admins).</summary>
         public bool SaveAsDraft { get; set; } = true;
+
+        // Source attribution — normally only set by admin/manual imports (the
+        // scraper pipeline). Omitted on regular recruiter posts, which the
+        // create handler attributes to "SeraGo" itself.
+        public string? SourceName { get; set; }
+        public string? SourceUrl { get; set; }
+        public string? ExternalId { get; set; }
+        public string? CompanyLogoUrl { get; set; }
+        public Guid? SectorId { get; set; }
+        public string? SectorName { get; set; }
+        public string? ExperienceLevel { get; set; }
     }
+
+    public sealed record SetJobSectorRequest(Guid? SectorId);
 
     public sealed record RejectJobRequest(string? Reason);
 
@@ -118,7 +135,15 @@ public static class JobEndpoints
         bool IsOwner,
         string? RejectionReason, // null when empty
         string CreatedAt,
-        string UpdatedAt);
+        string UpdatedAt,
+        // Source attribution — null for jobs posted directly on SeraGo.
+        string? SourceName,
+        string? SourceUrl,
+        string? ExternalId,
+        string? CompanyLogoUrl,
+        Guid? SectorId,
+        string? SectorName,
+        string? ExperienceLevel);
 
     public sealed record PaginationResponse(
         int Page, int PageSize, int TotalCount, int TotalPages, bool HasNextPage);
@@ -185,10 +210,26 @@ public static class JobEndpoints
             }
             // Admins see everything.
         }
+        else if (query.Uncategorized == true)
+        {
+            // Admin review queue: jobs the normalizer couldn't categorize.
+            if (!isAdmin)
+            {
+                return Results.Problem(
+                    "Only admins may list uncategorized jobs.",
+                    statusCode: StatusCodes.Status403Forbidden);
+            }
+            q = q.Where(j => j.SectorId == null);
+        }
         else
         {
-            // Public view: approved and not soft-deleted.
-            q = q.Where(j => j.Status == JobStatus.Published && j.IsActive);
+            // Public view: approved, not soft-deleted, and still within its
+            // lifecycle window (deadline + 7 days — the shared rule from
+            // JobLifecycle). Past-window jobs leave the feed here and are
+            // deleted by the weekly cleanup. Jobs without a deadline stay.
+            q = q.Where(j => j.Status == JobStatus.Published && j.IsActive
+                && (j.Deadline == null
+                    || j.Deadline > DateTimeOffset.UtcNow.AddDays(-JobLifecycle.GraceDays)));
         }
 
         // Search (case-insensitive substring on the human fields).
@@ -214,6 +255,23 @@ public static class JobEndpoints
         {
             var pattern = $"%{EscapeLike(query.Location)}%";
             q = q.Where(j => EF.Functions.ILike(j.Location, pattern, "\\"));
+        }
+
+        // Personalized feed — only the caller's preferred sectors.
+        if (query.ForMe == true)
+        {
+            var profile = await db.TalentProfiles.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.UserId == user.Id);
+            var prefs = profile?.PreferredSectorIds ?? [];
+            // No preferences → nothing matches (the frontend shows the setup prompt).
+            q = prefs.Count > 0
+                ? q.Where(j => j.SectorId != null && prefs.Contains(j.SectorId.Value))
+                : q.Where(j => false);
+        }
+
+        if (query.SectorId is not null)
+        {
+            q = q.Where(j => j.SectorId == query.SectorId);
         }
 
         // Pagination metadata counts the filtered set (before sorting/paging).
@@ -337,9 +395,36 @@ public static class JobEndpoints
             ApprovedAt = status == JobStatus.Published ? now : null,
             RejectedAt = null,
             RejectionReason = string.Empty,
+            // Attribution: in-house posts are SeraGo's own; a provided
+            // SourceName (admin/manual import) overrides that.
+            SourceName = string.IsNullOrWhiteSpace(request.SourceName)
+                ? "SeraGo"
+                : request.SourceName.Trim(),
+            SourceUrl = NullIfBlank(request.SourceUrl),
+            ExternalId = NullIfBlank(request.ExternalId),
+            CompanyLogoUrl = NullIfBlank(request.CompanyLogoUrl),
+            SectorId = null,
+            SectorName = NullIfBlank(request.SectorName),
+            ExperienceLevel = NullIfBlank(request.ExperienceLevel),
             CreatedAt = now,
             UpdatedAt = now,
         };
+
+        // Sector: validate the id and default the display name to the canonical one.
+        if (request.SectorId is not null)
+        {
+            var sector = await db.Sectors.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == request.SectorId.Value);
+            if (sector is null)
+            {
+                return Results.Problem("SectorId doesn't exist.",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+            job.SectorId = sector.Id;
+            job.SectorName = string.IsNullOrWhiteSpace(request.SectorName)
+                ? sector.Name
+                : request.SectorName.Trim();
+        }
 
         db.Jobs.Add(job);
         await db.SaveChangesAsync();
@@ -410,6 +495,24 @@ public static class JobEndpoints
         job.Salary = request.Salary?.Trim() ?? string.Empty;
         job.PublishedAt = request.PublishedAt;
         job.Deadline = request.Deadline;
+
+        // Sector: set when provided (and only then — a recruiter editing their
+        // own post must never wipe an imported sector by omitting the field).
+        if (request.SectorId is not null)
+        {
+            var sector = await db.Sectors.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == request.SectorId.Value);
+            if (sector is null)
+            {
+                return Results.Problem("SectorId doesn't exist.",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+            job.SectorId = sector.Id;
+            job.SectorName = string.IsNullOrWhiteSpace(request.SectorName)
+                ? sector.Name
+                : request.SectorName.Trim();
+        }
+
         job.UpdatedAt = DateTimeOffset.UtcNow;
 
         // Editing a rejected job resets it to a draft so the owner can re-submit.
@@ -592,6 +695,39 @@ public static class JobEndpoints
         return Results.Ok(ToResponse(job, string.Empty));
     }
 
+    /// <summary>PATCH /api/jobs/{id}/sector — admin (re)assigns or clears a job's sector (null clears).</summary>
+    [Authorize(Roles = Roles.Admin)]
+    private static async Task<IResult> SetJobSectorAsync(
+        Guid id,
+        SetJobSectorRequest request,
+        ApplicationDbContext db)
+    {
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id);
+        if (job is null)
+        {
+            return Results.NotFound();
+        }
+
+        Sector? sector = null;
+        if (request.SectorId is not null)
+        {
+            sector = await db.Sectors.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == request.SectorId.Value);
+            if (sector is null)
+            {
+                return Results.Problem("SectorId doesn't exist.",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+        }
+
+        job.SectorId = sector?.Id;
+        job.SectorName = sector?.Name;
+        job.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await db.SaveChangesAsync();
+        return Results.Ok(ToResponse(job, string.Empty));
+    }
+
     /// <summary>PATCH /api/jobs/{id}/restore — admin unhides a soft-deleted job (is_active=true).</summary>
     [Authorize(Roles = Roles.Admin)]
     private static async Task<IResult> RestoreJobAsync(
@@ -629,7 +765,14 @@ public static class JobEndpoints
         job.PostedByUserId == userId,
         string.IsNullOrEmpty(job.RejectionReason) ? null : job.RejectionReason,
         FormatDate(job.CreatedAt),
-        FormatDate(job.UpdatedAt));
+        FormatDate(job.UpdatedAt),
+        job.SourceName,
+        job.SourceUrl,
+        job.ExternalId,
+        job.CompanyLogoUrl,
+        job.SectorId,
+        job.SectorName,
+        job.ExperienceLevel);
 
     /// <summary>"FullTime" → "fullTime" — enum values follow the JSON camelCase keys.</summary>
     private static string EnumCamel(string enumName) =>
@@ -657,6 +800,10 @@ public static class JobEndpoints
         }
         return (trimmed, null);
     }
+
+    /// <summary>Blank strings become null — matches the "null when empty" API contract.</summary>
+    private static string? NullIfBlank(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     /// <summary>Escapes LIKE wildcards so user input is matched literally.</summary>
     private static string EscapeLike(string value) =>

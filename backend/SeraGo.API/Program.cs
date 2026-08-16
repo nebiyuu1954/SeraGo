@@ -5,24 +5,43 @@ using SeraGo.API.Email;
 using SeraGo.API.Endpoints;
 using SeraGo.API.Extensions;
 using SeraGo.API.Middleware;
+using SeraGo.API.Services;
 using SeraGo.Infrastructure;
 using SeraGo.Infrastructure.Context;
 using SeraGo.Infrastructure.Data;
 
 // Load .env before configuration is built — .NET has no native .env support.
-// Searches the working directory and its parents, so this works whether the
-// API is started from backend/SeraGo.API or the repo root. Existing process
-// env vars win over .env (NoClobber), so real secrets always take precedence.
-var envDir = new DirectoryInfo(Directory.GetCurrentDirectory());
-while (envDir is not null)
+// Searches up from BOTH the working directory and the assembly location
+// (bin/Debug/net8.0), plus the repo-root backend/SeraGo.API folder for every
+// dir on those chains. That covers every launch style: `dotnet run` from
+// backend/SeraGo.API, `dotnet run --project` from the repo root, an IDE, or
+// the exe launched directly with any working directory. Existing process env
+// vars win over .env (NoClobber), so real secrets always take precedence. The
+// scraper DB creds live in .env(SeraGo-Scraper), loaded the same way.
+var envDirs = new List<string>();
+foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
 {
-    var envPath = Path.Combine(envDir.FullName, ".env");
-    if (File.Exists(envPath))
+    for (var envDir = new DirectoryInfo(start); envDir is not null; envDir = envDir.Parent)
     {
-        DotNetEnv.Env.Load(envPath, DotNetEnv.Env.NoClobber());
-        break;
+        envDirs.Add(envDir.FullName);
+        var apiDir = Path.Combine(envDir.FullName, "backend", "SeraGo.API");
+        if (Directory.Exists(apiDir))
+        {
+            envDirs.Add(apiDir);
+        }
     }
-    envDir = envDir.Parent;
+}
+
+foreach (var envFile in new[] { ".env", ".env(SeraGo-Scraper)" })
+{
+    foreach (var dir in envDirs)
+    {
+        var envPath = Path.Combine(dir, envFile);
+        if (File.Exists(envPath))
+        {
+            DotNetEnv.Env.Load(envPath, DotNetEnv.Env.NoClobber());
+        }
+    }
 }
 
 var builder = WebApplication.CreateBuilder(args);
@@ -33,8 +52,40 @@ builder.Services.AddHttpClient(); // HttpClient factory for the EmailJS relay
 builder.Services.AddSingleton<EmailThrottleService>(); // per-email throttle for email-sending flows
 builder.Services.AddRateLimiting(builder.Configuration); // API throttling (fixed-window per IP)
 
-builder.Services.AddInfrastructure(builder.Configuration); // SQLite DbContext + AuthSeeder
+builder.Services.AddInfrastructure(builder.Configuration); // PostgreSQL DbContext + AuthSeeder
 builder.Services.SetupAufy(builder.Configuration);         // Aufy: Identity + JWT + custom signup
+
+// Scraper database (Neon) connection for the admin job sync — read from the
+// gitignored .env(SeraGo-Scraper) file, never from committed config.
+builder.Services.AddSingleton(new ScraperDbOptions
+{
+    Host = Environment.GetEnvironmentVariable("DB_HOST") ?? string.Empty,
+    Port = int.TryParse(Environment.GetEnvironmentVariable("DB_PORT"), out var port) ? port : 5432,
+    Database = Environment.GetEnvironmentVariable("DB_NAME") ?? string.Empty,
+    User = Environment.GetEnvironmentVariable("DB_USER") ?? string.Empty,
+    Password = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? string.Empty,
+});
+
+// Surface scraper-DB connectivity at startup so a missing .env is obvious
+// (the sync endpoint 400s with the same message otherwise).
+if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DB_HOST")))
+{
+    Console.WriteLine($"[env] Scraper DB configured: {Environment.GetEnvironmentVariable("DB_HOST")}/{Environment.GetEnvironmentVariable("DB_NAME")}");
+}
+else
+{
+    Console.WriteLine("[env] WARNING: scraper DB credentials not found — admin job sync will be unavailable.");
+}
+// Auto-sync of scraped jobs. SYNC_ENABLED (default OFF — dev stays manual,
+// the admin sync endpoint always works) turns on a scheduler that runs the
+// sync at the UTC times in SYNC_SCHEDULE (default 09:15/20:45, right after
+// the scraper's GitHub Actions runs at 09:00/20:30 UTC).
+builder.Services.AddSingleton(new SyncOptions());
+builder.Services.AddSingleton<ScrapedJobSyncService>();
+builder.Services.AddSingleton<JobLifecycleCleanupService>(); // weekly deadline+7 cleanup
+builder.Services.AddHostedService<SyncScheduler>();
+
+builder.Services.AddScoped<ISectorNormalizer, SectorNormalizer>(); // sector standardization
 builder.Services.Configure<IdentityOptions>(options =>
 {
     // Accounts are only usable after their email is confirmed — the signup and
@@ -115,7 +166,9 @@ app.MapSeraGoWhoAmIEndpoint();         // GET /api/auth/whoami — adds emailCon
 app.MapSeraGoEmailConfirmationResendEndpoint(); // POST /api/account/email/confirm/resend — surfaces 404/409/200
 app.MapSeraGoEmailConfirmEndpoint();             // GET /api/account/email/confirm — already-confirmed is a 200, not a 404
 
-app.MapJobEndpoints(); // /api/jobs — browse, search, post (draft flow), moderate
+app.MapJobEndpoints();   // /api/jobs — browse, search, post (draft flow), moderate
+app.MapSavedJobEndpoints(); // /api/saved-jobs — save/unsave/list with lifecycle status
+app.MapSectorEndpoints(); // /api/sectors + admin sector management + scraped-job sync
 
 app.MapGet("/", () => Results.Ok(new { service = "SeraGo API", docs = "/swagger" }));
 

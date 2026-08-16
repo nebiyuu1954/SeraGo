@@ -135,6 +135,8 @@ export interface TalentProfileResponse {
   desiredJobTypes: string[]
   workMode: string | null
   availability: string | null
+  /** Canonical sector ids the talent wants in their feed. */
+  preferredSectorIds: string[]
   resumeUrl: string
   linkedInUrl: string
   githubUrl: string
@@ -193,6 +195,8 @@ export interface TalentProfileUpdate {
   workMode?: string | null
   /** Immediate | WithinTwoWeeks | WithinOneMonth | MoreThanOneMonth — null/blank unsets. */
   availability?: string | null
+  /** Canonical sector ids for the "For you" feed. */
+  preferredSectorIds?: string[]
   resumeUrl?: string
   linkedInUrl?: string
   githubUrl?: string
@@ -244,8 +248,36 @@ export interface JobResponse {
   isOwner: boolean
   /** null when empty. */
   rejectionReason: string | null
+  /** Source website display name, e.g. "EthioJobs" — null for SeraGo-posted jobs. */
+  sourceName: string | null
+  /** Original listing URL on the source website. */
+  sourceUrl: string | null
+  /** The source's own id for this listing (dedup key with sourceName). */
+  externalId: string | null
+  /** Company logo URL from the source — fall back to initials when null. */
+  companyLogoUrl: string | null
+  /** Canonical sector id — null for uncategorized jobs. */
+  sectorId: string | null
+  /** Canonical sector display name, e.g. "Technology & IT". */
+  sectorName: string | null
+  /** Normalized experience level, e.g. "Junior" or "3+ years". */
+  experienceLevel: string | null
   createdAt: string
   updatedAt: string
+}
+
+/** A canonical job sector — the vocabulary of GET /api/sectors. */
+export interface SectorResponse {
+  id: string
+  name: string
+  slug: string
+  isActive: boolean
+}
+
+/** Admin view of a sector — includes aliases and how many jobs reference it. */
+export interface SectorDetailResponse extends SectorResponse {
+  jobCount: number
+  aliases: { id: string; alias: string }[]
 }
 
 export interface PaginationResponse {
@@ -277,6 +309,12 @@ export interface JobListParams {
   status?: string
   /** Include inactive jobs — admins only. */
   includeInactive?: boolean
+  /** true → the caller's preferred sectors only (personalized feed). */
+  forMe?: boolean
+  /** Canonical sector id filter. */
+  sectorId?: string
+  /** true → jobs without a sector (admin review) — admins only. */
+  uncategorized?: boolean
 }
 
 /** Body of POST /api/jobs and PUT /api/jobs/{id}. */
@@ -293,4 +331,53 @@ export interface JobWriteRequest {
   deadline?: string
   /** true → hidden draft; false → submit for review (admins publish directly). */
   saveAsDraft?: boolean
+  /** Canonical sector id (admin/import use; recruiters usually omit). */
+  sectorId?: string
+}
+
+/** Body of PATCH /api/jobs/{id}/sector — admin (re)assigns a job's sector. */
+export interface SetJobSectorRequest {
+  /** null clears the job's sector (back to the review queue). */
+  sectorId: string | null
+}
+
+/** A saved job card in GET /api/saved-jobs. */
+export interface SavedJobItem {
+  savedJobId: string
+  /** The referenced job — null once the job was deleted by the lifecycle cleanup. */
+  jobId: string | null
+  title: string
+  company: string
+  sourceName: string | null
+  sourceUrl: string | null
+  companyLogoUrl: string | null
+  location: string
+  salary: string
+  /** UTC ISO-8601 — or null. */
+  deadline: string | null
+  /** open | deadlinePassed | removed. */
+  status: 'open' | 'deadlinePassed' | 'removed'
+  /** UTC ISO-8601 — when the card leaves the list (deadline + 7 days); the countdown target. */
+  removedAt: string | null
+  savedAt: string
+}
+
+/** The `data` payload of GET /api/saved-jobs. */
+export interface SavedJobListData {
+  items: SavedJobItem[]
+  /** All saved rows — including snapshots of jobs already deleted (the lifetime stat). */
+  totalSaved: number
+  /** How many of the listed cards are deadlinePassed or removed (drives the banner). */
+  affectedCount: number
+}
+
+/** Result of POST /api/admin/sync/scraped-jobs. */
+export interface SyncScrapedJobsResult {
+  inserted: number
+  updated: number
+  unchanged: number
+  uncategorized: number
+  /** Jobs hidden because their listing vanished from the source. */
+  deactivated: number
+  unknownSectors: string[]
 }

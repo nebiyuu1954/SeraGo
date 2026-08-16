@@ -37,6 +37,18 @@ export const API_ENDPOINTS = {
     /** GET/POST /api/jobs — item routes (/api/jobs/{id}, .../submit) are built in api/jobs.ts. */
     list: '/jobs',
   },
+  savedJobs: {
+    /** GET /api/saved-jobs — my saved jobs with lifecycle status. */
+    list: '/saved-jobs',
+  },
+  sectors: {
+    /** GET /api/sectors — the canonical sector list for pickers. */
+    list: '/sectors',
+    /** Admin management + sync — /api/admin/... (admin only). */
+    admin: '/admin/sectors',
+    /** POST /api/admin/sync/scraped-jobs — import + normalize scraped jobs. */
+    syncScrapedJobs: '/admin/sync/scraped-jobs',
+  },
 } as const
 
 export type ApiEndpoint = (typeof API_ENDPOINTS)[keyof typeof API_ENDPOINTS]

@@ -43,3 +43,12 @@ export const STATUS_OPTIONS: { value: JobStatus | ''; label: string }[] = [
   { value: 'published', label: 'Published' },
   { value: 'rejected', label: 'Rejected' },
 ]
+
+/** Sort options for job listings — values match the API's JobListQuery.Sort. */
+export const SORT_OPTIONS: { value: string; label: string }[] = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+  { value: 'title_asc', label: 'Title A–Z' },
+  { value: 'title_desc', label: 'Title Z–A' },
+  { value: 'deadline', label: 'Closing soon' },
+]
