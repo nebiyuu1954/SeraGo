@@ -59,6 +59,11 @@ public sealed class SyncScheduler : BackgroundService
         _logger.LogInformation(
             "Auto-sync scheduled at UTC: {Times}",
             string.Join(", ", schedule.Select(t => t.ToString(@"hh\:mm"))));
+        // The day's last sync slot (default 20:45 UTC) lands at the same
+        // minute as the scraper's archive run — the cleanup rides that slot
+        // so the product DB deletes past-window Jobs right after they are
+        // filed.
+        var lastSlot = schedule.Max();
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -80,7 +85,7 @@ public sealed class SyncScheduler : BackgroundService
                     .ToList();
                 if (pending.Count > 0)
                 {
-                    await RunSync(pending[0], stoppingToken);
+                    await RunSync(pending[0], lastSlot, stoppingToken);
                     continue;
                 }
 
@@ -104,7 +109,7 @@ public sealed class SyncScheduler : BackgroundService
         }
     }
 
-    private async Task RunSync(TimeSpan slot, CancellationToken ct)
+    private async Task RunSync(TimeSpan slot, TimeSpan lastSlot, CancellationToken ct)
     {
         // Mark first: even if the run itself crashes, the slot counts as
         // fired so the loop can't immediately re-fire it.
@@ -127,10 +132,13 @@ public sealed class SyncScheduler : BackgroundService
                     result.Uncategorized, result.Deactivated);
             }
 
-            // Weekly lifecycle cleanup (deadline + 7-day window): runs on
-            // Sundays alongside the scraper's archive, deleting past-window
-            // Jobs. Idempotent — the second Sunday slot deletes 0.
-            if (DateTime.UtcNow.DayOfWeek == DayOfWeek.Sunday)
+            // Weekly lifecycle cleanup (deadline + 7-day window): runs once
+            // per Sunday, on the LAST sync slot of the day — the slot that
+            // lands at the same minute as the scraper's archive run, so
+            // past-window Jobs are deleted only after the scraper has filed
+            // them. Idempotent; a missed slot just leaves the rows for next
+            // Sunday's cleanup.
+            if (DateTime.UtcNow.DayOfWeek == DayOfWeek.Sunday && slot == lastSlot)
             {
                 try
                 {
