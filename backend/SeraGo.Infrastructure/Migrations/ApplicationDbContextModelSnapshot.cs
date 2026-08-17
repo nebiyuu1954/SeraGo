@@ -317,6 +317,9 @@ namespace SeraGo.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("PublishedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("RefreshedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset?>("RejectedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -356,6 +359,9 @@ namespace SeraGo.Infrastructure.Migrations
                     b.Property<string>("Url")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int>("WorkMode")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -504,191 +510,191 @@ namespace SeraGo.Infrastructure.Migrations
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000001"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9844),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(3771),
                             IsActive = true,
                             Name = "Technology & IT",
                             Slug = "technology-it",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9847)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(3777)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000002"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9865),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4049),
                             IsActive = true,
                             Name = "Accounting & Finance",
                             Slug = "accounting-finance",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9866)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4050)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000003"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9868),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4056),
                             IsActive = true,
                             Name = "Banking & Insurance",
                             Slug = "banking-insurance",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9868)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4057)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000004"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9870),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4061),
                             IsActive = true,
                             Name = "Sales & Marketing",
                             Slug = "sales-marketing",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9871)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4062)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000005"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9901),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4069),
                             IsActive = true,
                             Name = "Healthcare",
                             Slug = "healthcare",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9901)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4069)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000006"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9904),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4073),
                             IsActive = true,
                             Name = "Education & Training",
                             Slug = "education-training",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9904)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4074)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000007"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9906),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4078),
                             IsActive = true,
                             Name = "Engineering & Construction",
                             Slug = "engineering-construction",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9906)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4079)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000008"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9908),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4083),
                             IsActive = true,
                             Name = "Human Resources",
                             Slug = "human-resources",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9909)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4084)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000009"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9910),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4088),
                             IsActive = true,
                             Name = "Business & Administration",
                             Slug = "business-administration",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9910)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4088)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-00000000000a"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9911),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4092),
                             IsActive = true,
                             Name = "Manufacturing & Production",
                             Slug = "manufacturing-production",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9912)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4093)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-00000000000b"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9913),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4097),
                             IsActive = true,
                             Name = "Logistics & Transportation",
                             Slug = "logistics-transportation",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9913)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4097)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-00000000000c"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9915),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4101),
                             IsActive = true,
                             Name = "Procurement & Supply Chain",
                             Slug = "procurement-supply-chain",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9916)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4101)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-00000000000d"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9918),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4105),
                             IsActive = true,
                             Name = "Media & Communication",
                             Slug = "media-communication",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9918)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4105)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-00000000000e"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9919),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4110),
                             IsActive = true,
                             Name = "Design & Creative",
                             Slug = "design-creative",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9919)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4110)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-00000000000f"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9921),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4114),
                             IsActive = true,
                             Name = "Customer Service & Support",
                             Slug = "customer-service-support",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9921)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4114)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000010"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9922),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4118),
                             IsActive = true,
                             Name = "Hospitality & Tourism",
                             Slug = "hospitality-tourism",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9923)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4119)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000011"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9924),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4122),
                             IsActive = true,
                             Name = "Agriculture & Natural Science",
                             Slug = "agriculture-natural-science",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9924)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4123)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000012"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9927),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4126),
                             IsActive = true,
                             Name = "Legal",
                             Slug = "legal",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9927)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4127)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000013"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9928),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4131),
                             IsActive = true,
                             Name = "Social Science & Community",
                             Slug = "social-science-community",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9928)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4132)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000014"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9930),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4137),
                             IsActive = true,
                             Name = "Security & Protection",
                             Slug = "security-protection",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9930)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4138)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000015"),
-                            CreatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9931),
+                            CreatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4143),
                             IsActive = true,
                             Name = "Skilled & General Labor",
                             Slug = "skilled-general-labor",
-                            UpdatedAt = new DateTime(2026, 8, 16, 9, 3, 22, 115, DateTimeKind.Utc).AddTicks(9932)
+                            UpdatedAt = new DateTime(2026, 8, 17, 11, 38, 40, 215, DateTimeKind.Utc).AddTicks(4144)
                         });
                 });
 
