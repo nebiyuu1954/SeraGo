@@ -10,6 +10,7 @@ export type {
   JobStatus,
   JobType,
   JobWriteRequest,
+  WorkMode,
   PaginationResponse,
   ProfileCompletionResponse,
   ProfileResponse,
