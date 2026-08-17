@@ -9,6 +9,7 @@ import {
 import { useRequireRole } from '../../../hooks'
 import type { SavedJobItem } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
+import { useToast } from '../../../components/dashboard/Toast.tsx'
 import { formatDate } from '../../../lib/date.ts'
 import { initialsOf } from '../../../lib/initials.ts'
 import { sourceLogo } from '../../../lib/sourceLogos.ts'
@@ -70,6 +71,7 @@ export default function SavedJobsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const { showToast } = useToast()
 
   useEffect(() => {
     const tokens = getStoredAuthTokens()
@@ -103,9 +105,10 @@ export default function SavedJobsPage() {
       if (!tokens || !item.jobId) return
       try {
         await unsaveJob(item.jobId, tokens.accessToken)
+        showToast('Removed from saved jobs')
         setRefreshKey((k) => k + 1)
       } catch {
-        /* Non-fatal — the card stays; the next attempt will retry. */
+        showToast('Could not remove this job', 'error')
       }
     },
     [],
@@ -234,7 +237,7 @@ function SavedCard({
   const cardBody = (
     <article
       className={cn(
-        'flex h-full flex-col overflow-hidden rounded-lg border bg-surface-container-lowest transition-all duration-300 hover:shadow-sm',
+        'group flex h-full flex-col overflow-hidden rounded-lg border bg-surface-container-lowest transition-all duration-300 hover:shadow-sm',
         item.status === 'removed'
           ? 'border-error/30'
           : item.status === 'deadlinePassed'
@@ -268,17 +271,31 @@ function SavedCard({
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <h4 className="truncate font-headline-md text-headline-md leading-tight text-on-surface">
+          <h4 className="mb-1 truncate font-headline-md text-headline-md leading-tight text-on-surface transition-colors group-hover:text-surface-tint">
             {item.title}
           </h4>
           <p className="truncate font-body-md text-body-md text-secondary">
             {item.company || 'Company undisclosed'}
           </p>
-          {item.sourceName && (
-            <p className="mt-0.5 font-label-sm text-label-sm text-on-surface-variant">
-              via {item.sourceName}
-            </p>
-          )}
+          {item.sourceName &&
+            item.sourceName.toLowerCase() !== 'serago' &&
+            (item.sourceUrl ? (
+              <a
+                href={item.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-0.5 inline-flex items-center gap-1 font-label-sm text-label-sm text-primary transition-colors hover:text-surface-tint"
+              >
+                via {item.sourceName}
+                <span className="material-symbols-outlined text-sm">
+                  open_in_new
+                </span>
+              </a>
+            ) : (
+              <p className="mt-0.5 font-label-sm text-label-sm text-on-surface-variant">
+                via {item.sourceName}
+              </p>
+            ))}
         </div>
         <div className="shrink-0">
           <StatusBadge item={item} />
