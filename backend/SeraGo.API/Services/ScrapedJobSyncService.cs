@@ -194,6 +194,20 @@ public sealed class ScrapedJobSyncService
             var deadline = ReadDateTime(reader, "deadline");
             var description = ReadString(reader, "description");
             var company = ReadString(reader, "company");
+            // Afriwork posts made by a hidden employer (entity_type =
+            // "private_client") show "Private Client" on the source site —
+            // the API leaks the real name, but we respect the poster's
+            // anonymity and mirror what the source displays.
+            if (sourceSlug == "afriwork"
+                && string.Equals(ReadString(reader, "afriwork_entity_type"), "private_client", StringComparison.OrdinalIgnoreCase))
+            {
+                company = "Private Client";
+            }
+            // When the source refreshed (reposted) a listing, the card shows
+            // the refresh date instead of the original publish date.
+            var refreshedAt = sourceSlug == "afriwork"
+                ? ReadDateTime(reader, "afriwork_refreshed_at")
+                : null;
             var location = ReadString(reader, "location");
             var url = ReadString(reader, "url");
             var salary = ReadString(reader, "salary");
@@ -202,6 +216,15 @@ public sealed class ScrapedJobSyncService
             // the equality comparison and the stored value stay consistent.
             logo = string.IsNullOrWhiteSpace(logo) ? null : logo;
             var experience = MapExperience(reader, sourceSlug);
+            // Where the work happens: Afriwork's API carries job_site and
+            // EthioJobs' carries location_type (Office/Hybrid/Remote); the
+            // other sources expose neither, so they default to Onsite.
+            var workMode = sourceSlug switch
+            {
+                "afriwork" => MapWorkMode(ReadString(reader, "afriwork_job_site")),
+                "ethiojobs" => MapWorkMode(ReadString(reader, "ethio_location_type")),
+                _ => WorkMode.Onsite,
+            };
 
             // Compare EVERY imported field — the old 4-field subset meant
             // edits to description/company/location/url/salary/publishedAt on
@@ -216,10 +239,12 @@ public sealed class ScrapedJobSyncService
                 && job.Salary == (salary ?? string.Empty)
                 && job.PublishedAt == publishedAt
                 && job.Deadline == deadline
+                && job.RefreshedAt == refreshedAt
                 && job.SectorId == sector?.Id
                 && job.SectorName == sector?.Name
                 && job.CompanyLogoUrl == logo
-                && job.ExperienceLevel == experience;
+                && job.ExperienceLevel == experience
+                && job.WorkMode == workMode;
             if (job is not null)
             {
                 if (isSame)
@@ -236,10 +261,12 @@ public sealed class ScrapedJobSyncService
                 job.Salary = salary ?? string.Empty;
                 job.PublishedAt = publishedAt;
                 job.Deadline = deadline;
+                job.RefreshedAt = refreshedAt;
                 job.SectorId = sector?.Id;
                 job.SectorName = sector?.Name;
                 job.CompanyLogoUrl = logo;
                 job.ExperienceLevel = experience;
+                job.WorkMode = workMode;
                 job.Status = JobStatus.Published;
                 // IsActive is deliberately NOT forced true here: an admin who
                 // hid this job keeps it hidden even though the listing is
@@ -261,6 +288,7 @@ public sealed class ScrapedJobSyncService
                     Url = url ?? string.Empty,
                     Salary = salary ?? string.Empty,
                     PublishedAt = publishedAt,
+                    RefreshedAt = refreshedAt,
                     Deadline = deadline,
                     Status = JobStatus.Published,
                     IsActive = true,
@@ -274,6 +302,7 @@ public sealed class ScrapedJobSyncService
                     SectorId = sector?.Id,
                     SectorName = sector?.Name,
                     ExperienceLevel = string.IsNullOrWhiteSpace(experience) ? null : experience,
+                    WorkMode = workMode,
                     CreatedAt = DateTimeOffset.UtcNow,
                     UpdatedAt = DateTimeOffset.UtcNow,
                 };
@@ -473,6 +502,19 @@ public sealed class ScrapedJobSyncService
         return JobType.Other;
     }
 
+    /// <summary>Tolerant work-mode mapping (scraper job_site: ONSITE/REMOTE/HYBRID).</summary>
+    private static WorkMode MapWorkMode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return WorkMode.Onsite;
+        }
+        var text = value.ToLowerInvariant();
+        if (text.Contains("remote")) return WorkMode.Remote;
+        if (text.Contains("hybrid")) return WorkMode.Hybrid;
+        return WorkMode.Onsite;
+    }
+
     /// <summary>Experience band from the source's year hints, else null.</summary>
     private static string? MapExperience(DbDataReader reader, string sourceSlug)
     {
@@ -546,9 +588,11 @@ public sealed class ScrapedJobSyncService
             i.is_active, i.updated_at,
             s.name AS source_name, s.slug AS source_slug,
             a.sectors::text AS afriwork_sectors,
+            a.entity_type AS afriwork_entity_type, a.refreshed_at AS afriwork_refreshed_at,
+            a.job_site AS afriwork_job_site,
             h.sector_name AS hahu_sector, h.sub_sector_name AS hahu_sub_sector,
             h.entity_logo AS entity_logo, h.years_of_experience AS hahu_exp,
-            e.catalogs::text AS ethio_catalogs,
+            e.catalogs::text AS ethio_catalogs, e.location_type AS ethio_location_type,
             g.employment_text AS geez_employment, g.company_logo AS company_logo,
             g.min_experience_years AS geez_min_exp,
             r.job_type AS reporter_type
@@ -575,9 +619,11 @@ public sealed class ScrapedJobSyncService
             i.is_active, i.updated_at,
             s.name AS source_name, s.slug AS source_slug,
             a.sectors::text AS afriwork_sectors,
+            a.entity_type AS afriwork_entity_type, a.refreshed_at AS afriwork_refreshed_at,
+            a.job_site AS afriwork_job_site,
             h.sector_name AS hahu_sector, h.sub_sector_name AS hahu_sub_sector,
             h.entity_logo AS entity_logo, h.years_of_experience AS hahu_exp,
-            e.catalogs::text AS ethio_catalogs,
+            e.catalogs::text AS ethio_catalogs, e.location_type AS ethio_location_type,
             g.employment_text AS geez_employment, g.company_logo AS company_logo,
             g.min_experience_years AS geez_min_exp,
             r.job_type AS reporter_type
