@@ -48,6 +48,7 @@ public static class JobEndpoints
         var group = app.MapGroup("/api/jobs").WithTags("Jobs");
 
         group.MapGet("/", ListJobsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
+        group.MapGet("/locations", ListLocationsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
         group.MapGet("/{id:guid}", GetJobAsync).RequireRateLimiting("jobs_read").WithOpenApi();
 
         group.MapPost("/", CreateJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();
@@ -75,6 +76,13 @@ public static class JobEndpoints
         public Guid? SectorId { get; set; }     // canonical sector filter
         public bool? ForMe { get; set; }        // personalize to the caller's preferred sectors
         public string? Sort { get; set; }       // newest | oldest | title_asc | title_desc | deadline
+
+        // Extra filters (talent browse) — all optional.
+        public string? Source { get; set; }          // comma-separated source display names, e.g. "Afriwork,EthioJobs"
+        public string? ExperienceLevel { get; set; } // exact match, e.g. "Junior" / "Senior"
+        public string? WorkMode { get; set; }        // work arrangement: onsite | remote | hybrid
+        public int? PostedWithin { get; set; }       // days: published_at >= now - N
+        public int? ClosingWithin { get; set; }      // days: deadline within the next N days
 
         // Scope (recruiter/admin) — nullable so the binder never treats a
         // missing parameter as required.
@@ -113,6 +121,9 @@ public static class JobEndpoints
         public Guid? SectorId { get; set; }
         public string? SectorName { get; set; }
         public string? ExperienceLevel { get; set; }
+
+        /// <summary>Work arrangement: "onsite" | "remote" | "hybrid" (blank = onsite).</summary>
+        public string? WorkMode { get; set; }
     }
 
     public sealed record SetJobSectorRequest(Guid? SectorId);
@@ -126,9 +137,11 @@ public static class JobEndpoints
         string Company,
         string Location,
         string JobType,          // lowerCamel enum name, e.g. "fullTime"
+        string WorkMode,         // lowerCamel enum name, e.g. "remote" / "hybrid" / "onsite"
         string Url,
         string Salary,
         string? PublishedAt,     // UTC ISO-8601, e.g. "2026-09-15T14:00:00Z"
+        string? RefreshedAt,     // UTC ISO-8601 — when the source last refreshed the listing
         string? Deadline,
         string Status,           // lowerCamel enum name, e.g. "draft"
         bool IsActive,
@@ -253,8 +266,20 @@ public static class JobEndpoints
 
         if (!string.IsNullOrWhiteSpace(query.Location))
         {
-            var pattern = $"%{EscapeLike(query.Location)}%";
-            q = q.Where(j => EF.Functions.ILike(j.Location, pattern, "\\"));
+            var location = query.Location.Trim();
+            if (location.Equals("Remote", StringComparison.OrdinalIgnoreCase))
+            {
+                // "Remote" is both a location text AND a work mode — match
+                // remote/hybrid jobs wherever they say they're based.
+                q = q.Where(j => EF.Functions.ILike(j.Location, "%remote%", "\\")
+                    || j.WorkMode == WorkMode.Remote
+                    || j.WorkMode == WorkMode.Hybrid);
+            }
+            else
+            {
+                var pattern = $"%{EscapeLike(location)}%";
+                q = q.Where(j => EF.Functions.ILike(j.Location, pattern, "\\"));
+            }
         }
 
         // Personalized feed — only the caller's preferred sectors.
@@ -272,6 +297,41 @@ public static class JobEndpoints
         if (query.SectorId is not null)
         {
             q = q.Where(j => j.SectorId == query.SectorId);
+        }
+
+        // Talent-browse filters.
+        if (!string.IsNullOrWhiteSpace(query.Source))
+        {
+            var sources = query.Source.Split(',',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            q = q.Where(j => j.SourceName != null && sources.Contains(j.SourceName));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.ExperienceLevel))
+        {
+            q = q.Where(j => j.ExperienceLevel == query.ExperienceLevel.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.WorkMode))
+        {
+            if (!TryParseWorkMode(query.WorkMode, out var workMode))
+            {
+                return EnumError(typeof(WorkMode), query.WorkMode);
+            }
+            q = q.Where(j => j.WorkMode == workMode);
+        }
+
+        if (query.PostedWithin is > 0)
+        {
+            var cutoff = DateTimeOffset.UtcNow.AddDays(-query.PostedWithin.Value);
+            q = q.Where(j => j.PublishedAt != null && j.PublishedAt >= cutoff);
+        }
+
+        if (query.ClosingWithin is > 0)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var horizon = now.AddDays(query.ClosingWithin.Value);
+            q = q.Where(j => j.Deadline != null && j.Deadline >= now && j.Deadline <= horizon);
         }
 
         // Pagination metadata counts the filtered set (before sorting/paging).
@@ -300,6 +360,96 @@ public static class JobEndpoints
         return Results.Ok(new JobListData(
             items.Select(j => ToResponse(j, user.Id)).ToList(),
             new PaginationResponse(page, pageSize, totalCount, totalPages, page < totalPages)));
+    }
+
+    /// <summary>
+    /// GET /api/jobs/locations — the locations available in the live feed
+    /// (same public scope as the list: published, active, within the
+    /// lifecycle window), for powering the location filter dropdown.
+    ///
+    /// Raw values are normalized so the dropdown shows searchable places, not
+    /// the sources' messy strings:
+    ///   - multi-city listings ("Addis Ababa, Amhara, Burie, …") split into
+    ///     their individual places — picking any one matches the whole job,
+    ///     since the location filter is a substring match;
+    ///   - junk placeholders ("Not Specified", "Others", "Ethiopia"…) are dropped;
+    ///   - remote variants ("Anywhere/Remote", "Remote") fold into one "Remote";
+    ///   - case variants merge into the most common spelling;
+    ///   - sorted alphabetically (case-insensitive).
+    /// </summary>
+    [Authorize]
+    private static async Task<IResult> ListLocationsAsync(ApplicationDbContext db, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var groups = await db.Jobs.AsNoTracking()
+            .Where(j => j.Status == JobStatus.Published && j.IsActive
+                && j.Location != null && j.Location.Trim() != string.Empty
+                && (j.Deadline == null
+                    || j.Deadline > now.AddDays(-JobLifecycle.GraceDays)))
+            .GroupBy(j => j.Location!.Trim())
+            .Select(g => new { Location = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        // Every split token carries its source group's count so the
+        // most-common-spelling dedupe below stays meaningful.
+        var entries = new List<(string Token, int Count)>(groups.Count * 2);
+        foreach (var item in groups)
+        {
+            foreach (var raw in item.Location.Split(','))
+            {
+                var token = NormalizeLocationToken(raw);
+                if (token is null || JunkLocationTokens.Contains(token))
+                {
+                    continue;
+                }
+                entries.Add((token, item.Count));
+            }
+        }
+
+        // Case-insensitive dedupe — keep the most common spelling (ties keep
+        // the alphabetically-first one since the input is pre-sorted).
+        var best = new Dictionary<string, (string Name, int Count)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries.OrderBy(e => e.Token, StringComparer.OrdinalIgnoreCase))
+        {
+            if (!best.TryGetValue(entry.Token, out var current) || entry.Count > current.Count)
+            {
+                best[entry.Token] = (entry.Token, entry.Count);
+            }
+        }
+
+        return Results.Ok(best.Values
+            .OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(v => v.Name)
+            .ToList());
+    }
+
+    /// <summary>Placeholders that aren't real locations — never offered in the dropdown.</summary>
+    private static readonly HashSet<string> JunkLocationTokens = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Not Specified", "Others", "Project", "Any", "N/A", "NA", "Ethiopia", "-", "TBD", "To Be Decided",
+    };
+
+    /// <summary>Trim / collapse whitespace, fold remote variants into "Remote", drop empties.</summary>
+    private static string? NormalizeLocationToken(string raw)
+    {
+        var collapsed = string.Join(' ', raw.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (collapsed.Length == 0)
+        {
+            return null;
+        }
+        // "Anywhere/Remote" and friends all mean remote work.
+        if (collapsed.Contains("remote", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Remote";
+        }
+        // Nicer display: capitalize all-lowercase tokens ("bishoftu" →
+        // "Bishoftu") without touching mixed-case names like "South West
+        // Ethiopia People's Region".
+        if (collapsed == collapsed.ToLowerInvariant())
+        {
+            collapsed = char.ToUpperInvariant(collapsed[0]) + collapsed[1..];
+        }
+        return collapsed;
     }
 
     /// <summary>GET /api/jobs/{id} — detail. Drafts/pending are only visible to their owner or admins.</summary>
@@ -360,6 +510,13 @@ public static class JobEndpoints
         {
             return EnumError(typeof(JobType), request.JobType);
         }
+        // Blank work mode = onsite, matching the codebase's blank-enum convention.
+        var workMode = WorkMode.Onsite;
+        if (!string.IsNullOrWhiteSpace(request.WorkMode)
+            && !TryParseWorkMode(request.WorkMode, out workMode))
+        {
+            return EnumError(typeof(WorkMode), request.WorkMode);
+        }
         if (!string.IsNullOrWhiteSpace(request.Url)
             && !Uri.TryCreate(request.Url, UriKind.Absolute, out _))
         {
@@ -384,6 +541,7 @@ public static class JobEndpoints
             Company = request.Company?.Trim() ?? string.Empty,
             Location = request.Location?.Trim() ?? string.Empty,
             JobType = jobType,
+            WorkMode = workMode,
             Url = request.Url?.Trim() ?? string.Empty,
             Salary = request.Salary?.Trim() ?? string.Empty,
             PublishedAt = request.PublishedAt,
@@ -479,6 +637,13 @@ public static class JobEndpoints
         {
             return EnumError(typeof(JobType), request.JobType);
         }
+        // Blank work mode = onsite, matching the codebase's blank-enum convention.
+        var workMode = WorkMode.Onsite;
+        if (!string.IsNullOrWhiteSpace(request.WorkMode)
+            && !TryParseWorkMode(request.WorkMode, out workMode))
+        {
+            return EnumError(typeof(WorkMode), request.WorkMode);
+        }
         if (!string.IsNullOrWhiteSpace(request.Url)
             && !Uri.TryCreate(request.Url, UriKind.Absolute, out _))
         {
@@ -491,6 +656,7 @@ public static class JobEndpoints
         job.Company = request.Company?.Trim() ?? string.Empty;
         job.Location = request.Location?.Trim() ?? string.Empty;
         job.JobType = jobType;
+        job.WorkMode = workMode;
         job.Url = request.Url?.Trim() ?? string.Empty;
         job.Salary = request.Salary?.Trim() ?? string.Empty;
         job.PublishedAt = request.PublishedAt;
@@ -756,9 +922,11 @@ public static class JobEndpoints
         job.Company,
         job.Location,
         EnumCamel(job.JobType.ToString()),
+        EnumCamel(job.WorkMode.ToString()),
         job.Url,
         job.Salary,
         FormatDate(job.PublishedAt),
+        FormatDate(job.RefreshedAt),
         FormatDate(job.Deadline),
         EnumCamel(job.Status.ToString()),
         job.IsActive,
@@ -811,6 +979,26 @@ public static class JobEndpoints
 
     private static bool TryParseJobStatus(string? value, out JobStatus status) =>
         Enum.TryParse(value, ignoreCase: true, out status) && Enum.IsDefined(status);
+
+    /// <summary>"onsite" | "remote" | "hybrid" → WorkMode (case-insensitive).</summary>
+    private static bool TryParseWorkMode(string? value, out WorkMode workMode)
+    {
+        switch (value?.Trim().ToLowerInvariant())
+        {
+            case "onsite":
+                workMode = WorkMode.Onsite;
+                return true;
+            case "remote":
+                workMode = WorkMode.Remote;
+                return true;
+            case "hybrid":
+                workMode = WorkMode.Hybrid;
+                return true;
+            default:
+                workMode = WorkMode.Onsite;
+                return false;
+        }
+    }
 
     private static IResult EnumError(Type enumType, string? value) =>
         Results.Problem(
