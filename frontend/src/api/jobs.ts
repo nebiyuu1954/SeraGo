@@ -33,6 +33,15 @@ function toQuery(params: JobListParams): string {
   if (params.uncategorized !== undefined) {
     search.set('uncategorized', String(params.uncategorized))
   }
+  if (params.source) search.set('source', params.source)
+  if (params.experienceLevel) search.set('experienceLevel', params.experienceLevel)
+  if (params.workMode) search.set('workMode', params.workMode)
+  if (params.postedWithin !== undefined) {
+    search.set('postedWithin', String(params.postedWithin))
+  }
+  if (params.closingWithin !== undefined) {
+    search.set('closingWithin', String(params.closingWithin))
+  }
   const qs = search.toString()
   return qs ? `?${qs}` : ''
 }
@@ -47,6 +56,13 @@ export function fetchJobs(
   accessToken: string,
 ): Promise<JobListData> {
   return request<JobListData>(`${API_ENDPOINTS.jobs.list}${toQuery(params)}`, {
+    headers: auth(accessToken),
+  })
+}
+
+/** GET /api/jobs/locations — distinct locations of the live feed (filter dropdown). */
+export function fetchJobLocations(accessToken: string): Promise<string[]> {
+  return request<string[]>(API_ENDPOINTS.jobs.locations, {
     headers: auth(accessToken),
   })
 }
