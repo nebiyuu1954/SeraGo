@@ -21,11 +21,29 @@ public class Job
     /// <summary>Employment type (FULL_TIME, PART_TIME, ...).</summary>
     public JobType JobType { get; set; } = JobType.Other;
 
+    /// <summary>
+    /// Where the work is performed (ONSITE / REMOTE / HYBRID) — mirrors the
+    /// scraper's job_site. Only Afriwork carries this today, so jobs from
+    /// other sources default to Onsite. Powers the "Remote" location filter,
+    /// which also matches remote/hybrid jobs regardless of their location
+    /// text (e.g. an Afriwork remote job listed in "Addis Ababa").
+    /// </summary>
+    public WorkMode WorkMode { get; set; } = WorkMode.Onsite;
+
     public string Url { get; set; } = string.Empty;
     public string Salary { get; set; } = string.Empty;
 
     /// <summary>When the job opens / was published (nullable for drafts).</summary>
     public DateTimeOffset? PublishedAt { get; set; }
+
+    /// <summary>
+    /// When the source last refreshed (reposted) the listing — null for jobs
+    /// never refreshed or posted directly on SeraGo. Display "Refreshed X ago"
+    /// instead of the original "Posted" date when this is newer than
+    /// <see cref="PublishedAt"/>.
+    /// </summary>
+    public DateTimeOffset? RefreshedAt { get; set; }
+
     public DateTimeOffset? Deadline { get; set; }
 
     /// <summary>Draft / pending / published / rejected — the moderation lifecycle.</summary>
