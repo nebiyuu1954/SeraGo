@@ -13,6 +13,7 @@ export {
   createJob,
   deleteJob,
   fetchJob,
+  fetchJobLocations,
   fetchJobs,
   rejectJob,
   restoreJob,
