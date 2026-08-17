@@ -27,7 +27,14 @@ export default function SaveJobButton({
         className,
       )}
     >
-      <span className="material-symbols-outlined text-lg">
+      {/* The saved state renders the FILLED bookmark in blue so the toggle
+          is unmistakable; unsaved keeps the outlined bookmark_add. */}
+      <span
+        className={cn(
+          'material-symbols-outlined text-lg',
+          saved && 'fill text-primary',
+        )}
+      >
         {saved ? 'bookmark' : 'bookmark_add'}
       </span>
       {saved ? 'Saved' : 'Save'}
