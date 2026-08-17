@@ -36,6 +36,8 @@ export const API_ENDPOINTS = {
   jobs: {
     /** GET/POST /api/jobs — item routes (/api/jobs/{id}, .../submit) are built in api/jobs.ts. */
     list: '/jobs',
+    /** GET /api/jobs/locations — distinct locations of the live feed, for the filter dropdown. */
+    locations: '/jobs/locations',
   },
   savedJobs: {
     /** GET /api/saved-jobs — my saved jobs with lifecycle status. */
