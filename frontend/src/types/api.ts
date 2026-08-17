@@ -224,11 +224,13 @@ export type JobType =
   | 'partTime'
   | 'contract'
   | 'contractual'
-  | 'remote'
   | 'internship'
   | 'freelance'
   | 'temporary'
   | 'other'
+
+/** Work arrangement (where the work happens) — mirror of the API's WorkMode. */
+export type WorkMode = 'onsite' | 'remote' | 'hybrid'
 
 /** A single job posting — the data item of GET /api/jobs. */
 export interface JobResponse {
@@ -238,10 +240,14 @@ export interface JobResponse {
   company: string
   location: string
   jobType: JobType | string
+  /** lowerCamel enum name — "onsite" | "remote" | "hybrid" (only Afriwork carries it). */
+  workMode: string
   url: string
   salary: string
   /** UTC ISO-8601, e.g. "2026-09-15T14:00:00Z" — or null. */
   publishedAt: string | null
+  /** UTC ISO-8601 — when the source last refreshed (reposted) the listing, or null. */
+  refreshedAt: string | null
   deadline: string | null
   status: JobStatus
   isActive: boolean
@@ -315,6 +321,16 @@ export interface JobListParams {
   sectorId?: string
   /** true → jobs without a sector (admin review) — admins only. */
   uncategorized?: boolean
+  /** Comma-separated source display names, e.g. "Afriwork,EthioJobs". */
+  source?: string
+  /** Exact experience-level match, e.g. "Junior" / "Senior". */
+  experienceLevel?: string
+  /** Work arrangement: "onsite" | "remote" | "hybrid". */
+  workMode?: string
+  /** Days: only jobs published within the last N days. */
+  postedWithin?: number
+  /** Days: only jobs whose deadline falls within the next N days. */
+  closingWithin?: number
 }
 
 /** Body of POST /api/jobs and PUT /api/jobs/{id}. */
@@ -324,6 +340,8 @@ export interface JobWriteRequest {
   company?: string
   location?: string
   jobType?: string
+  /** Work arrangement: "onsite" | "remote" | "hybrid" (blank = onsite). */
+  workMode?: string
   url?: string
   salary?: string
   /** UTC ISO-8601 datetime. */
