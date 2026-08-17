@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
+  fetchJobLocations,
   fetchJobs,
   fetchProfile,
   fetchSectors,
@@ -11,17 +12,23 @@ import { useRequireRole, useSavedJobs } from '../../../hooks'
 import type { JobResponse, JobType, PaginationResponse } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import SaveJobButton from '../../../components/dashboard/SaveJobButton.tsx'
+import { useToast } from '../../../components/dashboard/Toast.tsx'
 import {
+  CLOSING_WITHIN_OPTIONS,
+  EXPERIENCE_OPTIONS,
   JOB_TYPE_LABELS,
   JOB_TYPE_OPTIONS,
+  PAGE_SIZE_OPTIONS,
+  POSTED_WITHIN_OPTIONS,
   SORT_OPTIONS,
+  SOURCE_OPTIONS,
+  WORK_ARRANGEMENT_OPTIONS,
 } from '../../../components/dashboard/jobOptions.ts'
 import { cn } from '../../../lib/cn.ts'
-import { formatDate, timeAgo } from '../../../lib/date.ts'
+import { formatDate, postedLabel } from '../../../lib/date.ts'
 import { initialsOf } from '../../../lib/initials.ts'
-import { sourceLogo } from '../../../lib/sourceLogos.ts'
 
-const PAGE_SIZE = 10
+import { sourceLogo } from '../../../lib/sourceLogos.ts'
 
 function jobTypeLabel(job: JobResponse): string {
   return JOB_TYPE_LABELS[job.jobType as JobType] ?? 'Other'
@@ -49,18 +56,32 @@ export default function JobsPage() {
   const [jobType, setJobType] = useState<JobType | ''>('')
   const [locationFilter, setLocationFilter] = useState('')
   const [sectorFilter, setSectorFilter] = useState('')
+  const [sourceFilters, setSourceFilters] = useState<string[]>([])
+  const [experienceFilter, setExperienceFilter] = useState('')
+  const [workArrangementFilter, setWorkArrangementFilter] = useState('')
+  const [postedWithin, setPostedWithin] = useState('')
+  const [closingWithin, setClosingWithin] = useState('')
   const [sort, setSort] = useState('newest')
-  const [filterOpen, setFilterOpen] = useState(false)
-  // Draft copies of the filters edited inside the popover — nothing is
-  // applied (or refetched) until the user hits Apply.
+  const [pageSize, setPageSize] = useState(10)
+  // The right-hand filter panel is a collapsible sidebar, expanded by default.
+  const [filtersOpen, setFiltersOpen] = useState(true)
+  // Draft copies of the filters edited inside the panel — nothing is applied
+  // (or refetched) until the user hits Apply.
   const [draftJobType, setDraftJobType] = useState<JobType | ''>('')
   const [draftLocation, setDraftLocation] = useState('')
   const [draftSector, setDraftSector] = useState('')
+  const [draftSources, setDraftSources] = useState<string[]>([])
+  const [draftExperience, setDraftExperience] = useState('')
+  const [draftWorkArrangement, setDraftWorkArrangement] = useState('')
+  const [draftPostedWithin, setDraftPostedWithin] = useState('')
+  const [draftClosingWithin, setDraftClosingWithin] = useState('')
 
   // The talent's preferred sector ids + the sector vocabulary (for the
   // All-jobs filter and the "set your preferences" prompt).
   const [prefSectorIds, setPrefSectorIds] = useState<string[]>([])
   const [sectors, setSectors] = useState<{ id: string; name: string }[]>([])
+  // Distinct locations of the live feed, for the Location filter dropdown.
+  const [locations, setLocations] = useState<string[]>([])
 
   const [page, setPage] = useState(1)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -70,6 +91,7 @@ export default function JobsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const { isSaved, toggleSaved } = useSavedJobs(auth.status === 'authenticated')
+  const { showToast } = useToast()
 
   // Load the talent's preferences + the sector vocabulary once.
   useEffect(() => {
@@ -91,6 +113,13 @@ export default function JobsPage() {
       .catch(() => {
         /* Non-fatal — the All-jobs sector filter just stays empty. */
       })
+    fetchJobLocations(tokens.accessToken)
+      .then((list) => {
+        if (!cancelled) setLocations(list)
+      })
+      .catch(() => {
+        /* Non-fatal — the Location filter falls back to free text. */
+      })
     return () => {
       cancelled = true
     }
@@ -100,13 +129,12 @@ export default function JobsPage() {
     appliedQ !== '' ||
     jobType !== '' ||
     locationFilter.trim() !== '' ||
-    (view === 'all' && sectorFilter !== '')
-
-  // Whether any filter (not search/sort) is active — drives the button dot.
-  const filterActive =
-    jobType !== '' ||
-    locationFilter.trim() !== '' ||
-    (view === 'all' && sectorFilter !== '')
+    sectorFilter !== '' ||
+    sourceFilters.length > 0 ||
+    experienceFilter !== '' ||
+    workArrangementFilter !== '' ||
+    postedWithin !== '' ||
+    closingWithin !== ''
 
   // Debounced search input → applied query. A new query always starts at
   // page 1, so both are updated together inside the debounce callback.
@@ -140,12 +168,17 @@ export default function JobsPage() {
           {
             sort,
             page,
-            pageSize: PAGE_SIZE,
+            pageSize,
             q: appliedQ || undefined,
             jobType: jobType || undefined,
             location: locationFilter.trim() || undefined,
             forMe: view === 'forYou' ? true : undefined,
-            sectorId: view === 'all' && sectorFilter ? sectorFilter : undefined,
+            sectorId: sectorFilter || undefined,
+            source: sourceFilters.length > 0 ? sourceFilters.join(',') : undefined,
+            experienceLevel: experienceFilter || undefined,
+            workMode: workArrangementFilter || undefined,
+            postedWithin: postedWithin ? Number(postedWithin) : undefined,
+            closingWithin: closingWithin ? Number(closingWithin) : undefined,
           },
           tokens.accessToken,
         )
@@ -170,7 +203,13 @@ export default function JobsPage() {
     jobType,
     locationFilter,
     sectorFilter,
+    sourceFilters,
+    experienceFilter,
+    workArrangementFilter,
+    postedWithin,
+    closingWithin,
     sort,
+    pageSize,
     refreshKey,
     view,
     prefSectorIds,
@@ -185,8 +224,12 @@ export default function JobsPage() {
     setJobType(draftJobType)
     setLocationFilter(draftLocation)
     setSectorFilter(draftSector)
+    setSourceFilters(draftSources)
+    setExperienceFilter(draftExperience)
+    setWorkArrangementFilter(draftWorkArrangement)
+    setPostedWithin(draftPostedWithin)
+    setClosingWithin(draftClosingWithin)
     setPage(1)
-    setFilterOpen(false)
   }
 
   const clearFilters = () => {
@@ -195,9 +238,19 @@ export default function JobsPage() {
     setJobType('')
     setLocationFilter('')
     setSectorFilter('')
+    setSourceFilters([])
+    setExperienceFilter('')
+    setWorkArrangementFilter('')
+    setPostedWithin('')
+    setClosingWithin('')
     setDraftJobType('')
     setDraftLocation('')
     setDraftSector('')
+    setDraftSources([])
+    setDraftExperience('')
+    setDraftWorkArrangement('')
+    setDraftPostedWithin('')
+    setDraftClosingWithin('')
     setPage(1)
   }
 
@@ -327,206 +380,339 @@ export default function JobsPage() {
               onClick={clearFilters}
               className="font-label-md text-label-md text-on-surface-variant transition-colors hover:text-on-surface"
             >
-              Clear
+              Clear filters
             </button>
           )}
-          <select
-            value={sort}
-            onChange={(e) => {
-              setSort(e.target.value)
-              setPage(1)
-            }}
-            aria-label="Sort jobs"
-            className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-label-md text-label-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-          >
-            {SORT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <div className="relative">
+          <label className="flex items-center gap-2 font-label-md text-label-md text-on-surface-variant">
+            Sort by
+            <select
+              value={sort}
+              onChange={(e) => {
+                setSort(e.target.value)
+                setPage(1)
+              }}
+              aria-label="Sort jobs"
+              className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-label-md text-label-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {sort !== 'newest' && (
             <button
               type="button"
               onClick={() => {
-                if (filterOpen) {
-                  setFilterOpen(false)
-                  return
-                }
-                // Seed the popover with the currently applied filters.
-                setDraftJobType(jobType)
-                setDraftLocation(locationFilter)
-                setDraftSector(sectorFilter)
-                setFilterOpen(true)
+                setSort('newest')
+                setPage(1)
               }}
-              aria-expanded={filterOpen}
-              className={cn(
-                'flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md transition-colors hover:bg-surface-container-low',
-                (filterOpen || filterActive) && 'border-primary text-primary',
-              )}
+              className="font-label-md text-label-md text-on-surface-variant transition-colors hover:text-on-surface"
             >
-              <span className="material-symbols-outlined text-lg">
-                filter_list
-              </span>
-              Filter
-              {filterActive && (
-                <span
-                  aria-hidden="true"
-                  className="h-2 w-2 rounded-full bg-accent"
-                />
-              )}
+              Clear sort
             </button>
-            {filterOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-10"
-                  onClick={() => setFilterOpen(false)}
-                />
-                <div className="absolute right-0 z-20 mt-2 w-72 rounded-xl border border-surface-variant bg-surface-container-lowest p-4 shadow-lg">
-                  <div className="space-y-4">
-                    <div>
-                      <label className="font-label-sm text-label-sm font-medium text-on-surface">
-                        Job type
-                      </label>
-                      <select
-                        value={draftJobType}
-                        onChange={(e) =>
-                          setDraftJobType(e.target.value as JobType | '')
-                        }
-                        className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                      >
-                        {JOB_TYPE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="font-label-sm text-label-sm font-medium text-on-surface">
-                        Location
-                      </label>
-                      <input
-                        type="text"
-                        value={draftLocation}
-                        onChange={(e) => setDraftLocation(e.target.value)}
-                        placeholder="City, region..."
-                        className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface transition-colors placeholder:text-on-surface-variant/60 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
-                    {view === 'all' && (
-                      <div>
-                        <label className="font-label-sm text-label-sm font-medium text-on-surface">
-                          Sector
-                        </label>
-                        <select
-                          value={draftSector}
-                          onChange={(e) => setDraftSector(e.target.value)}
-                          className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                        >
-                          <option value="">All sectors</option>
-                          {sectors.map((sector) => (
-                            <option key={sector.id} value={sector.id}>
-                              {sector.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-4 flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={clearFilters}
-                      className="rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low"
-                    >
-                      Clear
-                    </button>
-                    <button
-                      type="button"
-                      onClick={applyFilters}
-                      className="rounded-lg bg-primary px-4 py-2 font-label-md text-label-md font-medium text-on-primary transition-opacity hover:opacity-90"
-                    >
-                      Apply
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Result count */}
-      {!loading && !error && pagination && (
-        <p className="mt-5 font-label-md text-label-md text-on-surface-variant">
-          {pagination.totalCount === 0
-            ? 'No jobs found'
-            : `${pagination.totalCount} ${
-                pagination.totalCount === 1 ? 'job' : 'jobs'
-              } ${view === 'forYou' ? 'matched to your preferences' : 'available'}`}
-        </p>
-      )}
+      {/* Results column + right-side filter panel */}
+      <div className="mt-6 flex flex-col gap-6 lg:flex-row lg:items-start">
+        {/* Left: result count + cards + pagination */}
+        <div className="min-w-0 flex-1">
+          {!loading && !error && pagination && (
+            <p className="font-label-md text-label-md text-on-surface-variant">
+              {pagination.totalCount === 0
+                ? 'No jobs found'
+                : `${pagination.totalCount} ${
+                    pagination.totalCount === 1 ? 'job' : 'jobs'
+                  } ${view === 'forYou' ? 'matched to your preferences' : 'available'}`}
+            </p>
+          )}
 
-      {/* Job cards / states */}
-      {view === 'forYou' && prefSectorIds.length === 0 ? (
-        <PreferencesPrompt onBrowseAll={() => setView('all')} />
-      ) : loading ? (
-        <SkeletonGrid />
-      ) : error ? null : jobs.length === 0 ? (
-        <EmptyState
-          hasFilters={filtersDirty}
-          onClear={clearFilters}
-          forYou={view === 'forYou'}
-        />
-      ) : (
-        <div className="mt-5 grid grid-cols-1 gap-6 xl:grid-cols-2">
-          {jobs.map((job) => (
-            <JobCard
-              key={job.id}
-              job={job}
-              saved={isSaved(job.id)}
-              onToggleSave={() => toggleSaved(job.id)}
-            />
-          ))}
+          {view === 'forYou' && prefSectorIds.length === 0 ? (
+            <div className="mt-5">
+              <PreferencesPrompt onBrowseAll={() => setView('all')} />
+            </div>
+          ) : loading ? (
+            <div className="mt-5">
+              <SkeletonGrid count={pageSize} />
+            </div>
+          ) : error ? null : jobs.length === 0 ? (
+            <div className="mt-5">
+              <EmptyState
+                hasFilters={filtersDirty}
+                onClear={clearFilters}
+                forYou={view === 'forYou'}
+              />
+            </div>
+          ) : (
+            <div className="mt-5 grid grid-cols-1 gap-6 xl:grid-cols-2">
+              {jobs.map((job) => (
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  saved={isSaved(job.id)}
+                  onToggleSave={() => {
+                    toggleSaved(job.id).then((result) => {
+                      if (result === 'saved') showToast('Job saved for later')
+                      else if (result === 'removed')
+                        showToast('Removed from saved jobs')
+                      else showToast('Could not update saved jobs', 'error')
+                    })
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
+          {pagination && pagination.totalCount > 0 && (
+            <div className="mt-6 flex flex-col gap-3 rounded-xl border border-surface-variant bg-surface-container-lowest p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <span className="font-label-md text-label-md text-on-surface-variant">
+                Showing {from} to {to} of {pagination.totalCount} results
+              </span>
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2 font-label-md text-label-md text-on-surface-variant">
+                  Per page
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value))
+                      setPage(1)
+                    }}
+                    aria-label="Jobs per page"
+                    className="rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-1.5 font-label-md text-label-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    {PAGE_SIZE_OPTIONS.map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    aria-label="Previous page"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant text-on-surface-variant transition-colors hover:bg-surface-container-low disabled:pointer-events-none disabled:opacity-40"
+                  >
+                    <span className="material-symbols-outlined text-lg">
+                      chevron_left
+                    </span>
+                  </button>
+                  <span className="font-label-md text-label-md text-on-surface-variant">
+                    Page {pagination.page} of {Math.max(pagination.totalPages, 1)}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={!pagination.hasNextPage}
+                    onClick={() => setPage((p) => p + 1)}
+                    aria-label="Next page"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant text-on-surface-variant transition-colors hover:bg-surface-container-low disabled:pointer-events-none disabled:opacity-40"
+                  >
+                    <span className="material-symbols-outlined text-lg">
+                      chevron_right
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      )}
 
-      {/* Pagination footer */}
-      {pagination && pagination.totalCount > 0 && (
-        <div className="mt-6 flex flex-col gap-3 rounded-xl border border-surface-variant bg-surface-container-lowest p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-          <span className="font-label-md text-label-md text-on-surface-variant">
-            Showing {from} to {to} of {pagination.totalCount} results
-          </span>
-          <div className="flex items-center gap-2">
+        {/* Right: collapsible filter panel — expanded by default */}
+        <aside className="w-full shrink-0 lg:sticky lg:top-6 lg:w-72">
+          <div className="rounded-xl border border-surface-variant bg-surface-container-lowest shadow-sm">
             <button
               type="button"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              aria-label="Previous page"
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant text-on-surface-variant transition-colors hover:bg-surface-container-low disabled:pointer-events-none disabled:opacity-40"
+              onClick={() => setFiltersOpen((o) => !o)}
+              aria-expanded={filtersOpen}
+              className="flex w-full items-center justify-between gap-2 px-4 py-3.5 font-label-md text-label-md font-semibold text-on-surface"
             >
-              <span className="material-symbols-outlined text-lg">
-                chevron_left
+              <span className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-lg text-primary">
+                  tune
+                </span>
+                Filters
+                {filtersDirty && (
+                  <span
+                    aria-hidden="true"
+                    className="h-2 w-2 rounded-full bg-accent"
+                  />
+                )}
+              </span>
+              <span className="material-symbols-outlined text-lg text-on-surface-variant transition-transform">
+                {filtersOpen ? 'expand_less' : 'expand_more'}
               </span>
             </button>
-            <span className="font-label-md text-label-md text-on-surface-variant">
-              Page {pagination.page} of {Math.max(pagination.totalPages, 1)}
-            </span>
-            <button
-              type="button"
-              disabled={!pagination.hasNextPage}
-              onClick={() => setPage((p) => p + 1)}
-              aria-label="Next page"
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant text-on-surface-variant transition-colors hover:bg-surface-container-low disabled:pointer-events-none disabled:opacity-40"
-            >
-              <span className="material-symbols-outlined text-lg">
-                chevron_right
-              </span>
-            </button>
+            {filtersOpen && (
+              <div className="space-y-4 border-t border-surface-variant px-4 py-4">
+                <div>
+                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
+                    Website
+                  </label>
+                  <div className="mt-2 space-y-1.5">
+                    {SOURCE_OPTIONS.map((option) => (
+                      <label
+                        key={option.value}
+                        className="flex cursor-pointer items-center gap-2 font-body-md text-body-md text-on-surface"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={draftSources.includes(option.value)}
+                          onChange={(e) => {
+                            setDraftSources((prev) =>
+                              e.target.checked
+                                ? [...prev, option.value]
+                                : prev.filter((v) => v !== option.value),
+                            )
+                          }}
+                          className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-primary"
+                        />
+                        {option.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
+                    Job type
+                  </label>
+                  <select
+                    value={draftJobType}
+                    onChange={(e) =>
+                      setDraftJobType(e.target.value as JobType | '')
+                    }
+                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    {JOB_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
+                    Work arrangement
+                  </label>
+                  <select
+                    value={draftWorkArrangement}
+                    onChange={(e) => setDraftWorkArrangement(e.target.value)}
+                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    {WORK_ARRANGEMENT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
+                    Location
+                  </label>
+                  <select
+                    value={draftLocation}
+                    onChange={(e) => setDraftLocation(e.target.value)}
+                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">All locations</option>
+                    {locations.map((location) => (
+                      <option key={location} value={location}>
+                        {location}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
+                    Sector
+                  </label>
+                  <select
+                    value={draftSector}
+                    onChange={(e) => setDraftSector(e.target.value)}
+                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">All sectors</option>
+                    {sectors.map((sector) => (
+                      <option key={sector.id} value={sector.id}>
+                        {sector.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
+                    Experience level
+                  </label>
+                  <select
+                    value={draftExperience}
+                    onChange={(e) => setDraftExperience(e.target.value)}
+                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    {EXPERIENCE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
+                    Posted within
+                  </label>
+                  <select
+                    value={draftPostedWithin}
+                    onChange={(e) => setDraftPostedWithin(e.target.value)}
+                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    {POSTED_WITHIN_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
+                    Closing within
+                  </label>
+                  <select
+                    value={draftClosingWithin}
+                    onChange={(e) => setDraftClosingWithin(e.target.value)}
+                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    {CLOSING_WITHIN_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="flex-1 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low"
+                  >
+                    Clear filters
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyFilters}
+                    className="flex-1 rounded-lg bg-primary px-4 py-2 font-label-md text-label-md font-medium text-on-primary transition-opacity hover:opacity-90"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        </aside>
+      </div>
     </DashboardShell>
   )
 }
@@ -556,7 +742,7 @@ function JobCard({
     ...(job.sectorName ? [{ icon: 'domain', label: job.sectorName }] : []),
     {
       icon: 'history',
-      label: `Posted ${timeAgo(job.publishedAt) || 'recently'}`,
+      label: postedLabel(job.publishedAt, job.refreshedAt) || 'Posted recently',
     },
     ...(job.deadline
       ? [{ icon: 'event', label: `Closes ${formatDate(job.deadline)}` }]
@@ -664,10 +850,10 @@ function JobCard({
 
 /* ------------------------------------------------------------- States */
 
-function SkeletonGrid() {
+function SkeletonGrid({ count }: { count: number }) {
   return (
-    <div className="mt-5 grid grid-cols-1 gap-6 xl:grid-cols-2">
-      {Array.from({ length: PAGE_SIZE }).map((_, i) => (
+    <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+      {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
           className="overflow-hidden rounded-lg border border-surface-variant bg-surface-container-lowest"
