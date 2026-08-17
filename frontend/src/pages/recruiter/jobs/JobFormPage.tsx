@@ -11,11 +11,18 @@ import {
   updateJob,
 } from '../../../api'
 import { useRequireRole } from '../../../hooks'
-import type { JobResponse, JobType, JobWriteRequest } from '../../../types'
+import type {
+  JobResponse,
+  JobType,
+  JobWriteRequest,
+  WorkMode,
+} from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import {
   FORM_JOB_TYPE_OPTIONS,
+  FORM_WORK_ARRANGEMENT_OPTIONS,
   JOB_TYPE_LABELS,
+  WORK_ARRANGEMENT_LABELS,
 } from '../../../components/dashboard/jobOptions.ts'
 import { cn } from '../../../lib/cn.ts'
 
@@ -28,6 +35,7 @@ const initialValues = {
   company: '',
   location: '',
   jobType: '' as JobType | '',
+  workArrangement: '' as WorkMode | '',
   url: '',
   salary: '',
   deadline: '',
@@ -128,6 +136,7 @@ export default function JobFormPage() {
           company: job.company || '',
           location: job.location || '',
           jobType: (job.jobType as JobType) || 'other',
+          workArrangement: (job.workMode as WorkMode) || '',
           url: job.url || '',
           salary: job.salary || '',
           deadline: job.deadline ? toLocalDateTimeInput(job.deadline) : '',
@@ -163,6 +172,7 @@ export default function JobFormPage() {
       company: values.company || undefined,
       location: values.location || undefined,
       jobType: values.jobType || undefined,
+      workMode: values.workArrangement || undefined,
       url: values.url || undefined,
       salary: values.salary || undefined,
       deadline: values.deadline
@@ -348,6 +358,24 @@ export default function JobFormPage() {
                   {FORM_JOB_TYPE_OPTIONS.map((value) => (
                     <option key={value} value={value}>
                       {JOB_TYPE_LABELS[value]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Work arrangement">
+                <select
+                  name="workArrangement"
+                  value={formik.values.workArrangement}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  disabled={!canEdit}
+                  className={inputClass}
+                >
+                  <option value="">Onsite</option>
+                  {FORM_WORK_ARRANGEMENT_OPTIONS.map((value) => (
+                    <option key={value} value={value}>
+                      {WORK_ARRANGEMENT_LABELS[value]}
                     </option>
                   ))}
                 </select>
