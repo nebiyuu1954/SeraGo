@@ -45,10 +45,15 @@ export function useSavedJobs(active: boolean) {
     [savedIds],
   )
 
+  /**
+   * Toggles a job's saved state (optimistic, reverts on failure).
+   * Resolves to the outcome so callers can toast it: 'saved' | 'removed' on
+   * success, or null when the API call failed (state already reverted).
+   */
   const toggleSaved = useCallback(
-    async (jobId: string) => {
+    async (jobId: string): Promise<'saved' | 'removed' | null> => {
       const tokens = getStoredAuthTokens()
-      if (!tokens) return
+      if (!tokens) return null
       const wasSaved = savedIds.has(jobId)
       // Optimistic flip, then revert if the API disagrees.
       setSavedIds((prev) => {
@@ -60,6 +65,7 @@ export function useSavedJobs(active: boolean) {
       try {
         if (wasSaved) await unsaveJob(jobId, tokens.accessToken)
         else await saveJob(jobId, tokens.accessToken)
+        return wasSaved ? 'removed' : 'saved'
       } catch {
         setSavedIds((prev) => {
           const next = new Set(prev)
@@ -67,6 +73,7 @@ export function useSavedJobs(active: boolean) {
           else next.delete(jobId)
           return next
         })
+        return null
       }
     },
     [savedIds],
