@@ -9,6 +9,7 @@ interface DashboardSidebarProps {
   role: RequiredRole
   userName: string
   userCompany?: string
+  userAvatarUrl?: string
   onSignOut: () => void
 }
 
@@ -25,6 +26,7 @@ export default function DashboardSidebar({
   role,
   userName,
   userCompany,
+  userAvatarUrl,
   onSignOut,
 }: DashboardSidebarProps) {
   const { sidebarOpen, toggleSidebar, drawerOpen, setDrawerOpen } = useSidebar()
@@ -42,6 +44,7 @@ export default function DashboardSidebar({
           role={role}
           userName={userName}
           userCompany={userCompany}
+          userAvatarUrl={userAvatarUrl}
           onSignOut={onSignOut}
           collapsed={!sidebarOpen}
           onToggle={toggleSidebar}
@@ -57,13 +60,14 @@ export default function DashboardSidebar({
             aria-hidden="true"
           />
           <aside className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-surface-variant bg-surface-container-lowest md:hidden">
-            <SidebarBody
-              role={role}
-              userName={userName}
-              userCompany={userCompany}
-              onSignOut={onSignOut}
-              collapsed={false}
-            />
+          <SidebarBody
+            role={role}
+            userName={userName}
+            userCompany={userCompany}
+            userAvatarUrl={userAvatarUrl}
+            onSignOut={onSignOut}
+            collapsed={false}
+          />
           </aside>
         </>
       )}
@@ -75,6 +79,7 @@ function SidebarBody({
   role,
   userName,
   userCompany,
+  userAvatarUrl,
   onSignOut,
   collapsed,
   onToggle,
@@ -82,6 +87,7 @@ function SidebarBody({
   role: RequiredRole
   userName: string
   userCompany?: string
+  userAvatarUrl?: string
   onSignOut: () => void
   /** Icon-rail mode: labels hidden, icons centered, tooltips on hover. */
   collapsed: boolean
@@ -173,9 +179,13 @@ function SidebarBody({
       <div className="border-t border-surface-variant p-4">
         {collapsed ? (
           <div className="flex flex-col items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary font-label-md text-label-md font-bold text-on-primary">
-              {initialsOf(userName)}
-            </span>
+            {userAvatarUrl ? (
+              <img src={userAvatarUrl} alt={userName} className="h-9 w-9 rounded-full object-cover" />
+            ) : (
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary font-label-md text-label-md font-bold text-on-primary">
+                {initialsOf(userName)}
+              </span>
+            )}
             <button
               type="button"
               onClick={onSignOut}
@@ -188,9 +198,13 @@ function SidebarBody({
           </div>
         ) : (
           <div className="flex items-center gap-3 rounded-lg px-2 py-2">
-            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary font-label-md text-label-md font-bold text-on-primary">
-              {initialsOf(userName)}
-            </span>
+            {userAvatarUrl ? (
+              <img src={userAvatarUrl} alt={userName} className="h-9 w-9 rounded-full object-cover" />
+            ) : (
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary font-label-md text-label-md font-bold text-on-primary">
+                {initialsOf(userName)}
+              </span>
+            )}
             <div className="min-w-0">
               <p className="truncate font-label-sm text-label-sm font-medium text-on-surface">
                 {userName}

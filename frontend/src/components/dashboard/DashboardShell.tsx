@@ -55,6 +55,7 @@ export default function DashboardShell({
         role={role}
         userName={name}
         userCompany={company}
+        userAvatarUrl={profile?.avatarUrl}
         onSignOut={signOut}
       />
 

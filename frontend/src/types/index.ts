@@ -1,6 +1,10 @@
 export type {
   ApiErrorPayload,
   ApiResponse,
+  ApplicationListData,
+  ApplicationResponse,
+  ApplicationStatus,
+  ApplyRequest,
   AuthTokenResponse,
   ForgotPasswordRequest,
   HealthResponse,
@@ -14,6 +18,7 @@ export type {
   PaginationResponse,
   ProfileCompletionResponse,
   ProfileResponse,
+  RecruiterJobStats,
   RecruiterProfileResponse,
   RecruiterProfileUpdate,
   ResetPasswordRequest,
@@ -30,9 +35,14 @@ export type {
   SignUpResponse,
   SignUpRole,
   StatsTopResponse,
+  AdminStatsTopResponse,
+  AdminUserResponse,
+  AdminUserListData,
   SyncScrapedJobsResult,
   TalentProfileResponse,
   TalentProfileUpdate,
   UpdateProfileRequest,
+  UpdateApplicationStatusRequest,
   WhoAmIResponse,
 } from './api.ts'
+export type { ProfileSnapshot } from './profileSnapshot.ts'

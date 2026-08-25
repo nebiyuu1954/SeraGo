@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useFormik } from 'formik'
 import { object, string } from 'yup'
 import {
@@ -8,10 +8,14 @@ import {
   getStoredAuthTokens,
   updateProfile,
 } from '../../../api'
-import { useRequireRole } from '../../../hooks'
+import { useRequireRole, useUnsavedChanges } from '../../../hooks'
 import type { RequiredRole } from '../../../hooks'
 import type { ProfileResponse, UpdateProfileRequest } from '../../../types'
+import { useNavigate } from 'react-router-dom'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
+import UnsavedChangesDialog from '../../../components/ui/UnsavedChangesDialog.tsx'
+import AccordionSection from '../../../components/ui/AccordionSection.tsx'
+import FileUpload from '../../../components/ui/FileUpload.tsx'
 import PasswordSetupCard from '../../../components/dashboard/PasswordSetupCard.tsx'
 import { cn } from '../../../lib/cn.ts'
 
@@ -26,6 +30,44 @@ const AVAILABILITIES = [
   'WithinOneMonth',
   'MoreThanOneMonth',
 ]
+
+const EDUCATION_LEVELS = ['HighSchool', 'Bachelors', 'Masters', 'PhD']
+const EDUCATION_LEVEL_LABELS: Record<string, string> = {
+  HighSchool: 'High School',
+  Bachelors: "Bachelor's Degree",
+  Masters: "Master's Degree",
+  PhD: 'PhD / Doctorate',
+}
+
+export interface EducationEntry {
+  level: string
+  institution: string
+  degree: string
+  gpa: string
+  startYear: string
+  endYear: string
+}
+
+/** Default privacy: everything visible. */
+const DEFAULT_VISIBILITY: Record<string, boolean> = {
+  phone: true,
+  dateOfBirth: true,
+  address: true,
+  education: true,
+  linkedin: true,
+  github: true,
+  portfolio: true,
+  skills: true,
+  experience: true,
+  resume: true,
+  avatar: true,
+  middleName: true,
+  city: true,
+  country: true,
+  currentIndustry: true,
+  currentProfession: true,
+  preferredLocations: true,
+}
 
 const JOB_TYPE_CHOICES = [
   { value: 'FullTime', label: 'Full-time' },
@@ -103,6 +145,7 @@ const recruiterSchema = commonSchema.concat(
 interface ProfileFormValues {
   // Common
   firstName: string
+  middleName: string
   lastName: string
   avatarUrl: string
   city: string
@@ -122,6 +165,20 @@ interface ProfileFormValues {
   linkedInUrl: string
   githubUrl: string
   portfolioUrl: string
+  // Identity / personal
+  phoneNumber: string
+  dateOfBirth: string
+  address: string
+  // Education
+  educationLevel: string
+  educationHistory: EducationEntry[]
+  // Professional context
+  currentIndustry: string
+  currentProfession: string
+  preferredLocations: string[]
+  // Privacy
+  profileVisibility: Record<string, boolean>
+  skillVisibility: Record<string, boolean>
   // Recruiter
   companyName: string
   companyLogoUrl: string
@@ -132,6 +189,7 @@ interface ProfileFormValues {
 
 const initialValues: ProfileFormValues = {
   firstName: '',
+  middleName: '',
   lastName: '',
   avatarUrl: '',
   city: '',
@@ -150,6 +208,16 @@ const initialValues: ProfileFormValues = {
   linkedInUrl: '',
   githubUrl: '',
   portfolioUrl: '',
+  phoneNumber: '',
+  dateOfBirth: '',
+  address: '',
+  educationLevel: '',
+  educationHistory: [],
+  currentIndustry: '',
+  currentProfession: '',
+  preferredLocations: [],
+  profileVisibility: { ...DEFAULT_VISIBILITY },
+  skillVisibility: {},
   companyName: '',
   companyLogoUrl: '',
   industry: '',
@@ -164,19 +232,48 @@ function Field({
   full,
   hint,
   error,
+  visibilityKey,
+  visibility,
+  onToggleVisibility,
   children,
 }: {
   label: string
   full?: boolean
   hint?: string
   error?: string
+  visibilityKey?: string
+  visibility?: Record<string, boolean>
+  onToggleVisibility?: (key: string) => void
   children: React.ReactNode
 }) {
+  const isVisible = visibilityKey && visibility ? (visibility[visibilityKey] ?? true) : true
   return (
     <div className={cn(full && 'md:col-span-2')}>
-      <label className="font-label-sm text-label-sm font-medium text-on-surface">
-        {label}
-      </label>
+      <div className="flex items-center justify-between gap-2">
+        <label className="font-label-sm text-label-sm font-medium text-on-surface">
+          {label}
+        </label>
+        {visibilityKey && visibility && onToggleVisibility && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isVisible}
+            aria-label={`Share ${label} when applying`}
+            onClick={() => onToggleVisibility(visibilityKey)}
+            className={cn(
+              'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors',
+              isVisible ? 'bg-primary' : 'bg-surface-variant',
+            )}
+          >
+            <span
+              className={cn(
+                'inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform mt-0.5',
+                isVisible ? 'translate-x-4' : 'translate-x-0.5',
+              )}
+            />
+          </button>
+        )}
+      </div>
       <div className="mt-1.5">{children}</div>
       {hint && !error && (
         <p className="mt-1.5 font-label-sm text-label-sm text-on-surface-variant/70">
@@ -250,27 +347,45 @@ function TagInput({
   )
 }
 
-function SectionCard({
-  title,
-  description,
-  children,
-}: {
-  title: string
-  description: string
-  children: React.ReactNode
-}) {
+function SkillAddButton({ onAdd }: { onAdd: (skill: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [value, setValue] = useState('')
+
+  const submit = () => {
+    const trimmed = value.trim()
+    if (trimmed) onAdd(trimmed)
+    setValue('')
+    setOpen(false)
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex items-center justify-center gap-1 rounded-lg border border-dashed border-outline-variant bg-surface-container-lowest px-2.5 py-2 font-label-sm text-label-sm text-on-surface-variant transition-colors hover:border-primary hover:text-primary"
+      >
+        <span className="material-symbols-outlined text-[14px]">add</span>
+        Add
+      </button>
+    )
+  }
+
   return (
-    <section className="rounded-xl border border-surface-variant bg-surface-container-lowest shadow-sm">
-      <div className="border-b border-surface-variant px-6 py-4">
-        <h2 className="font-label-md text-label-md font-semibold text-on-surface">
-          {title}
-        </h2>
-        <p className="mt-0.5 font-label-sm text-label-sm text-on-surface-variant">
-          {description}
-        </p>
-      </div>
-      <div className="grid gap-6 p-6 md:grid-cols-2">{children}</div>
-    </section>
+    <div className="flex items-center gap-1 rounded-lg border border-primary bg-surface-container-lowest px-2 py-1">
+      <input
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); submit() }
+          if (e.key === 'Escape') { setOpen(false); setValue('') }
+        }}
+        onBlur={submit}
+        placeholder="Skill name"
+        className="min-w-0 flex-1 bg-transparent px-1 py-0.5 font-label-sm text-label-sm text-on-surface placeholder:text-on-surface-variant/60 focus:outline-none"
+      />
+    </div>
   )
 }
 
@@ -286,19 +401,24 @@ const COPY: Record<RequiredRole, { blurb: string }> = {
       'Your professional details — used to match you with the right roles.',
   },
   Admin: {
-    blurb:
-      'Your account details. Admins have no role-specific profile section.',
+    blurb: 'Your account details. Admins have no role-specific profile section.',
   },
 }
 
 export default function ProfileForm({ role }: { role: RequiredRole }) {
   const auth = useRequireRole(role)
+  const navigate = useNavigate()
   const [profile, setProfile] = useState<ProfileResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [sectors, setSectors] = useState<{ id: string; name: string }[]>([])
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [photoModalOpen, setPhotoModalOpen] = useState(false)
+  const [resumeUploading, setResumeUploading] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+  const resumeInputRef = useRef<HTMLInputElement>(null)
 
   // Auto-dismiss the saved confirmation.
   useEffect(() => {
@@ -347,36 +467,81 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
       .then((p) => {
         if (cancelled) return
         setProfile(p)
-        formik.setValues({
-          firstName: p.firstName,
-          lastName: p.lastName,
-          avatarUrl: p.avatarUrl,
-          city: p.city,
-          country: p.country,
-          headline: p.talent?.headline ?? '',
-          about: isTalent
-            ? (p.talent?.about ?? '')
-            : (p.recruiter?.about ?? ''),
-          experienceLevel: p.talent?.experienceLevel ?? '',
-          yearsOfExperience:
-            p.talent?.yearsOfExperience == null
-              ? ''
-              : String(p.talent.yearsOfExperience),
-          desiredRoles: p.talent?.desiredRoles ?? [],
-          skills: p.talent?.skills ?? [],
-          desiredJobTypes: p.talent?.desiredJobTypes ?? [],
-          preferredSectorIds: p.talent?.preferredSectorIds ?? [],
-          workMode: p.talent?.workMode ?? '',
-          availability: p.talent?.availability ?? '',
-          resumeUrl: p.talent?.resumeUrl ?? '',
-          linkedInUrl: p.talent?.linkedInUrl ?? '',
-          githubUrl: p.talent?.githubUrl ?? '',
-          portfolioUrl: p.talent?.portfolioUrl ?? '',
-          companyName: p.recruiter?.companyName ?? '',
-          companyLogoUrl: p.recruiter?.companyLogoUrl ?? '',
-          industry: p.recruiter?.industry ?? '',
-          companySize: p.recruiter?.companySize ?? '',
-          websiteUrl: p.recruiter?.websiteUrl ?? '',
+        // Parse education history JSON
+        let parsedEducation: EducationEntry[] = []
+        try {
+          if (p.talent?.educationHistory && p.talent.educationHistory !== '[]') {
+            parsedEducation = JSON.parse(p.talent.educationHistory)
+          }
+        } catch { /* keep empty */ }
+
+        // Parse visibility JSON
+        let parsedVisibility = { ...DEFAULT_VISIBILITY }
+        try {
+          if (p.talent?.profileVisibility && p.talent.profileVisibility !== '{}') {
+            parsedVisibility = { ...DEFAULT_VISIBILITY, ...JSON.parse(p.talent.profileVisibility) }
+          }
+        } catch { /* keep defaults */ }
+
+        // Parse skill visibility JSON
+        let parsedSkillVisibility: Record<string, boolean> = {}
+        try {
+          if (p.talent?.skillVisibility && p.talent.skillVisibility !== '{}') {
+            parsedSkillVisibility = JSON.parse(p.talent.skillVisibility)
+          }
+        } catch { /* keep empty — all skills visible by default */ }
+
+        // Parse preferred locations JSON
+        let parsedLocations: string[] = []
+        try {
+          if (p.talent?.preferredLocations && p.talent.preferredLocations !== '[]') {
+            parsedLocations = JSON.parse(p.talent.preferredLocations)
+          }
+        } catch { /* keep empty */ }
+
+        formik.resetForm({
+          values: {
+            firstName: p.firstName,
+            middleName: p.middleName ?? '',
+            lastName: p.lastName,
+            avatarUrl: p.avatarUrl,
+            city: p.city,
+            country: p.country,
+            headline: p.talent?.headline ?? '',
+            about: isTalent
+              ? (p.talent?.about ?? '')
+              : (p.recruiter?.about ?? ''),
+            experienceLevel: p.talent?.experienceLevel ?? '',
+            yearsOfExperience:
+              p.talent?.yearsOfExperience == null
+                ? ''
+                : String(p.talent.yearsOfExperience),
+            desiredRoles: p.talent?.desiredRoles ?? [],
+            skills: p.talent?.skills ?? [],
+            desiredJobTypes: p.talent?.desiredJobTypes ?? [],
+            preferredSectorIds: p.talent?.preferredSectorIds ?? [],
+            workMode: p.talent?.workMode ?? '',
+            availability: p.talent?.availability ?? '',
+            resumeUrl: p.talent?.resumeUrl ?? '',
+            linkedInUrl: p.talent?.linkedInUrl ?? '',
+            githubUrl: p.talent?.githubUrl ?? '',
+            portfolioUrl: p.talent?.portfolioUrl ?? '',
+            phoneNumber: p.talent?.phoneNumber ?? '',
+            dateOfBirth: p.talent?.dateOfBirth ?? '',
+            address: p.talent?.address ?? '',
+            educationLevel: p.talent?.educationLevel ?? '',
+            educationHistory: parsedEducation,
+            currentIndustry: p.talent?.currentIndustry ?? '',
+            currentProfession: p.talent?.currentProfession ?? '',
+            preferredLocations: parsedLocations,
+            profileVisibility: parsedVisibility,
+            skillVisibility: parsedSkillVisibility,
+            companyName: p.recruiter?.companyName ?? '',
+            companyLogoUrl: p.recruiter?.companyLogoUrl ?? '',
+            industry: p.recruiter?.industry ?? '',
+            companySize: p.recruiter?.companySize ?? '',
+            websiteUrl: p.recruiter?.websiteUrl ?? '',
+          },
         })
       })
       .catch((err) => {
@@ -388,7 +553,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
     return () => {
       cancelled = true
     }
-    // formik.setValues is stable enough here; the load only needs auth/role.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.status, role])
 
@@ -403,6 +567,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
 
     const payload: UpdateProfileRequest = {
       firstName: values.firstName.trim(),
+      middleName: values.middleName.trim(),
       lastName: values.lastName.trim(),
       avatarUrl: values.avatarUrl.trim(),
       city: values.city.trim(),
@@ -427,6 +592,16 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
         linkedInUrl: values.linkedInUrl.trim(),
         githubUrl: values.githubUrl.trim(),
         portfolioUrl: values.portfolioUrl.trim(),
+        phoneNumber: values.phoneNumber.trim() || undefined,
+        dateOfBirth: values.dateOfBirth || undefined,
+        address: values.address.trim() || undefined,
+        educationLevel: values.educationLevel || undefined,
+        educationHistory: JSON.stringify(values.educationHistory),
+        currentIndustry: values.currentIndustry.trim() || undefined,
+        currentProfession: values.currentProfession.trim() || undefined,
+        preferredLocations: JSON.stringify(values.preferredLocations),
+        profileVisibility: JSON.stringify(values.profileVisibility),
+        skillVisibility: JSON.stringify(values.skillVisibility),
       }
     } else if (isRecruiter) {
       payload.recruiter = {
@@ -448,6 +623,19 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
     }
   }
 
+  const saveFromDialog = useCallback(() => handleSave(formik.values), [formik.values])
+
+  const {
+    dialogOpen,
+    saving: dialogSaving,
+    handleSave: confirmSave,
+    handleDiscard,
+    handleCancel,
+  } = useUnsavedChanges({
+    isDirty: formik.dirty,
+    onSave: saveFromDialog,
+  })
+
   const toggleJobType = (value: string) => {
     const next = formik.values.desiredJobTypes.includes(value)
       ? formik.values.desiredJobTypes.filter((t) => t !== value)
@@ -460,6 +648,71 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
       ? formik.values.preferredSectorIds.filter((s) => s !== id)
       : [...formik.values.preferredSectorIds, id]
     formik.setFieldValue('preferredSectorIds', next)
+  }
+
+  const toggleVisibility = (key: string) => {
+    formik.setFieldValue(
+      'profileVisibility',
+      { ...formik.values.profileVisibility, [key]: !formik.values.profileVisibility[key] },
+    )
+  }
+
+  const toggleSkillVisibility = (skill: string) => {
+    formik.setFieldValue(
+      'skillVisibility',
+      { ...formik.values.skillVisibility, [skill]: !(formik.values.skillVisibility[skill] ?? true) },
+    )
+  }
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    // Validate
+    if (!file.type.startsWith('image/')) {
+      setSubmitError('Please upload an image file')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setSubmitError('File size must be less than 5MB')
+      return
+    }
+    setAvatarUploading(true)
+    setSubmitError(null)
+    try {
+      const { uploadFile } = await import('../../../api/fileUpload.ts')
+      const url = await uploadFile(file, 'avatar')
+      formik.setFieldValue('avatarUrl', url)
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setAvatarUploading(false)
+      if (avatarInputRef.current) avatarInputRef.current.value = ''
+    }
+  }
+
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.type !== 'application/pdf') {
+      setSubmitError('Please upload a PDF file')
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setSubmitError('File size must be less than 10MB')
+      return
+    }
+    setResumeUploading(true)
+    setSubmitError(null)
+    try {
+      const { uploadFile } = await import('../../../api/fileUpload.ts')
+      const url = await uploadFile(file, 'resume')
+      formik.setFieldValue('resumeUrl', url)
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setResumeUploading(false)
+      if (resumeInputRef.current) resumeInputRef.current.value = ''
+    }
   }
 
   if (auth.status !== 'authenticated') {
@@ -475,14 +728,180 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
 
   const completion = profile?.completion
 
+  /* ——— Talent: count fields filled per section for accordion badges ——— */
+  const personalFilled = [
+    formik.values.firstName,
+    formik.values.lastName,
+    formik.values.city,
+    formik.values.country,
+    formik.values.phoneNumber,
+    formik.values.dateOfBirth,
+    formik.values.avatarUrl,
+    formik.values.middleName,
+    formik.values.address,
+  ].filter(Boolean).length
+
+  const professionalFilled = [
+    formik.values.headline,
+    formik.values.about,
+    formik.values.experienceLevel,
+    formik.values.yearsOfExperience,
+    formik.values.workMode,
+    formik.values.availability,
+    formik.values.currentIndustry,
+    formik.values.currentProfession,
+  ].filter(Boolean).length
+
+  const skillsFilled = [
+    formik.values.skills.length > 0 ? 'skills' : '',
+    formik.values.desiredRoles.length > 0 ? 'roles' : '',
+    formik.values.desiredJobTypes.length > 0 ? 'jobTypes' : '',
+    formik.values.preferredSectorIds.length > 0 ? 'sectors' : '',
+  ].filter(Boolean).length
+
+  const educationFilled = [
+    formik.values.educationLevel,
+    formik.values.educationHistory.length > 0 ? 'history' : '',
+  ].filter(Boolean).length
+
+  const linksFilled = [
+    formik.values.resumeUrl,
+    formik.values.linkedInUrl,
+    formik.values.githubUrl,
+    formik.values.portfolioUrl,
+  ].filter(Boolean).length
+
+  const fullName = [formik.values.firstName, formik.values.middleName, formik.values.lastName]
+    .filter(Boolean)
+    .join(' ')
+
+  /** Extract a human-readable filename from the resume URL/key.
+   *  Keys look like: resumes/{userId}/{timestamp}_{originalName}.pdf
+   *  We strip the timestamp prefix to show the original name. */
+  const resumeDisplayName = (() => {
+    const raw = formik.values.resumeUrl
+    if (!raw) return ''
+    const segments = raw.split('/')
+    const last = segments[segments.length - 1] || raw
+    // Strip the timestamp prefix (e.g. 20260825_193848_)
+    const cleaned = last.replace(/^\d{8}_\d{6}_/, '').replace(/\.pdf$/i, '')
+    return cleaned || last
+  })()
+
+  const avatarInitials = fullName.split(' ').map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
+
   return (
     <DashboardShell role={role} authUser={auth.user}>
-      <h1 className="font-headline-lg text-headline-lg font-bold tracking-tight text-primary">
-        Profile
-      </h1>
-      <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
-        {COPY[role].blurb}
-      </p>
+      {isTalent ? (
+        <>
+          {/* Profile preview header card */}
+          <section className="bg-surface-container-lowest border border-surface-variant rounded-xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden">
+            <div className="flex items-center gap-6 z-10">
+              {formik.values.avatarUrl ? (
+                <img
+                  className="w-20 h-20 rounded-full object-cover border border-surface-variant"
+                  src={formik.values.avatarUrl}
+                  alt={fullName}
+                />
+              ) : (
+                <span className="flex w-20 h-20 items-center justify-center rounded-full bg-primary-container/60 font-headline-lg text-headline-lg font-semibold text-primary">
+                  {avatarInitials}
+                </span>
+              )}
+              <div>
+                <h1 className="font-headline-lg text-headline-lg text-primary mb-1">
+                  {fullName || 'Your name'}
+                </h1>
+                {formik.values.headline && (
+                  <p className="font-body-lg text-body-lg text-on-surface-variant mb-2">
+                    {formik.values.headline}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-col items-start gap-2 z-10">
+              <div className="flex items-center gap-2">
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  onChange={handleAvatarUpload}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={formik.values.profileVisibility.avatar ?? true}
+                  aria-label="Toggle profile picture visibility"
+                  onClick={() => toggleVisibility('avatar')}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low"
+                >
+                  <span
+                    className={cn(
+                      'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors',
+                      (formik.values.profileVisibility.avatar ?? true) ? 'bg-primary' : 'bg-surface-variant',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform mt-0.5',
+                        (formik.values.profileVisibility.avatar ?? true) ? 'translate-x-4' : 'translate-x-0.5',
+                      )}
+                    />
+                  </span>
+                  {formik.values.profileVisibility.avatar ?? true ? 'Hide' : 'Show'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={avatarUploading}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low disabled:opacity-50"
+                >
+                  {avatarUploading ? (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                  ) : (
+                    <span className="material-symbols-outlined text-[18px]">upload</span>
+                  )}
+                  {formik.values.avatarUrl ? 'Change photo' : 'Upload photo'}
+                </button>
+                {formik.values.avatarUrl && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setPhotoModalOpen(true)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">visibility</span>
+                      View photo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => formik.setFieldValue('avatarUrl', '')}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-on-surface transition-colors hover:bg-error-container hover:text-error"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">person_remove</span>
+                      Remove
+                    </button>
+                  </>
+                )}
+              </div>
+              <p className="font-label-sm text-label-sm text-on-surface-variant/60 text-center w-full">
+                JPEG, PNG, WebP, or GIF · Max 5MB
+              </p>
+            </div>
+            <div className="absolute top-0 right-0 w-64 h-full bg-gradient-to-l from-surface-container-low to-transparent opacity-50 z-0 pointer-events-none" />
+          </section>
+        </>
+      ) : (
+        <>
+          <h1 className="font-headline-lg text-headline-lg font-bold tracking-tight text-primary">
+            Profile
+          </h1>
+          <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
+            {COPY[role].blurb}
+          </p>
+        </>
+      )}
 
       {/* Completion banner */}
       {completion &&
@@ -575,192 +994,296 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
         <form
           onSubmit={formik.handleSubmit}
           noValidate
-          className="mt-8 space-y-6"
+          className="mt-8 flex flex-col gap-4"
         >
-          <SectionCard
-            title="Personal information"
-            description="Your name and location — shown across the platform."
-          >
-            <Field
-              label="First name *"
-              error={
-                formik.touched.firstName ? formik.errors.firstName : undefined
-              }
-            >
-              <input
-                name="firstName"
-                value={formik.values.firstName}
-                onChange={formik.handleChange}
-                onBlur={formik.handleBlur}
-                placeholder="Jane"
-                className={inputClass}
-              />
-            </Field>
-            <Field
-              label="Last name *"
-              error={
-                formik.touched.lastName ? formik.errors.lastName : undefined
-              }
-            >
-              <input
-                name="lastName"
-                value={formik.values.lastName}
-                onChange={formik.handleChange}
-                onBlur={formik.handleBlur}
-                placeholder="Recruiter"
-                className={inputClass}
-              />
-            </Field>
-            <Field
-              label="Avatar URL"
-              hint="Optional — a link to your profile picture."
-              error={
-                formik.touched.avatarUrl ? formik.errors.avatarUrl : undefined
-              }
-            >
-              <input
-                name="avatarUrl"
-                value={formik.values.avatarUrl}
-                onChange={formik.handleChange}
-                onBlur={formik.handleBlur}
-                placeholder="https://…"
-                className={inputClass}
-              />
-            </Field>
-            <Field label="City">
-              <input
-                name="city"
-                value={formik.values.city}
-                onChange={formik.handleChange}
-                onBlur={formik.handleBlur}
-                placeholder="Addis Ababa"
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Country">
-              <input
-                name="country"
-                value={formik.values.country}
-                onChange={formik.handleChange}
-                onBlur={formik.handleBlur}
-                placeholder="Ethiopia"
-                className={inputClass}
-              />
-            </Field>
-          </SectionCard>
-
-          {isRecruiter && (
-            <SectionCard
-              title="Company information"
-              description="Your company details — shown on every job post you publish."
-            >
-              <Field
-                label="Company name *"
-                error={
-                  formik.touched.companyName
-                    ? formik.errors.companyName
-                    : undefined
-                }
-              >
-                <input
-                  name="companyName"
-                  value={formik.values.companyName}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  placeholder="SeraGo HR"
-                  className={inputClass}
-                />
-              </Field>
-              <Field
-                label="Company logo URL"
-                error={
-                  formik.touched.companyLogoUrl
-                    ? formik.errors.companyLogoUrl
-                    : undefined
-                }
-              >
-                <input
-                  name="companyLogoUrl"
-                  value={formik.values.companyLogoUrl}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  placeholder="https://…"
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Industry">
-                <input
-                  name="industry"
-                  value={formik.values.industry}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  placeholder="Technology"
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Company size">
-                <input
-                  name="companySize"
-                  value={formik.values.companySize}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  placeholder="11–50 employees"
-                  className={inputClass}
-                />
-              </Field>
-              <Field
-                label="Website"
-                error={
-                  formik.touched.websiteUrl
-                    ? formik.errors.websiteUrl
-                    : undefined
-                }
-              >
-                <input
-                  name="websiteUrl"
-                  value={formik.values.websiteUrl}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  placeholder="https://company.com"
-                  className={inputClass}
-                />
-              </Field>
-              <Field full label="About the company">
-                <textarea
-                  name="about"
-                  rows={4}
-                  value={formik.values.about}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  placeholder="What does your company do?"
-                  className={cn(inputClass, 'resize-y')}
-                />
-              </Field>
-            </SectionCard>
-          )}
-
+          {/* ═══════════════════════════ TALENT SECTIONS ═══════════════════════════ */}
           {isTalent && (
-            <SectionCard
-              title="Job preferences"
-              description="Pick the sectors you want in your feed — only matching jobs will be shown to you."
-            >
-              <Field full label="Preferred sectors">
-                {sectors.length === 0 ? (
-                  <p className="font-label-sm text-label-sm text-on-surface-variant">
-                    No sectors available yet.
-                  </p>
-                ) : (
-                  <div className="mt-1.5 flex flex-wrap gap-2">
-                    {sectors.map((sector) => {
-                      const checked = formik.values.preferredSectorIds.includes(
-                        sector.id,
+            <>
+              {/* ── Section 1: Personal information ── */}
+              <AccordionSection
+                title="Personal information"
+                description="Your name and location — shown across the platform."
+                icon="person"
+                defaultOpen
+                completion={{ filled: personalFilled, total: 9 }}
+              >
+                <Field
+                  label="First name *"
+                  error={formik.touched.firstName ? formik.errors.firstName : undefined}
+                >
+                  <input
+                    name="firstName"
+                    value={formik.values.firstName}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="Jane"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Middle name">
+                  <input
+                    name="middleName"
+                    value={formik.values.middleName}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="Optional"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field
+                  label="Last name *"
+                  error={formik.touched.lastName ? formik.errors.lastName : undefined}
+                >
+                  <input
+                    name="lastName"
+                    value={formik.values.lastName}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="Doe"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Phone number" visibilityKey="phone" visibility={formik.values.profileVisibility} onToggleVisibility={toggleVisibility}>
+                  <input
+                    name="phoneNumber"
+                    value={formik.values.phoneNumber}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="+251 91 123 4567"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Date of birth" visibilityKey="dateOfBirth" visibility={formik.values.profileVisibility} onToggleVisibility={toggleVisibility}>
+                  <input
+                    type="date"
+                    name="dateOfBirth"
+                    value={formik.values.dateOfBirth}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="City">
+                  <input
+                    name="city"
+                    value={formik.values.city}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="Addis Ababa"
+                    className={inputClass}
+                  />
+                </Field>                <Field label="Country">
+                  <input
+                    name="country"
+                    value={formik.values.country}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="Ethiopia"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Street address" visibilityKey="address" visibility={formik.values.profileVisibility} onToggleVisibility={toggleVisibility}>
+                  <input
+                    name="address"
+                    value={formik.values.address}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="Bole Road, Addis Ababa"
+                    className={inputClass}
+                  />
+                </Field>
+              </AccordionSection>
+
+              {/* ── Section 2: Professional profile ── */}
+              <AccordionSection
+                title="Professional profile"
+                description="What you do and how you work — your career identity."
+                icon="work"
+                completion={{ filled: professionalFilled, total: 8 }}
+              >
+                <Field
+                  label="Headline"
+                  error={formik.touched.headline ? formik.errors.headline : undefined}
+                >
+                  <input
+                    name="headline"
+                    value={formik.values.headline}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="e.g. Senior Flutter Developer"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Years of experience" error={formik.touched.yearsOfExperience ? formik.errors.yearsOfExperience : undefined}>
+                  <input
+                    name="yearsOfExperience"
+                    type="number"
+                    min={0}
+                    value={formik.values.yearsOfExperience}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="5"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Experience level">
+                  <select
+                    name="experienceLevel"
+                    value={formik.values.experienceLevel}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    className={inputClass}
+                  >
+                    <option value="">Not specified</option>
+                    {EXPERIENCE_LEVELS.map((level) => (
+                      <option key={level} value={level}>{level}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Work mode">
+                  <select
+                    name="workMode"
+                    value={formik.values.workMode}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    className={inputClass}
+                  >
+                    <option value="">Not specified</option>
+                    {WORK_MODES.map((mode) => (
+                      <option key={mode} value={mode}>{mode}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Availability">
+                  <select
+                    name="availability"
+                    value={formik.values.availability}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    className={inputClass}
+                  >
+                    <option value="">Not specified</option>
+                    {AVAILABILITIES.map((availability) => (
+                      <option key={availability} value={availability}>{availability}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Current industry" visibilityKey="currentIndustry" visibility={formik.values.profileVisibility} onToggleVisibility={toggleVisibility}>
+                  <input
+                    name="currentIndustry"
+                    value={formik.values.currentIndustry}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="e.g. Technology, Finance"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Current profession" visibilityKey="currentProfession" visibility={formik.values.profileVisibility} onToggleVisibility={toggleVisibility}>
+                  <input
+                    name="currentProfession"
+                    value={formik.values.currentProfession}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="e.g. Software Engineer"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field full label="About" hint="A short bio recruiters will see.">
+                  <textarea
+                    name="about"
+                    rows={4}
+                    value={formik.values.about}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="Tell recruiters about yourself…"
+                    className={cn(inputClass, 'resize-y')}
+                  />
+                </Field>
+              </AccordionSection>
+
+              {/* ── Section 3: Skills & roles ── */}
+              <AccordionSection
+                title="Skills & roles"
+                description="What you can do and what you're looking for."
+                icon="psychology"
+                completion={{ filled: skillsFilled, total: 4 }}
+              >
+                <div className="md:col-span-2">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <label className="font-label-sm text-label-sm font-medium text-on-surface">
+                      Skills
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                    {formik.values.skills.map((skill) => {
+                      const isVisible = formik.values.skillVisibility[skill] ?? true
+                      return (
+                        <div
+                          key={skill}
+                          className={cn(
+                            'flex items-center justify-between gap-1 rounded-lg border px-2.5 py-2 font-label-sm text-label-sm',
+                            isVisible
+                              ? 'border-primary-container/30 bg-primary-container/10 text-primary'
+                              : 'border-surface-variant bg-surface-container-low text-on-surface-variant/50 line-through',
+                          )}
+                        >
+                          <span className="truncate">{skill}</span>
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => toggleSkillVisibility(skill)}
+                              className="p-0.5 rounded transition-colors hover:bg-primary-container/20"
+                              aria-label={isVisible ? `Hide ${skill}` : `Show ${skill}`}
+                            >
+                              <span className={cn(
+                                'material-symbols-outlined text-[14px]',
+                                isVisible ? 'text-primary' : 'text-on-surface-variant/40',
+                              )}>
+                                {isVisible ? 'visibility' : 'visibility_off'}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = formik.values.skills.filter((s) => s !== skill)
+                                formik.setFieldValue('skills', next)
+                              }}
+                              className="p-0.5 rounded transition-colors hover:bg-error-container/40"
+                              aria-label={`Remove ${skill}`}
+                            >
+                              <span className="material-symbols-outlined text-[14px] text-on-surface-variant/50 hover:text-error">
+                                close
+                              </span>
+                            </button>
+                          </div>
+                        </div>
                       )
+                    })}
+                    <SkillAddButton onAdd={(skill) => {
+                      if (!skill.trim()) return
+                      if (!formik.values.skills.some((s) => s.toLowerCase() === skill.trim().toLowerCase())) {
+                        formik.setFieldValue('skills', [...formik.values.skills, skill.trim()])
+                      }
+                    }} />
+                  </div>
+                </div>
+                <Field label="Desired roles" hint="Press Enter after each role.">
+                  <TagInput
+                    value={formik.values.desiredRoles}
+                    onChange={(next) => formik.setFieldValue('desiredRoles', next)}
+                    placeholder="e.g. Product Designer"
+                  />
+                </Field>
+                <Field full label="Desired job types">
+                  <div className="mt-1.5 flex flex-wrap gap-2">
+                    {JOB_TYPE_CHOICES.map((choice) => {
+                      const checked = formik.values.desiredJobTypes.includes(choice.value)
                       return (
                         <button
-                          key={sector.id}
+                          key={choice.value}
                           type="button"
                           aria-pressed={checked}
-                          onClick={() => toggleSector(sector.id)}
+                          onClick={() => toggleJobType(choice.value)}
                           className={cn(
                             'rounded-full px-3.5 py-1.5 font-label-sm text-label-sm font-medium transition-colors',
                             checked
@@ -768,198 +1291,466 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                               : 'border border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low',
                           )}
                         >
-                          {sector.name}
+                          {choice.label}
                         </button>
                       )
                     })}
                   </div>
-                )}
-              </Field>
-            </SectionCard>
-          )}
+                </Field>
+                <Field full label="Preferred sectors">
+                  {sectors.length === 0 ? (
+                    <p className="font-label-sm text-label-sm text-on-surface-variant">
+                      No sectors available yet.
+                    </p>
+                  ) : (
+                    <div className="mt-1.5 flex flex-wrap gap-2">
+                      {sectors.map((sector) => {
+                        const checked = formik.values.preferredSectorIds.includes(sector.id)
+                        return (
+                          <button
+                            key={sector.id}
+                            type="button"
+                            aria-pressed={checked}
+                            onClick={() => toggleSector(sector.id)}
+                            className={cn(
+                              'rounded-full px-3.5 py-1.5 font-label-sm text-label-sm font-medium transition-colors',
+                              checked
+                                ? 'bg-primary text-on-primary'
+                                : 'border border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low',
+                            )}
+                          >
+                            {sector.name}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </Field>
+              </AccordionSection>
 
-          {isTalent && (
-            <SectionCard
-              title="Professional details"
-              description="What you're looking for — used to match you with roles."
-            >
-              <Field
-                label="Headline"
-                error={
-                  formik.touched.headline ? formik.errors.headline : undefined
-                }
+              {/* ── Section 4: Education ── */}
+              <AccordionSection
+                title="Education"
+                description="Your educational background — shown to recruiters when you apply."
+                icon="school"
+                completion={{ filled: educationFilled, total: 2 }}
               >
-                <input
-                  name="headline"
-                  value={formik.values.headline}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  placeholder="e.g. Senior Flutter Developer"
-                  className={inputClass}
-                />
-              </Field>
-              <Field
-                label="Years of experience"
-                error={
-                  formik.touched.yearsOfExperience
-                    ? formik.errors.yearsOfExperience
-                    : undefined
-                }
-              >
-                <input
-                  name="yearsOfExperience"
-                  type="number"
-                  min={0}
-                  value={formik.values.yearsOfExperience}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  placeholder="5"
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Experience level">
-                <select
-                  name="experienceLevel"
-                  value={formik.values.experienceLevel}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  className={inputClass}
-                >
-                  <option value="">Not specified</option>
-                  {EXPERIENCE_LEVELS.map((level) => (
-                    <option key={level} value={level}>
-                      {level}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Work mode">
-                <select
-                  name="workMode"
-                  value={formik.values.workMode}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  className={inputClass}
-                >
-                  <option value="">Not specified</option>
-                  {WORK_MODES.map((mode) => (
-                    <option key={mode} value={mode}>
-                      {mode}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Availability">
-                <select
-                  name="availability"
-                  value={formik.values.availability}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  className={inputClass}
-                >
-                  <option value="">Not specified</option>
-                  {AVAILABILITIES.map((availability) => (
-                    <option key={availability} value={availability}>
-                      {availability}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Desired roles" hint="Press Enter after each role.">
-                <TagInput
-                  value={formik.values.desiredRoles}
-                  onChange={(next) =>
-                    formik.setFieldValue('desiredRoles', next)
-                  }
-                  placeholder="e.g. Product Designer"
-                />
-              </Field>
-              <Field label="Skills" hint="Press Enter after each skill.">
-                <TagInput
-                  value={formik.values.skills}
-                  onChange={(next) => formik.setFieldValue('skills', next)}
-                  placeholder="e.g. React, Figma"
-                />
-              </Field>
-              <Field full label="Desired job types">
-                <div className="mt-1.5 flex flex-wrap gap-2">
-                  {JOB_TYPE_CHOICES.map((choice) => {
-                    const checked = formik.values.desiredJobTypes.includes(
-                      choice.value,
-                    )
-                    return (
-                      <button
-                        key={choice.value}
-                        type="button"
-                        aria-pressed={checked}
-                        onClick={() => toggleJobType(choice.value)}
-                        className={cn(
-                          'rounded-full px-3.5 py-1.5 font-label-sm text-label-sm font-medium transition-colors',
-                          checked
-                            ? 'bg-primary text-on-primary'
-                            : 'border border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low',
-                        )}
+                <Field label="Highest education level" visibilityKey="education" visibility={formik.values.profileVisibility} onToggleVisibility={toggleVisibility}>
+                  <select
+                    name="educationLevel"
+                    value={formik.values.educationLevel}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    className={inputClass}
+                  >
+                    <option value="">Not specified</option>
+                    {EDUCATION_LEVELS.map((level) => (
+                      <option key={level} value={level}>{EDUCATION_LEVEL_LABELS[level]}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field full label="Education history">
+                  <div className="space-y-4">
+                    {formik.values.educationHistory.map((entry, idx) => (
+                      <div
+                        key={idx}
+                        className="rounded-lg border border-surface-variant p-4"
                       >
-                        {choice.label}
-                      </button>
-                    )
-                  })}
+                        <div className="flex items-center justify-between">
+                          <span className="font-label-sm text-label-sm font-medium text-on-surface">
+                            {(EDUCATION_LEVEL_LABELS[entry.level] ?? entry.level) || `Degree ${idx + 1}`}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = [...formik.values.educationHistory]
+                              next.splice(idx, 1)
+                              formik.setFieldValue('educationHistory', next)
+                            }}
+                            className="text-on-surface-variant transition-colors hover:text-error"
+                          >
+                            <span className="material-symbols-outlined text-lg">delete</span>
+                          </button>
+                        </div>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <select
+                            value={entry.level}
+                            onChange={(e) => {
+                              const next = [...formik.values.educationHistory]
+                              next[idx] = { ...next[idx], level: e.target.value }
+                              formik.setFieldValue('educationHistory', next)
+                            }}
+                            className={inputClass}
+                          >
+                            <option value="">Level</option>
+                            {EDUCATION_LEVELS.map((level) => (
+                              <option key={level} value={level}>{EDUCATION_LEVEL_LABELS[level]}</option>
+                            ))}
+                          </select>
+                          <input
+                            value={entry.institution}
+                            onChange={(e) => {
+                              const next = [...formik.values.educationHistory]
+                              next[idx] = { ...next[idx], institution: e.target.value }
+                              formik.setFieldValue('educationHistory', next)
+                            }}
+                            placeholder="Institution name"
+                            className={inputClass}
+                          />
+                          <input
+                            value={entry.degree}
+                            onChange={(e) => {
+                              const next = [...formik.values.educationHistory]
+                              next[idx] = { ...next[idx], degree: e.target.value }
+                              formik.setFieldValue('educationHistory', next)
+                            }}
+                            placeholder="Degree (e.g. BSc Computer Science)"
+                            className={inputClass}
+                          />
+                          <input
+                            value={entry.gpa}
+                            onChange={(e) => {
+                              const next = [...formik.values.educationHistory]
+                              next[idx] = { ...next[idx], gpa: e.target.value }
+                              formik.setFieldValue('educationHistory', next)
+                            }}
+                            placeholder="GPA (e.g. 3.8/4.0)"
+                            className={inputClass}
+                          />
+                          <input
+                            type="number"
+                            value={entry.startYear}
+                            onChange={(e) => {
+                              const next = [...formik.values.educationHistory]
+                              next[idx] = { ...next[idx], startYear: e.target.value }
+                              formik.setFieldValue('educationHistory', next)
+                            }}
+                            placeholder="Start year"
+                            min="1970"
+                            max="2099"
+                            className={inputClass}
+                          />
+                          <input
+                            type="number"
+                            value={entry.endYear}
+                            onChange={(e) => {
+                              const next = [...formik.values.educationHistory]
+                              next[idx] = { ...next[idx], endYear: e.target.value }
+                              formik.setFieldValue('educationHistory', next)
+                            }}
+                            placeholder="End year (or blank if current)"
+                            min="1970"
+                            max="2099"
+                            className={inputClass}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = [...formik.values.educationHistory, {
+                          level: '', institution: '', degree: '', gpa: '', startYear: '', endYear: '',
+                        }]
+                        formik.setFieldValue('educationHistory', next)
+                      }}
+                      className="flex items-center gap-1.5 rounded-lg border border-dashed border-outline-variant px-4 py-2.5 font-label-md text-label-md text-primary transition-colors hover:bg-primary-container/20"
+                    >
+                      <span className="material-symbols-outlined text-lg">add</span>
+                      Add degree
+                    </button>
+                  </div>
+                </Field>
+              </AccordionSection>
+
+              {/* ── Section 5: Links & resume ── */}
+              <AccordionSection
+                title="Links & resume"
+                description="Where recruiters can find you online."
+                icon="link"
+                completion={{ filled: linksFilled, total: 4 }}
+              >
+                <div className="md:col-span-2">
+                  <label className="font-label-sm text-label-sm font-medium text-on-surface mb-2 block">
+                    Resume (PDF)
+                  </label>
+                  <input
+                    ref={resumeInputRef}
+                    type="file"
+                    accept="application/pdf"
+                    onChange={handleResumeUpload}
+                    className="hidden"
+                  />
+                  {formik.values.resumeUrl ? (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4 rounded-lg border border-surface-variant bg-surface-container-low p-4">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <span className="material-symbols-outlined text-[24px] text-primary shrink-0">description</span>
+                        <div className="min-w-0">
+                          <p className="font-label-md text-label-md text-on-surface truncate" title={formik.values.resumeUrl}>{resumeDisplayName}</p>
+                          <p className="font-label-sm text-label-sm text-on-surface-variant">PDF uploaded</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => resumeInputRef.current?.click()}
+                          disabled={resumeUploading}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low disabled:opacity-50"
+                        >
+                          {resumeUploading ? (
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                          ) : (
+                            <span className="material-symbols-outlined text-[18px]">upload</span>
+                          )}
+                          Change resume
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => formik.setFieldValue('resumeUrl', '')}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-on-surface transition-colors hover:bg-error-container hover:text-error"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">delete</span>
+                          Remove
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const { getPresignedDownloadUrl } = await import('../../../api/fileUpload.ts')
+                              const url = await getPresignedDownloadUrl(formik.values.resumeUrl)
+                              window.open(url, '_blank')
+                            } catch (err) {
+                              setSubmitError(err instanceof Error ? err.message : 'Failed to open resume')
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-primary transition-colors hover:bg-primary-container/10"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">open_in_new</span>
+                          View resume
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => resumeInputRef.current?.click()}
+                      disabled={resumeUploading}
+                      className="inline-flex items-center gap-2 rounded-lg border-2 border-dashed border-outline-variant bg-surface-container-lowest px-6 py-6 font-label-md text-label-md text-on-surface transition-colors hover:border-primary hover:bg-primary-container/5 disabled:opacity-50 w-full justify-center"
+                    >
+                      {resumeUploading ? (
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                      ) : (
+                        <span className="material-symbols-outlined text-[20px]">upload</span>
+                      )}
+                      Upload resume (PDF)
+                    </button>
+                  )}
+                  <p className="mt-1.5 font-label-sm text-label-sm text-on-surface-variant/60">
+                    PDF only · Max 10MB
+                  </p>
                 </div>
-              </Field>
-              <Field label="About" hint="A short bio recruiters will see.">
-                <textarea
-                  name="about"
-                  rows={4}
-                  value={formik.values.about}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  placeholder="Tell recruiters about yourself…"
-                  className={cn(inputClass, 'resize-y')}
-                />
-              </Field>
-              <Field label="Resume URL">
-                <input
-                  name="resumeUrl"
-                  value={formik.values.resumeUrl}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  placeholder="https://…"
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="LinkedIn">
-                <input
-                  name="linkedInUrl"
-                  value={formik.values.linkedInUrl}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  placeholder="https://linkedin.com/in/…"
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="GitHub">
-                <input
-                  name="githubUrl"
-                  value={formik.values.githubUrl}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  placeholder="https://github.com/…"
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Portfolio">
-                <input
-                  name="portfolioUrl"
-                  value={formik.values.portfolioUrl}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  placeholder="https://…"
-                  className={inputClass}
-                />
-              </Field>
-            </SectionCard>
+                <Field label="LinkedIn" visibilityKey="linkedin" visibility={formik.values.profileVisibility} onToggleVisibility={toggleVisibility}>
+                  <input
+                    name="linkedInUrl"
+                    value={formik.values.linkedInUrl}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="https://linkedin.com/in/…"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="GitHub" visibilityKey="github" visibility={formik.values.profileVisibility} onToggleVisibility={toggleVisibility}>
+                  <input
+                    name="githubUrl"
+                    value={formik.values.githubUrl}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="https://github.com/…"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Portfolio" visibilityKey="portfolio" visibility={formik.values.profileVisibility} onToggleVisibility={toggleVisibility}>
+                  <input
+                    name="portfolioUrl"
+                    value={formik.values.portfolioUrl}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="https://…"
+                    className={inputClass}
+                  />
+                </Field>
+              </AccordionSection>
+            </>
           )}
 
+          {/* ═══════════════════════════ RECRUITER SECTIONS ═══════════════════════════ */}
+          {isRecruiter && (
+            <section className="rounded-xl border border-surface-variant bg-surface-container-lowest shadow-sm">
+              <div className="border-b border-surface-variant px-6 py-4">
+                <h2 className="font-label-md text-label-md font-semibold text-on-surface">
+                  Personal information
+                </h2>
+                <p className="mt-0.5 font-label-sm text-label-sm text-on-surface-variant">
+                  Your name and location — shown across the platform.
+                </p>
+              </div>
+              <div className="grid gap-6 p-6 md:grid-cols-2">
+                <Field
+                  label="First name *"
+                  error={formik.touched.firstName ? formik.errors.firstName : undefined}
+                >
+                  <input
+                    name="firstName"
+                    value={formik.values.firstName}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="Jane"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Middle name">
+                  <input
+                    name="middleName"
+                    value={formik.values.middleName}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="Optional"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field
+                  label="Last name *"
+                  error={formik.touched.lastName ? formik.errors.lastName : undefined}
+                >
+                  <input
+                    name="lastName"
+                    value={formik.values.lastName}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="Doe"
+                    className={inputClass}
+                  />
+                </Field>
+                <div className="md:col-span-2">
+                  <FileUpload
+                    fileType="avatar"
+                    value={formik.values.avatarUrl}
+                    onChange={(url) => formik.setFieldValue('avatarUrl', url)}
+                    onError={(err) => setSubmitError(err)}
+                    label="Profile picture"
+                    hint="Upload a profile picture (JPEG, PNG, WebP, or GIF). Max 5MB."
+                  />
+                </div>
+                <Field label="City">
+                  <input
+                    name="city"
+                    value={formik.values.city}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="Addis Ababa"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Country">
+                  <input
+                    name="country"
+                    value={formik.values.country}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="Ethiopia"
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
+            </section>
+          )}
+
+          {isRecruiter && (
+            <section className="rounded-xl border border-surface-variant bg-surface-container-lowest shadow-sm">
+              <div className="border-b border-surface-variant px-6 py-4">
+                <h2 className="font-label-md text-label-md font-semibold text-on-surface">
+                  Company information
+                </h2>
+                <p className="mt-0.5 font-label-sm text-label-sm text-on-surface-variant">
+                  Your company details — shown on every job post you publish.
+                </p>
+              </div>
+              <div className="grid gap-6 p-6 md:grid-cols-2">
+                <Field
+                  label="Company name *"
+                  error={formik.touched.companyName ? formik.errors.companyName : undefined}
+                >
+                  <input
+                    name="companyName"
+                    value={formik.values.companyName}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="SeraGo HR"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field
+                  label="Company logo URL"
+                  error={formik.touched.companyLogoUrl ? formik.errors.companyLogoUrl : undefined}
+                >
+                  <input
+                    name="companyLogoUrl"
+                    value={formik.values.companyLogoUrl}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="https://…"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Industry">
+                  <input
+                    name="industry"
+                    value={formik.values.industry}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="Technology"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Company size">
+                  <input
+                    name="companySize"
+                    value={formik.values.companySize}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="11–50 employees"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field
+                  label="Website"
+                  error={formik.touched.websiteUrl ? formik.errors.websiteUrl : undefined}
+                >
+                  <input
+                    name="websiteUrl"
+                    value={formik.values.websiteUrl}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="https://company.com"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field full label="About the company">
+                  <textarea
+                    name="about"
+                    rows={4}
+                    value={formik.values.about}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder="What does your company do?"
+                    className={cn(inputClass, 'resize-y')}
+                  />
+                </Field>
+              </div>
+            </section>
+          )}
+
+          {/* ═══════════════════════════ ADMIN ═══════════════════════════ */}
           {role === 'Admin' && (
             <p className="font-label-sm text-label-sm text-on-surface-variant">
               Admins don't have a role-specific profile section — everything
@@ -967,7 +1758,18 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
             </p>
           )}
 
-          <div className="flex items-center justify-end gap-3">
+          {/* ═══════════════════════════ ACTION BUTTONS ═══════════════════════════ */}
+          <div className="flex items-center justify-end gap-3 pt-2">
+            {isTalent && (
+              <button
+                type="button"
+                onClick={() => navigate('/dashboard/talent/profile/preview')}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-outline-variant px-6 py-3 font-label-md text-label-md font-medium text-on-surface transition-colors hover:bg-surface-container-low"
+              >
+                <span className="material-symbols-outlined text-[18px]">visibility</span>
+                Preview profile
+              </button>
+            )}
             {saved && (
               <span className="font-label-md text-label-md text-success">
                 Saved
@@ -995,6 +1797,40 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
       )}
 
       <PasswordSetupCard />
+
+      <UnsavedChangesDialog
+        open={dialogOpen}
+        saving={dialogSaving}
+        onSave={confirmSave}
+        onDiscard={handleDiscard}
+        onCancel={handleCancel}
+      />
+
+      {/* Photo preview modal */}
+      {photoModalOpen && formik.values.avatarUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setPhotoModalOpen(false)}
+        >
+          <div
+            className="relative max-h-[80vh] max-w-lg rounded-xl bg-surface-container-lowest shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setPhotoModalOpen(false)}
+              className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-surface-container-low/80 text-on-surface transition-colors hover:bg-surface-container"
+            >
+              <span className="material-symbols-outlined text-[20px]">close</span>
+            </button>
+            <img
+              src={formik.values.avatarUrl}
+              alt={fullName}
+              className="w-full rounded-xl object-contain"
+            />
+          </div>
+        </div>
+      )}
     </DashboardShell>
   )
 }

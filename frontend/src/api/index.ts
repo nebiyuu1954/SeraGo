@@ -7,6 +7,15 @@ export {
   saveJob,
   unsaveJob,
 } from './savedJobs.ts'
+export {
+  applyToJob,
+  fetchApplication,
+  fetchMyApplications,
+  fetchRecruiterJobStats,
+  fetchAllRecruiterApplications,
+  fetchJobApplications,
+  updateApplicationStatus,
+} from './applications.ts'
 export { fetchProfile, setPassword, updateProfile } from './profile.ts'
 export {
   approveJob,
@@ -33,6 +42,12 @@ export {
 } from './sectors.ts'
 export { fetchTopStats } from './stats.ts'
 export {
+  fetchAdminUsers,
+  updateUserRole,
+  updateUserStatus,
+  fetchAdminStats,
+} from './admin.ts'
+export {
   AUTH_TOKENS_KEY,
   buildGoogleChallengeUrl,
   clearStoredAuthTokens,
@@ -52,3 +67,7 @@ export {
   storeAuthTokens,
 } from './auth.ts'
 export type { StoredAuthTokens } from './auth.ts'
+export {
+  uploadFile,
+  getPresignedDownloadUrl,
+} from './fileUpload.ts'

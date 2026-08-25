@@ -1,25 +1,38 @@
-import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { fetchJob, getApiErrorMessage, getStoredAuthTokens } from '../../../api'
-import { useRequireRole, useSavedJobs } from '../../../hooks'
+import { useState } from 'react'
+import {
+  applyToJob,
+  getApiErrorMessage,
+  getStoredAuthTokens,
+  updateProfile,
+} from '../../../api'
+import { useJobDetailQuery, useMyApplicationsQuery, useProfileQuery, useSavedJobsQuery } from '../../../hooks/query.ts'
+import { useRequireRole } from '../../../hooks'
 import type { JobResponse, JobType } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import SaveJobButton from '../../../components/dashboard/SaveJobButton.tsx'
 import { useToast } from '../../../components/dashboard/Toast.tsx'
 import { JOB_TYPE_LABELS } from '../../../components/dashboard/jobOptions.ts'
 import { formatDate, postedLabel } from '../../../lib/date.ts'
+import { cn } from '../../../lib/cn.ts'
+import FileUpload from '../../../components/ui/FileUpload.tsx'
 import {
-  cleanEmploymentTypeSection,
-  extractOverviewExtras,
   highlightLabels,
   parseDescriptionSections,
   splitInlineList,
-  type DescriptionSection,
 } from '../../../lib/descriptionSections.ts'
+import SourceJobDescription from '../../../components/jobs/SourceJobDescription.tsx'
 import { initialsOf } from '../../../lib/initials.ts'
 import { sourceLogo } from '../../../lib/sourceLogos.ts'
+import { parseSkills } from '../../../lib/sourceCapabilities.ts'
+import { saveJob, unsaveJob } from '../../../api'
 
 const DAY_MS = 86_400_000
+
+/** A job is a "Serago job" when it was posted directly on the platform (not scraped). */
+function isSeragoJob(job: JobResponse): boolean {
+  return !job.sourceName || job.sourceName.toLowerCase() === 'serago'
+}
 
 function jobTypeLabel(job: JobResponse): string {
   return JOB_TYPE_LABELS[job.jobType as JobType] ?? 'Other'
@@ -36,7 +49,7 @@ function workModeLabel(mode: string): string {
   }
 }
 
-/** \"2026-09-15T14:00:00Z\" → \"Closes today\" / \"Closes in 5 days\" — or null. */
+/** "2026-09-15T14:00:00Z" → "Closes today" / "Closes in 5 days" — or null. */
 function closesLabel(deadline: string | null): string | null {
   if (!deadline) return null
   const days = Math.ceil((new Date(deadline).getTime() - Date.now()) / DAY_MS)
@@ -184,41 +197,138 @@ function SectionContent({ text }: { text: string }) {
   )
 }
 
-/** One parsed description section: icon + heading + content. */
-function DescriptionSection({ section }: { section: ReturnType<typeof parseDescriptionSections>[number] }) {
+/* ------------------------------------------------ Profile preview components */
+
+function PreviewSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section>
-      {section.heading && (
-        <h3 className="flex items-center gap-2 font-headline-md text-headline-md font-semibold text-on-surface">
-          <span className="material-symbols-outlined text-xl text-primary">
-            {section.icon}
-          </span>
-          {section.heading}
+    <div className="rounded-lg border border-surface-variant">
+      <div className="border-b border-surface-variant px-4 py-2.5">
+        <h3 className="font-label-md text-label-md font-semibold text-on-surface">
+          {title}
         </h3>
-      )}
-      <div className={section.heading ? 'mt-3' : undefined}>
-        <SectionContent text={section.content} />
       </div>
-    </section>
+      <div className="divide-y divide-surface-variant">{children}</div>
+    </div>
+  )
+}
+
+function PreviewRow({ label, value }: { label: string; value?: string | null }) {
+  if (!value) return null
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5">
+      <span className="font-body-sm text-sm text-on-surface-variant">{label}</span>
+      <span className="font-body-sm text-sm font-medium text-on-surface">{value}</span>
+    </div>
+  )
+}
+
+function PreviewToggle({
+  label,
+  field,
+  value,
+  visibility,
+  onToggle,
+}: {
+  label: string
+  field: string
+  value?: string | null
+  visibility: Record<string, boolean>
+  onToggle: (next: Record<string, boolean>) => void
+}) {
+  const isVisible = visibility[field] ?? true
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5">
+      <div className="min-w-0 flex-1">
+        <span className="font-body-sm text-sm text-on-surface-variant">{label}</span>
+        {value && (
+          <p className={cn('mt-0.5 truncate font-body-sm text-sm', isVisible ? 'text-on-surface' : 'text-on-surface-variant/60 line-through')}>
+            {value}
+          </p>
+        )}
+        {!value && (
+          <p className="mt-0.5 font-body-sm text-sm text-on-surface-variant/40 italic">Not set</p>
+        )}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={isVisible}
+        onClick={() => onToggle({ ...visibility, [field]: !isVisible })}
+        className={cn(
+          'relative ml-3 inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors',
+          isVisible ? 'bg-primary' : 'bg-surface-variant',
+        )}
+      >
+        <span
+          className={cn(
+            'inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform mt-0.5',
+            isVisible ? 'translate-x-4' : 'translate-x-0.5',
+          )}
+        />
+      </button>
+    </div>
   )
 }
 
 /**
  * Talent's full view of a single job posting (opened from a job card).
- * Loads the job by id — hidden/draft jobs 404 from the API, so a missing
- * job just shows the error state with a way back to the job board.
+ * Uses SWR to cache the job by id — navigating away and back is instant.
  */
 export default function JobDetailPage() {
   const { jobId } = useParams<{ jobId: string }>()
   const auth = useRequireRole('Talent')
 
-  const [job, setJob] = useState<JobResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [refreshKey, setRefreshKey] = useState(0)
+  const { job, isLoading, error, refresh: refreshJob } = useJobDetailQuery(
+    jobId,
+    auth.status === 'authenticated',
+  )
+  const { savedIds, refresh: refreshSaved } = useSavedJobsQuery()
   const brandLogo = job ? sourceLogo(job.sourceName) : null
-  const { isSaved, toggleSaved } = useSavedJobs(auth.status === 'authenticated')
   const { showToast } = useToast()
+
+  // Application tracking — only for Serago jobs.
+  const { applications, refresh: refreshApplications } = useMyApplicationsQuery(
+    auth.status === 'authenticated',
+  )
+  const [showApplyForm, setShowApplyForm] = useState(false)
+  const [applyMode, setApplyMode] = useState<'coverletter' | 'profile'>('coverletter')
+  const [coverLetter, setCoverLetter] = useState('')
+  const [uploadedResumeUrl, setUploadedResumeUrl] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [applySuccess, setApplySuccess] = useState(false)
+  const [showProfilePreview, setShowProfilePreview] = useState(false)
+
+  // Profile for the "use my profile" option.
+  const { profile, refresh: refreshProfile } = useProfileQuery(
+    auth.status === 'authenticated',
+  )
+
+  // Local copy of visibility toggles for the preview dialog.
+  const talent = profile?.talent
+  const defaultVis = {
+    phone: true, dateOfBirth: true, address: true, education: true,
+    linkedin: true, github: true, portfolio: true, skills: true,
+    experience: true, resume: true, avatar: true, middleName: true,
+    city: true, country: true, currentIndustry: true, currentProfession: true,
+    preferredLocations: true,
+  }
+  const [previewVisibility, setPreviewVisibility] = useState<Record<string, boolean>>(defaultVis)
+  const [savingVisibility, setSavingVisibility] = useState(false)
+
+  // Initialize preview visibility from profile when it loads.
+  const profileLoaded = !!talent?.profileVisibility && talent.profileVisibility !== '{}'
+  const [visibilityInit, setVisibilityInit] = useState(false)
+  if (profileLoaded && !visibilityInit && talent) {
+    try {
+      const parsed = JSON.parse(talent.profileVisibility)
+      setPreviewVisibility({ ...defaultVis, ...parsed })
+      setVisibilityInit(true)
+    } catch { setVisibilityInit(true) }
+  }
+
+  // Check if the user has already applied to this job.
+  const hasApplied = job ? applications.some((a) => a.jobId === job.id) : false
+  const isSerago = job ? isSeragoJob(job) : false
 
   // Parsed description sections. A "How to apply" section with real
   // instructions is pulled out of the body and shown in its own CTA block at
@@ -230,76 +340,70 @@ export default function JobDetailPage() {
   const applySections = descriptionSections.filter(
     (s) => s.heading === 'How to apply' && s.content.trim().length > 0,
   )
-  // Salary and vacancies are shown as description sections (the job's own
-  // labels, or synthesized from the employment-type blob / the synced
-  // salary). Sections that just repeat an overview fact (location, deadline,
-  // job type) are dropped from the body.
-  const overviewExtras = extractOverviewExtras(descriptionSections)
-  const bodySections: DescriptionSection[] = descriptionSections
-    .filter((s) => {
-      if (s.heading === 'Location & workplace') return !job?.location
-      if (s.heading === 'Deadline') return !job?.deadline
-      return true
-    })
-    .map((s) =>
-      s.heading === 'Employment type'
-        ? cleanEmploymentTypeSection(s)
-        : s,
-    )
-    .filter(
-      (s): s is DescriptionSection =>
-        s !== null && s.content.trim().length > 0,
-    )
-    .filter((s) => s.heading !== 'How to apply')
 
-  // Make sure salary and vacancies always surface as sections — a real
-  // "Salary & compensation"/"Vacancies" section from the description wins;
-  // otherwise build one from the synced salary or the employment-blob text.
-  const hasSalarySection = bodySections.some(
-    (s) => s.heading === 'Salary & compensation' || s.heading === 'Salary',
-  )
-  const hasVacanciesSection = bodySections.some(
-    (s) => s.heading === 'Vacancies',
-  )
-  const synthesized: DescriptionSection[] = []
-  const salaryValue = job?.salary || overviewExtras.salary
-  if (salaryValue && !hasSalarySection) {
-    synthesized.push({
-      heading: 'Salary',
-      icon: 'payments',
-      content: salaryValue,
-    })
-  }
-  if (overviewExtras.vacancies && !hasVacanciesSection) {
-    synthesized.push({
-      heading: 'Vacancies',
-      icon: 'group',
-      content: overviewExtras.vacancies,
-    })
-  }
-  const descriptionBody = [...synthesized, ...bodySections]
-
-  useEffect(() => {
+  const handleToggleSave = async () => {
+    if (!job) return
     const tokens = getStoredAuthTokens()
-    if (!tokens || auth.status !== 'authenticated' || !jobId) return
-    let cancelled = false
-    const load = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const j = await fetchJob(jobId, tokens.accessToken)
-        if (!cancelled) setJob(j)
-      } catch (err) {
-        if (!cancelled) setError(getApiErrorMessage(err))
-      } finally {
-        if (!cancelled) setLoading(false)
+    if (!tokens) return
+    const wasSaved = savedIds.has(job.id)
+    try {
+      if (wasSaved) await unsaveJob(job.id, tokens.accessToken)
+      else await saveJob(job.id, tokens.accessToken)
+      refreshSaved()
+      showToast(wasSaved ? 'Removed from saved jobs' : 'Job saved for later')
+    } catch {
+      showToast('Could not update saved jobs', 'error')
+    }
+  }
+
+  const handleApply = async () => {
+    if (!job) return
+    const tokens = getStoredAuthTokens()
+    if (!tokens) return
+    setSubmitting(true)
+    try {
+      const payload: { jobId: string; coverLetter?: string; resumeUrl?: string } = {
+        jobId: job.id,
       }
+      if (coverLetter.trim()) payload.coverLetter = coverLetter.trim()
+      // Use uploaded resume if available, otherwise use profile resume
+      if (uploadedResumeUrl) {
+        payload.resumeUrl = uploadedResumeUrl
+      } else if (applyMode === 'profile' && talent?.resumeUrl) {
+        payload.resumeUrl = talent.resumeUrl
+      }
+      await applyToJob(payload, tokens.accessToken)
+      setApplySuccess(true)
+      setShowApplyForm(false)
+      setApplyMode('coverletter')
+      setUploadedResumeUrl(null)
+      setCoverLetter('')
+      refreshApplications()
+      showToast('Application submitted successfully!')
+    } catch (err) {
+      showToast(getApiErrorMessage(err), 'error')
+    } finally {
+      setSubmitting(false)
     }
-    load()
-    return () => {
-      cancelled = true
+  }
+
+  const handleSaveVisibility = async () => {
+    const tokens = getStoredAuthTokens()
+    if (!tokens) return
+    setSavingVisibility(true)
+    try {
+      await updateProfile(tokens.accessToken, {
+        talent: { profileVisibility: JSON.stringify(previewVisibility) },
+      })
+      refreshProfile()
+      setShowProfilePreview(false)
+      showToast('Profile visibility updated.')
+    } catch (err) {
+      showToast(getApiErrorMessage(err), 'error')
+    } finally {
+      setSavingVisibility(false)
     }
-  }, [auth.status, jobId, refreshKey])
+  }
 
   if (auth.status !== 'authenticated') {
     return (
@@ -322,7 +426,7 @@ export default function JobDetailPage() {
         Back to all jobs
       </Link>
 
-      {loading && (
+      {isLoading && (
         <div className="mt-10 flex items-center justify-center">
           <span
             aria-hidden="true"
@@ -338,11 +442,11 @@ export default function JobDetailPage() {
         >
           <span className="flex items-center gap-2.5">
             <span className="material-symbols-outlined text-lg">error</span>
-            <span>{error}</span>
+            <span>{getApiErrorMessage(error)}</span>
           </span>
           <button
             type="button"
-            onClick={() => setRefreshKey((k) => k + 1)}
+            onClick={() => refreshJob()}
             className="rounded-lg border border-on-error-container/30 px-3 py-1.5 font-label-md text-label-md font-medium transition-colors hover:bg-on-error-container/10"
           >
             Retry
@@ -350,7 +454,7 @@ export default function JobDetailPage() {
         </div>
       )}
 
-      {!loading && !error && job && (
+      {!isLoading && !error && job && (
         <div className="mx-auto mt-6 max-w-5xl space-y-6">
           {/* Header: logo, title, badges, and the primary actions */}
           <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm sm:p-8">
@@ -418,14 +522,32 @@ export default function JobDetailPage() {
               </div>
 
               <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:w-44 lg:flex-col">
-                {job.url ? (
+                {isSerago ? (
+                  // Serago job: apply directly on the platform.
+                  hasApplied || applySuccess ? (
+                    <span className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-primary-container/20 px-6 py-3 font-label-md text-label-md font-medium text-primary">
+                      <span className="material-symbols-outlined text-lg">check_circle</span>
+                      Applied
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowApplyForm(true)}
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent px-6 py-3 font-label-md text-label-md font-medium text-on-accent shadow-sm transition-opacity hover:opacity-90"
+                    >
+                      Apply on SeraGo
+                      <span className="material-symbols-outlined text-lg">send</span>
+                    </button>
+                  )
+                ) : job.url ? (
+                  // External job: link to the original source.
                   <a
                     href={job.url}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent px-6 py-3 font-label-md text-label-md font-medium text-on-accent shadow-sm transition-opacity hover:opacity-90"
                   >
-                    Apply now
+                    Apply on {job.sourceName || 'source'}
                     <span className="material-symbols-outlined text-lg">
                       open_in_new
                     </span>
@@ -439,15 +561,8 @@ export default function JobDetailPage() {
                   </span>
                 )}
                 <SaveJobButton
-                  saved={isSaved(job.id)}
-                  onToggle={() => {
-                    toggleSaved(job.id).then((result) => {
-                      if (result === 'saved') showToast('Job saved for later')
-                      else if (result === 'removed')
-                        showToast('Removed from saved jobs')
-                      else showToast('Could not update saved jobs', 'error')
-                    })
-                  }}
+                  saved={savedIds.has(job.id)}
+                  onToggle={handleToggleSave}
                   className="w-full"
                 />
               </div>
@@ -530,6 +645,25 @@ export default function JobDetailPage() {
                 </div>
               </div>
 
+              {/* Skills chips */}
+              {parseSkills(job.skills).length > 0 && (
+                <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm">
+                  <h2 className="font-headline-md text-headline-md font-bold text-on-surface">
+                    Skills
+                  </h2>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {parseSkills(job.skills).map((skill) => (
+                      <span
+                        key={skill}
+                        className="inline-flex items-center rounded-full bg-primary-container/60 px-3 py-1 font-label-sm text-label-sm font-medium text-primary"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {job.sourceName &&
                 job.sourceName.toLowerCase() !== 'serago' &&
                 job.sourceUrl && (
@@ -547,25 +681,14 @@ export default function JobDetailPage() {
                 )}
             </aside>
 
-            {/* Main: parsed description sections */}
+            {/* Main: source-specific description */}
             <div className="min-w-0 lg:order-1">
               <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm sm:p-8">
                 <h2 className="font-headline-md text-headline-md font-bold text-on-surface">
                   Job description
                 </h2>
-                <div className="mt-5 space-y-8">
-                  {job.description ? (
-                    descriptionBody.map((section, i) => (
-                      <DescriptionSection
-                        key={`${section.heading ?? 'intro'}-${i}`}
-                        section={section}
-                      />
-                    ))
-                  ) : (
-                    <p className="font-body-md text-body-md text-on-surface-variant">
-                      No description provided for this role.
-                    </p>
-                  )}
+                <div className="mt-5">
+                  <SourceJobDescription job={job} />
                 </div>
               </div>
 
@@ -603,6 +726,253 @@ export default function JobDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Apply form dialog for Serago jobs */}
+      {showApplyForm && job && (
+        <>
+          <div
+            className="fixed inset-0 z-50 bg-inverse-surface/50"
+            onClick={() => !submitting && setShowApplyForm(false)}
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="w-full max-w-lg rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <h2 className="font-headline-md text-headline-md font-bold text-on-surface">
+                  Apply to {job.title}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => !submitting && setShowApplyForm(false)}
+                  className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-surface-container"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+              <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
+                {job.company || 'Company undisclosed'} · {job.location || 'Location not specified'}
+              </p>
+
+              {/* Application mode toggle */}
+              <div className="mt-5 flex rounded-lg border border-surface-variant bg-surface-container-lowest p-1">
+                <button
+                  type="button"
+                  onClick={() => setApplyMode('coverletter')}
+                  className={cn(
+                    'flex-1 rounded-md px-4 py-2 font-label-md text-label-md transition-colors',
+                    applyMode === 'coverletter'
+                      ? 'bg-primary font-medium text-on-primary'
+                      : 'text-on-surface-variant hover:text-on-surface',
+                  )}
+                >
+                  <span className="material-symbols-outlined mr-1.5 align-middle text-lg">description</span>
+                  Upload CV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setApplyMode('profile')}
+                  className={cn(
+                    'flex-1 rounded-md px-4 py-2 font-label-md text-label-md transition-colors',
+                    applyMode === 'profile'
+                      ? 'bg-primary font-medium text-on-primary'
+                      : 'text-on-surface-variant hover:text-on-surface',
+                  )}
+                >
+                  <span className="material-symbols-outlined mr-1.5 align-middle text-lg">person</span>
+                  Use my profile
+                </button>
+              </div>
+
+              {/* Cover letter — only in CV mode */}
+              {applyMode === 'coverletter' && (
+                <div className="mt-5 space-y-4">
+                  <FileUpload
+                    fileType="resume"
+                    value={uploadedResumeUrl ?? undefined}
+                    onChange={(url) => setUploadedResumeUrl(url)}
+                    label="Resume (PDF)"
+                    hint="Upload your resume as a PDF. Max 10MB."
+                  />
+                  <div>
+                    <label className="font-label-md text-label-md font-medium text-on-surface">
+                      Cover letter <span className="text-on-surface-variant">(optional)</span>
+                    </label>
+                    <textarea
+                      value={coverLetter}
+                      onChange={(e) => setCoverLetter(e.target.value)}
+                      placeholder="Tell the recruiter why you're a great fit for this role..."
+                      rows={6}
+                      className="mt-2 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-3 font-body-md text-body-md text-on-surface transition-colors placeholder:text-on-surface-variant/60 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Profile mode — show preview button + summary */}
+              {applyMode === 'profile' && talent && (
+                <div className="mt-5 rounded-lg border border-primary/30 bg-primary-container/10 p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="material-symbols-outlined mt-0.5 text-lg text-primary">badge</span>
+                    <div className="flex-1">
+                      <p className="font-label-md text-label-md font-medium text-on-surface">
+                        Your profile will be shared with the recruiter
+                      </p>
+                      <p className="mt-1 font-body-sm text-body-sm text-on-surface-variant">
+                        {talent.headline || 'No headline set'}
+                        {talent.skills.length > 0 && (
+                          <> · {talent.skills.slice(0, 3).join(', ')}{talent.skills.length > 3 ? ` +${talent.skills.length - 3} more` : ''}</>
+                        )}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowProfilePreview(true)}
+                        className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-primary transition-colors hover:bg-primary-container/20"
+                      >
+                        <span className="material-symbols-outlined text-lg">visibility</span>
+                        See how my profile looks
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {applyMode === 'profile' && !talent && (
+                <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                  <p className="font-label-md text-label-md text-amber-900">
+                    You need to complete your profile first.
+                  </p>
+                  <Link
+                    to="/dashboard/talent/profile"
+                    className="mt-2 inline-flex items-center gap-1 font-label-md text-label-md font-medium text-primary"
+                  >
+                    Set up profile
+                    <span className="material-symbols-outlined text-sm">open_in_new</span>
+                  </Link>
+                </div>
+              )}
+
+              <div className="mt-5 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => !submitting && setShowApplyForm(false)}
+                  disabled={submitting}
+                  className="rounded-lg border border-outline-variant bg-surface-container-lowest px-5 py-2.5 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApply}
+                  disabled={submitting || (applyMode === 'profile' && !talent)}
+                  className="inline-flex items-center gap-2 rounded-lg bg-accent px-6 py-2.5 font-label-md text-label-md font-medium text-on-accent shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  {submitting ? (
+                    <>
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-on-accent/30 border-t-on-accent" />
+                      Submitting...
+                    </>
+                  ) : (
+                    <>
+                      Submit application
+                      <span className="material-symbols-outlined text-lg">send</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Profile preview dialog */}
+          {showProfilePreview && talent && (
+            <>
+              <div
+                className="fixed inset-0 z-[60] bg-inverse-surface/50"
+                onClick={() => setShowProfilePreview(false)}
+              />
+              <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                <div
+                  className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between">
+                    <h2 className="font-headline-md text-headline-md font-bold text-on-surface">
+                      Profile preview
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => setShowProfilePreview(false)}
+                      className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-surface-container"
+                    >
+                      <span className="material-symbols-outlined">close</span>
+                    </button>
+                  </div>
+                  <p className="mt-1 font-body-sm text-body-sm text-on-surface-variant">
+                    Toggle fields on/off to control what the recruiter sees.
+                  </p>
+
+                  <div className="mt-5 space-y-4">
+                    {/* Identity */}
+                    <PreviewSection title="Personal details">
+                      <PreviewRow label="Name" value={`${profile?.firstName} ${talent.middleName || ''} ${profile?.lastName}`.replace(/\s+/g, ' ').trim()} />
+                      <PreviewToggle label="Phone" field="phone" value={talent.phoneNumber} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                      <PreviewToggle label="Date of birth" field="dateOfBirth" value={talent.dateOfBirth} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                      <PreviewToggle label="Address" field="address" value={talent.address} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                      <PreviewRow label="City" value={profile?.city} />
+                      <PreviewRow label="Country" value={profile?.country} />
+                    </PreviewSection>
+
+                    {/* Professional */}
+                    <PreviewSection title="Professional details">
+                      <PreviewRow label="Headline" value={talent.headline} />
+                      <PreviewToggle label="Experience" field="experience" value={talent.experienceLevel ? `${talent.experienceLevel}${talent.yearsOfExperience != null ? ` · ${talent.yearsOfExperience} years` : ''}` : null} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                      <PreviewToggle label="Skills" field="skills" value={talent.skills.length > 0 ? talent.skills.join(', ') : null} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                      <PreviewToggle label="Current industry" field="currentIndustry" value={talent.currentIndustry} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                      <PreviewToggle label="Current profession" field="currentProfession" value={talent.currentProfession} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                    </PreviewSection>
+
+                    {/* Education */}
+                    <PreviewSection title="Education">
+                      <PreviewToggle label="Education" field="education" value={talent.educationLevel || (talent.educationHistory !== '[]' ? 'Has entries' : null)} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                    </PreviewSection>
+
+                    {/* Links */}
+                    <PreviewSection title="Links">
+                      <PreviewToggle label="Resume" field="resume" value={talent.resumeUrl ? 'Attached' : null} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                      <PreviewToggle label="LinkedIn" field="linkedin" value={talent.linkedInUrl} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                      <PreviewToggle label="GitHub" field="github" value={talent.githubUrl} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                      <PreviewToggle label="Portfolio" field="portfolio" value={talent.portfolioUrl} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                    </PreviewSection>
+                  </div>
+
+                  <div className="mt-6 flex justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowProfilePreview(false)}
+                      className="rounded-lg border border-outline-variant bg-surface-container-lowest px-5 py-2.5 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveVisibility}
+                      disabled={savingVisibility}
+                      className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 font-label-md text-label-md font-medium text-on-accent shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+                    >
+                      {savingVisibility ? (
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-on-accent/30 border-t-on-accent" />
+                      ) : (
+                        <span className="material-symbols-outlined text-lg">save</span>
+                      )}
+                      Save visibility
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </>
       )}
     </DashboardShell>
   )
