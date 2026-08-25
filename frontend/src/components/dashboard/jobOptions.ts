@@ -112,3 +112,30 @@ export const CLOSING_WITHIN_OPTIONS: { value: string; label: string }[] = [
   { value: '14', label: 'Next 14 days' },
   { value: '30', label: 'Next 30 days' },
 ]
+
+/** Salary currency options for the recruiter form. */
+export const SALARY_CURRENCY_OPTIONS: { value: string; label: string }[] = [
+  { value: 'ETB', label: 'ETB (Ethiopian Birr)' },
+  { value: 'USD', label: 'USD (US Dollar)' },
+]
+
+/** Salary period options for the recruiter form. */
+export const SALARY_PERIOD_OPTIONS: { value: string; label: string }[] = [
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'annual', label: 'Annual' },
+  { value: 'fixed', label: 'Fixed amount' },
+]
+
+/** Experience year options for recruiter form (min/max years). */
+export const EXPERIENCE_YEAR_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: 'Not specified' },
+  { value: '0', label: '0 years (Entry)' },
+  { value: '1', label: '1 year' },
+  { value: '2', label: '2 years' },
+  { value: '3', label: '3 years' },
+  { value: '4', label: '4 years' },
+  { value: '5', label: '5 years' },
+  { value: '7', label: '7 years' },
+  { value: '10', label: '10 years' },
+  { value: '15', label: '15+ years' },
+]

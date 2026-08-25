@@ -232,8 +232,13 @@ export interface LabelSegment {
 // (e.g. "Salary: 8,652 birr" buried inside a Requirements paragraph). Only
 // labels followed by ":", "-" or "–" are bolded — plain prose like
 // "years of experience" is left alone.
+//
+// EXTRA_HIGHLIGHT_LABELS: additional labels to bold that don't warrant their
+// own section rule (e.g. "Company:" in card-style synthesized descriptions
+// from GeezJobs/ReporterJobs).
+const EXTRA_HIGHLIGHT_LABELS = 'company|posted'
 const LABEL_HIGHLIGHT_RE = new RegExp(
-  `(?<![A-Za-z])(?:${SECTION_RULES.map((r) => r.keyword.source).join('|')}|preferred)\\s*[:–\\-]{1,2}`,
+  `(?<![A-Za-z])(?:${SECTION_RULES.map((r) => r.keyword.source).join('|')}|${EXTRA_HIGHLIGHT_LABELS})\\s*[:–\\-]{1,2}`,
   'gi',
 )
 

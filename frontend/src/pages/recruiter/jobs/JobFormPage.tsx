@@ -23,6 +23,9 @@ import {
   FORM_WORK_ARRANGEMENT_OPTIONS,
   JOB_TYPE_LABELS,
   WORK_ARRANGEMENT_LABELS,
+  SALARY_CURRENCY_OPTIONS,
+  SALARY_PERIOD_OPTIONS,
+  EXPERIENCE_YEAR_OPTIONS,
 } from '../../../components/dashboard/jobOptions.ts'
 import { cn } from '../../../lib/cn.ts'
 
@@ -38,6 +41,13 @@ const initialValues = {
   workArrangement: '' as WorkMode | '',
   url: '',
   salary: '',
+  salaryMin: '',
+  salaryMax: '',
+  salaryCurrency: '' as string | '',
+  salaryPeriod: '' as string | '',
+  experienceMinYears: '' as string | '',
+  experienceMaxYears: '' as string | '',
+  numberOfPositions: '1',
   deadline: '',
 }
 
@@ -139,6 +149,13 @@ export default function JobFormPage() {
           workArrangement: (job.workMode as WorkMode) || '',
           url: job.url || '',
           salary: job.salary || '',
+          salaryMin: job.salaryMin != null ? String(job.salaryMin) : '',
+          salaryMax: job.salaryMax != null ? String(job.salaryMax) : '',
+          salaryCurrency: job.salaryCurrency || '',
+          salaryPeriod: job.salaryPeriod || '',
+          experienceMinYears: job.experienceMinYears != null ? String(job.experienceMinYears) : '',
+          experienceMaxYears: job.experienceMaxYears != null ? String(job.experienceMaxYears) : '',
+          numberOfPositions: String(job.numberOfPositions || 1),
           deadline: job.deadline ? toLocalDateTimeInput(job.deadline) : '',
         })
       })
@@ -175,6 +192,13 @@ export default function JobFormPage() {
       workMode: values.workArrangement || undefined,
       url: values.url || undefined,
       salary: values.salary || undefined,
+      salaryMin: values.salaryMin ? Number(values.salaryMin) : undefined,
+      salaryMax: values.salaryMax ? Number(values.salaryMax) : undefined,
+      salaryCurrency: values.salaryCurrency || undefined,
+      salaryPeriod: values.salaryPeriod || undefined,
+      experienceMinYears: values.experienceMinYears ? Number(values.experienceMinYears) : undefined,
+      experienceMaxYears: values.experienceMaxYears ? Number(values.experienceMaxYears) : undefined,
+      numberOfPositions: values.numberOfPositions ? Number(values.numberOfPositions) : undefined,
       deadline: values.deadline
         ? new Date(values.deadline).toISOString()
         : undefined,
@@ -411,7 +435,7 @@ export default function JobFormPage() {
                 />
               </Field>
 
-              <Field label="Salary">
+              <Field label="Salary (free text)">
                 <input
                   name="salary"
                   value={formik.values.salary}
@@ -419,6 +443,118 @@ export default function JobFormPage() {
                   onBlur={formik.handleBlur}
                   disabled={!canEdit}
                   placeholder="e.g. ETB 60,000 – 80,000 / month"
+                  className={inputClass}
+                />
+              </Field>
+
+              <Field label="Minimum salary">
+                <input
+                  type="number"
+                  name="salaryMin"
+                  value={formik.values.salaryMin}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  disabled={!canEdit}
+                  placeholder="e.g. 60000"
+                  min="0"
+                  className={inputClass}
+                />
+              </Field>
+
+              <Field label="Maximum salary">
+                <input
+                  type="number"
+                  name="salaryMax"
+                  value={formik.values.salaryMax}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  disabled={!canEdit}
+                  placeholder="e.g. 80000"
+                  min="0"
+                  className={inputClass}
+                />
+              </Field>
+
+              <Field label="Salary currency">
+                <select
+                  name="salaryCurrency"
+                  value={formik.values.salaryCurrency}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  disabled={!canEdit}
+                  className={inputClass}
+                >
+                  <option value="">Not specified</option>
+                  {SALARY_CURRENCY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Salary period">
+                <select
+                  name="salaryPeriod"
+                  value={formik.values.salaryPeriod}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  disabled={!canEdit}
+                  className={inputClass}
+                >
+                  <option value="">Not specified</option>
+                  {SALARY_PERIOD_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Experience (min years)">
+                <select
+                  name="experienceMinYears"
+                  value={formik.values.experienceMinYears}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  disabled={!canEdit}
+                  className={inputClass}
+                >
+                  {EXPERIENCE_YEAR_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Experience (max years)">
+                <select
+                  name="experienceMaxYears"
+                  value={formik.values.experienceMaxYears}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  disabled={!canEdit}
+                  className={inputClass}
+                >
+                  {EXPERIENCE_YEAR_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Number of positions">
+                <input
+                  type="number"
+                  name="numberOfPositions"
+                  value={formik.values.numberOfPositions}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  disabled={!canEdit}
+                  min="1"
+                  max="999"
                   className={inputClass}
                 />
               </Field>

@@ -111,6 +111,7 @@ export interface WhoAmIResponse {
 /** Response of GET /api/account/profile — mirrors ProfileEndpoints.ProfileResponse. */
 export interface ProfileResponse {
   firstName: string
+  middleName: string
   lastName: string
   email: string
   role: string
@@ -141,6 +142,21 @@ export interface TalentProfileResponse {
   linkedInUrl: string
   githubUrl: string
   portfolioUrl: string
+  // Identity / personal
+  middleName: string
+  phoneNumber: string | null
+  dateOfBirth: string | null
+  address: string
+  // Education
+  educationLevel: string
+  educationHistory: string
+  // Professional context
+  currentIndustry: string
+  currentProfession: string
+  preferredLocations: string
+  // Privacy
+  profileVisibility: string
+  skillVisibility: string
 }
 
 export interface RecruiterProfileResponse {
@@ -172,6 +188,7 @@ export interface SetPasswordRequest {
  */
 export interface UpdateProfileRequest {
   firstName?: string
+  middleName?: string
   lastName?: string
   avatarUrl?: string
   city?: string
@@ -201,6 +218,20 @@ export interface TalentProfileUpdate {
   linkedInUrl?: string
   githubUrl?: string
   portfolioUrl?: string
+  // Identity / personal
+  phoneNumber?: string
+  dateOfBirth?: string
+  address?: string
+  // Education
+  educationLevel?: string
+  educationHistory?: string
+  // Professional context
+  currentIndustry?: string
+  currentProfession?: string
+  preferredLocations?: string
+  // Privacy
+  profileVisibility?: string
+  skillVisibility?: string
 }
 
 /** Recruiter section of PUT /api/account/profile. CompanyName is required. */
@@ -244,6 +275,13 @@ export interface JobResponse {
   workMode: string
   url: string
   salary: string
+  salaryMin: number | null
+  salaryMax: number | null
+  salaryCurrency: string | null
+  salaryPeriod: string | null
+  experienceMinYears: number | null
+  experienceMaxYears: number | null
+  numberOfPositions: number
   /** UTC ISO-8601, e.g. "2026-09-15T14:00:00Z" — or null. */
   publishedAt: string | null
   /** UTC ISO-8601 — when the source last refreshed (reposted) the listing, or null. */
@@ -268,6 +306,36 @@ export interface JobResponse {
   sectorName: string | null
   /** Normalized experience level, e.g. "Junior" or "3+ years". */
   experienceLevel: string | null
+  /** Skill tags as a JSON array string, e.g. '["React","Node.js"]' — or null. */
+  skills: string | null
+  /** Source-specific rendering fields — populated from per-site scraper models. */
+  // Afriwork
+  sourceSectors: string | null
+  compensationAmountCents: number | null
+  compensationType: string | null
+  compensationCurrency: string | null
+  entityType: string | null
+  // EthioJobs
+  sourceCategories: string | null
+  // Shared (EthioJobs + HaHu)
+  applicationMethod: string | null
+  applicationEmail: string | null
+  applicationUrl: string | null
+  // HaHuJobs
+  upstreamSource: string | null
+  areaName: string | null
+  subSectorName: string | null
+  numberOfApplicants: number | null
+  // GeezJobs
+  employmentText: string | null
+  jobTime: string | null
+  siteJobType: string | null
+  experienceText: string | null
+  maxExperienceYears: number | null
+  postedText: string | null
+  deadlineText: string | null
+  // ReporterJobs
+  jobTypeText: string | null
   createdAt: string
   updatedAt: string
 }
@@ -331,6 +399,10 @@ export interface JobListParams {
   postedWithin?: number
   /** Days: only jobs whose deadline falls within the next N days. */
   closingWithin?: number
+  /** Minimum salary (inclusive) for range-based filtering. */
+  salaryMin?: number
+  /** Maximum salary (inclusive) for range-based filtering. */
+  salaryMax?: number
 }
 
 /** Body of POST /api/jobs and PUT /api/jobs/{id}. */
@@ -344,6 +416,13 @@ export interface JobWriteRequest {
   workMode?: string
   url?: string
   salary?: string
+  salaryMin?: number
+  salaryMax?: number
+  salaryCurrency?: string
+  salaryPeriod?: string
+  experienceMinYears?: number
+  experienceMaxYears?: number
+  numberOfPositions?: number
   /** UTC ISO-8601 datetime. */
   publishedAt?: string
   deadline?: string
@@ -416,6 +495,73 @@ export interface WebsiteStat {
   apiHits: number
 }
 
+// ---------------------------------------------------------------- Applications
+
+/** A job application in GET /api/applications. */
+export interface ApplicationResponse {
+  id: string
+  jobId: string
+  jobTitle: string
+  jobCompany: string
+  jobLocation: string | null
+  jobSourceName: string | null
+  userId: string
+  applicantName: string
+  applicantEmail: string
+  applicantHeadline: string | null
+  applicantAvatarUrl: string | null
+  coverLetter: string | null
+  resumeUrl: string | null
+  /** lowerCamel: pending | reviewed | accepted | rejected */
+  status: ApplicationStatus
+  appliedAt: string
+  statusUpdatedAt: string | null
+  /** JSON snapshot of the talent's visible profile data at apply time. */
+  profileSnapshot: string | null
+}
+
+/** Application status — lowerCamel enum name. */
+export type ApplicationStatus = 'pending' | 'reviewed' | 'interview' | 'hired' | 'rejected'
+
+/** The `data` payload of GET /api/applications. */
+export interface ApplicationListData {
+  items: ApplicationResponse[]
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPages: number
+  hasNextPage: boolean
+}
+
+/** Body of POST /api/applications. */
+export interface ApplyRequest {
+  jobId: string
+  coverLetter?: string
+  resumeUrl?: string
+}
+
+/** Body of PATCH /api/applications/{id}/status. */
+export interface UpdateApplicationStatusRequest {
+  status: ApplicationStatus
+  recruiterNotes?: string
+}
+
+/** Per-job stats for the recruiter applications dashboard. */
+export interface RecruiterJobStats {
+  jobId: string
+  jobTitle: string
+  jobCompany: string
+  jobLocation: string | null
+  jobType: string
+  viewCount: number
+  pendingCount: number
+  reviewedCount: number
+  interviewCount: number
+  hiredCount: number
+  rejectedCount: number
+  totalApplications: number
+}
+
 /** Result of GET /api/admin/stats/top — top sectors + websites for a period. */
 export interface StatsTopResponse {
   period: 'day' | 'week' | 'month' | 'year'
@@ -423,4 +569,38 @@ export interface StatsTopResponse {
   end: string
   topSectors: SectorCountStat[]
   topWebsites: WebsiteStat[]
+}
+
+// ---------------------------------------------------------------- Admin
+
+export interface AdminUserResponse {
+  id: string
+  firstName: string
+  middleName: string
+  lastName: string
+  email: string
+  userType: string
+  isActive: boolean
+  emailConfirmed: boolean
+  avatarUrl: string | null
+  city: string | null
+  country: string | null
+  createdAt: string
+}
+
+export interface AdminUserListData {
+  items: AdminUserResponse[]
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPages: number
+  hasNextPage: boolean
+}
+
+export interface AdminStatsTopResponse {
+  period: string
+  start: string
+  end: string
+  topSectors: { name: string; count: number }[]
+  topWebsites: { slug: string; name: string; itemsFound: number; itemsInserted: number; runCount: number; apiHits: number }[]
 }

@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  fetchSavedJobs,
   getApiErrorMessage,
   getStoredAuthTokens,
   unsaveJob,
 } from '../../../api'
+import { useSavedJobsQuery } from '../../../hooks/query.ts'
+import { prefetchJob } from '../../../hooks/useJobDetailQuery.ts'
 import { useRequireRole } from '../../../hooks'
 import type { SavedJobItem } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
@@ -61,43 +62,23 @@ function Countdown({ item }: { item: SavedJobItem }) {
  * a removed/deadline-passed job shows a countdown until it leaves the list
  * (deadline + 7 days, the same lifecycle rule as the public feed). After the
  * window the card is gone, but the lifetime count (totalSaved) keeps counting.
+ *
+ * Uses SWR for caching — navigating away and back is instant.
  */
 export default function SavedJobsPage() {
   const auth = useRequireRole('Talent')
 
-  const [items, setItems] = useState<SavedJobItem[]>([])
-  const [totalSaved, setTotalSaved] = useState(0)
-  const [affectedCount, setAffectedCount] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [refreshKey, setRefreshKey] = useState(0)
+  const {
+    data,
+    isLoading,
+    error,
+    refresh: refreshSaved,
+  } = useSavedJobsQuery(auth.status === 'authenticated')
   const { showToast } = useToast()
 
-  useEffect(() => {
-    const tokens = getStoredAuthTokens()
-    if (!tokens || auth.status !== 'authenticated') return
-    let cancelled = false
-    const load = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const data = await fetchSavedJobs(tokens.accessToken)
-        if (!cancelled) {
-          setItems(data.items)
-          setTotalSaved(data.totalSaved)
-          setAffectedCount(data.affectedCount)
-        }
-      } catch (err) {
-        if (!cancelled) setError(getApiErrorMessage(err))
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [auth.status, refreshKey])
+  const items = data?.items ?? []
+  const totalSaved = data?.totalSaved ?? 0
+  const affectedCount = data?.affectedCount ?? 0
 
   const handleUnsave = useCallback(
     async (item: SavedJobItem) => {
@@ -106,12 +87,12 @@ export default function SavedJobsPage() {
       try {
         await unsaveJob(item.jobId, tokens.accessToken)
         showToast('Removed from saved jobs')
-        setRefreshKey((k) => k + 1)
+        refreshSaved()
       } catch {
         showToast('Could not remove this job', 'error')
       }
     },
-    [],
+    [refreshSaved, showToast],
   )
 
   if (auth.status !== 'authenticated') {
@@ -163,11 +144,11 @@ export default function SavedJobsPage() {
         >
           <span className="flex items-center gap-2.5">
             <span className="material-symbols-outlined text-lg">error</span>
-            <span>{error}</span>
+            <span>{getApiErrorMessage(error)}</span>
           </span>
           <button
             type="button"
-            onClick={() => setRefreshKey((k) => k + 1)}
+            onClick={() => refreshSaved()}
             className="rounded-lg border border-on-error-container/30 px-3 py-1.5 font-label-md text-label-md font-medium transition-colors hover:bg-on-error-container/10"
           >
             Retry
@@ -175,7 +156,7 @@ export default function SavedJobsPage() {
         </div>
       )}
 
-      {loading ? (
+      {isLoading ? (
         <div className="mt-10 flex items-center justify-center">
           <span
             aria-hidden="true"
@@ -244,6 +225,7 @@ function SavedCard({
             ? 'border-tertiary-container'
             : 'border-surface-variant hover:border-outline-variant',
       )}
+      onMouseEnter={() => item.jobId && prefetchJob(item.jobId)}
     >
       {/* Header: company mark + title + status */}
       <div className="flex flex-row items-center gap-4 border-b border-surface-variant/50 p-6">

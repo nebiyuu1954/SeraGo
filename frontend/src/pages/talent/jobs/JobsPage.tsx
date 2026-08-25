@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { getApiErrorMessage, getStoredAuthTokens } from '../../../api'
 import {
-  fetchJobLocations,
-  fetchJobs,
-  fetchProfile,
-  fetchSectors,
-  getApiErrorMessage,
-  getStoredAuthTokens,
-} from '../../../api'
-import { useRequireRole, useSavedJobs } from '../../../hooks'
-import type { JobResponse, JobType, PaginationResponse } from '../../../types'
+  useJobsQuery,
+  useProfileQuery,
+  useSectorsQuery,
+  useJobLocationsQuery,
+  useSavedJobsQuery,
+} from '../../../hooks/query.ts'
+import { prefetchJob } from '../../../hooks/useJobDetailQuery.ts'
+import { useRequireRole } from '../../../hooks'
+import type { JobResponse, JobType } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import SaveJobButton from '../../../components/dashboard/SaveJobButton.tsx'
 import { useToast } from '../../../components/dashboard/Toast.tsx'
@@ -29,6 +30,8 @@ import { formatDate, postedLabel } from '../../../lib/date.ts'
 import { initialsOf } from '../../../lib/initials.ts'
 
 import { sourceLogo } from '../../../lib/sourceLogos.ts'
+import { parseSkills } from '../../../lib/sourceCapabilities.ts'
+import { saveJob, unsaveJob } from '../../../api'
 
 function jobTypeLabel(job: JobResponse): string {
   return JOB_TYPE_LABELS[job.jobType as JobType] ?? 'Other'
@@ -41,7 +44,7 @@ function jobDetailPath(job: JobResponse): string {
 
 /**
  * Talent's post-login landing: browse every published job on the platform
- * with search, filters, sorting, and pagination — wired to the jobs API.
+ * with search, filters, sorting, and pagination — wired to SWR-cached queries.
  */
 export default function JobsPage() {
   const auth = useRequireRole('Talent')
@@ -61,6 +64,8 @@ export default function JobsPage() {
   const [workArrangementFilter, setWorkArrangementFilter] = useState('')
   const [postedWithin, setPostedWithin] = useState('')
   const [closingWithin, setClosingWithin] = useState('')
+  const [salaryMin, setSalaryMin] = useState('')
+  const [salaryMax, setSalaryMax] = useState('')
   const [sort, setSort] = useState('newest')
   const [pageSize, setPageSize] = useState(10)
   // The right-hand filter panel is a collapsible sidebar, expanded by default.
@@ -75,55 +80,67 @@ export default function JobsPage() {
   const [draftWorkArrangement, setDraftWorkArrangement] = useState('')
   const [draftPostedWithin, setDraftPostedWithin] = useState('')
   const [draftClosingWithin, setDraftClosingWithin] = useState('')
+  const [draftSalaryMin, setDraftSalaryMin] = useState('')
+  const [draftSalaryMax, setDraftSalaryMax] = useState('')
 
-  // The talent's preferred sector ids + the sector vocabulary (for the
-  // All-jobs filter and the "set your preferences" prompt).
-  const [prefSectorIds, setPrefSectorIds] = useState<string[]>([])
-  const [sectors, setSectors] = useState<{ id: string; name: string }[]>([])
-  // Distinct locations of the live feed, for the Location filter dropdown.
-  const [locations, setLocations] = useState<string[]>([])
+  // --- SWR-cached data (shared across all mounted instances) ---
+
+  const { profile } = useProfileQuery(auth.status === 'authenticated')
+  const prefSectorIds = profile?.talent?.preferredSectorIds ?? []
+
+  const { sectors } = useSectorsQuery(auth.status === 'authenticated')
+  const { locations } = useJobLocationsQuery(auth.status === 'authenticated')
 
   const [page, setPage] = useState(1)
-  const [refreshKey, setRefreshKey] = useState(0)
 
-  const [jobs, setJobs] = useState<JobResponse[]>([])
-  const [pagination, setPagination] = useState<PaginationResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const { isSaved, toggleSaved } = useSavedJobs(auth.status === 'authenticated')
-  const { showToast } = useToast()
-
-  // Load the talent's preferences + the sector vocabulary once.
+  // Debounced search input → applied query.
   useEffect(() => {
-    if (auth.status !== 'authenticated') return
-    const tokens = getStoredAuthTokens()
-    if (!tokens) return
-    let cancelled = false
-    fetchProfile(tokens.accessToken)
-      .then((p) => {
-        if (!cancelled) setPrefSectorIds(p.talent?.preferredSectorIds ?? [])
-      })
-      .catch(() => {
-        /* Non-fatal — the page still works, the prompt just won't know. */
-      })
-    fetchSectors(tokens.accessToken)
-      .then((list) => {
-        if (!cancelled) setSectors(list)
-      })
-      .catch(() => {
-        /* Non-fatal — the All-jobs sector filter just stays empty. */
-      })
-    fetchJobLocations(tokens.accessToken)
-      .then((list) => {
-        if (!cancelled) setLocations(list)
-      })
-      .catch(() => {
-        /* Non-fatal — the Location filter falls back to free text. */
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [auth.status])
+    const t = setTimeout(() => {
+      setAppliedQ(searchInput.trim())
+      setPage(1)
+    }, 350)
+    return () => clearTimeout(t)
+  }, [searchInput])
+
+  // --- SWR job list queries ---
+  // Both views fire as soon as auth is ready, so switching tabs is instant.
+  const authReady = auth.status === 'authenticated'
+  const baseParams = {
+    sort,
+    page,
+    pageSize,
+    q: appliedQ || undefined,
+    jobType: jobType || undefined,
+    location: locationFilter.trim() || undefined,
+    sectorId: sectorFilter || undefined,
+    source: sourceFilters.length > 0 ? sourceFilters.join(',') : undefined,
+    experienceLevel: experienceFilter || undefined,
+    workMode: workArrangementFilter || undefined,
+    postedWithin: postedWithin ? Number(postedWithin) : undefined,
+    closingWithin: closingWithin ? Number(closingWithin) : undefined,
+    salaryMin: salaryMin ? Number(salaryMin) : undefined,
+    salaryMax: salaryMax ? Number(salaryMax) : undefined,
+  }
+
+  // "For you" — preference-filtered feed (enabled once profile loads)
+  const forYouQuery = useJobsQuery(
+    { ...baseParams, forMe: true },
+    authReady && prefSectorIds.length > 0,
+  )
+  // "All jobs" — always fires on login so tab switching is instant
+  const allJobsQuery = useJobsQuery(
+    { ...baseParams, forMe: undefined },
+    authReady,
+  )
+
+  // Pick the active view's data
+  const activeQuery = view === 'forYou' ? forYouQuery : allJobsQuery
+  const { jobs, pagination, isLoading, error, refresh: refreshJobs } = activeQuery
+
+  // --- Saved jobs (shared cache with bookmark buttons) ---
+  const { savedIds, toggleSaved } = useSavedJobsToggle()
+
+  const { showToast } = useToast()
 
   const filtersDirty =
     appliedQ !== '' ||
@@ -134,86 +151,9 @@ export default function JobsPage() {
     experienceFilter !== '' ||
     workArrangementFilter !== '' ||
     postedWithin !== '' ||
-    closingWithin !== ''
-
-  // Debounced search input → applied query. A new query always starts at
-  // page 1, so both are updated together inside the debounce callback.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setAppliedQ(searchInput.trim())
-      setPage(1)
-    }, 350)
-    return () => clearTimeout(t)
-  }, [searchInput])
-
-  useEffect(() => {
-    const tokens = getStoredAuthTokens()
-    if (!tokens || auth.status !== 'authenticated') return
-    let cancelled = false
-    const load = async () => {
-      // "For you" with no preferences yet → show the setup prompt, no fetch.
-      if (view === 'forYou' && prefSectorIds.length === 0) {
-        if (!cancelled) {
-          setJobs([])
-          setPagination(null)
-          setLoading(false)
-        }
-        return
-      }
-      setLoading(true)
-      setError(null)
-      try {
-        // forMe → the API narrows to the caller's preferred sectors.
-        const data = await fetchJobs(
-          {
-            sort,
-            page,
-            pageSize,
-            q: appliedQ || undefined,
-            jobType: jobType || undefined,
-            location: locationFilter.trim() || undefined,
-            forMe: view === 'forYou' ? true : undefined,
-            sectorId: sectorFilter || undefined,
-            source: sourceFilters.length > 0 ? sourceFilters.join(',') : undefined,
-            experienceLevel: experienceFilter || undefined,
-            workMode: workArrangementFilter || undefined,
-            postedWithin: postedWithin ? Number(postedWithin) : undefined,
-            closingWithin: closingWithin ? Number(closingWithin) : undefined,
-          },
-          tokens.accessToken,
-        )
-        if (!cancelled) {
-          setJobs(data.items)
-          setPagination(data.pagination)
-        }
-      } catch (err) {
-        if (!cancelled) setError(getApiErrorMessage(err))
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [
-    auth.status,
-    page,
-    appliedQ,
-    jobType,
-    locationFilter,
-    sectorFilter,
-    sourceFilters,
-    experienceFilter,
-    workArrangementFilter,
-    postedWithin,
-    closingWithin,
-    sort,
-    pageSize,
-    refreshKey,
-    view,
-    prefSectorIds,
-  ])
+    closingWithin !== '' ||
+    salaryMin !== '' ||
+    salaryMax !== ''
 
   const setView = (next: 'forYou' | 'all') => {
     setSearchParams(next === 'forYou' ? {} : { view: 'all' }, { replace: true })
@@ -229,6 +169,8 @@ export default function JobsPage() {
     setWorkArrangementFilter(draftWorkArrangement)
     setPostedWithin(draftPostedWithin)
     setClosingWithin(draftClosingWithin)
+    setSalaryMin(draftSalaryMin)
+    setSalaryMax(draftSalaryMax)
     setPage(1)
   }
 
@@ -243,6 +185,8 @@ export default function JobsPage() {
     setWorkArrangementFilter('')
     setPostedWithin('')
     setClosingWithin('')
+    setSalaryMin('')
+    setSalaryMax('')
     setDraftJobType('')
     setDraftLocation('')
     setDraftSector('')
@@ -251,6 +195,8 @@ export default function JobsPage() {
     setDraftWorkArrangement('')
     setDraftPostedWithin('')
     setDraftClosingWithin('')
+    setDraftSalaryMin('')
+    setDraftSalaryMax('')
     setPage(1)
   }
 
@@ -283,7 +229,7 @@ export default function JobsPage() {
           </h1>
           <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
             {view === 'forYou'
-              ? 'Jobs matched to your preferred sectors — nothing you’d scroll past.'
+              ? 'Jobs matched to your preferred sectors — nothing you\'d scroll past.'
               : 'Browse every open position on the platform — search, filter, and apply.'}
           </p>
         </div>
@@ -347,11 +293,11 @@ export default function JobsPage() {
         >
           <span className="flex items-center gap-2.5">
             <span className="material-symbols-outlined text-lg">error</span>
-            <span>{error}</span>
+            <span>{getApiErrorMessage(error)}</span>
           </span>
           <button
             type="button"
-            onClick={() => setRefreshKey((k) => k + 1)}
+            onClick={() => refreshJobs()}
             className="rounded-lg border border-on-error-container/30 px-3 py-1.5 font-label-md text-label-md font-medium transition-colors hover:bg-on-error-container/10"
           >
             Retry
@@ -420,7 +366,7 @@ export default function JobsPage() {
       <div className="mt-6 flex flex-col gap-6 lg:flex-row lg:items-start">
         {/* Left: result count + cards + pagination */}
         <div className="min-w-0 flex-1">
-          {!loading && !error && pagination && (
+          {!isLoading && !error && pagination && (
             <p className="font-label-md text-label-md text-on-surface-variant">
               {pagination.totalCount === 0
                 ? 'No jobs found'
@@ -434,7 +380,7 @@ export default function JobsPage() {
             <div className="mt-5">
               <PreferencesPrompt onBrowseAll={() => setView('all')} />
             </div>
-          ) : loading ? (
+          ) : isLoading ? (
             <div className="mt-5">
               <SkeletonGrid count={pageSize} />
             </div>
@@ -452,7 +398,7 @@ export default function JobsPage() {
                 <JobCard
                   key={job.id}
                   job={job}
-                  saved={isSaved(job.id)}
+                  saved={savedIds.has(job.id)}
                   onToggleSave={() => {
                     toggleSaved(job.id).then((result) => {
                       if (result === 'saved') showToast('Job saved for later')
@@ -692,6 +638,32 @@ export default function JobsPage() {
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
+                    Min salary (ETB)
+                  </label>
+                  <input
+                    type="number"
+                    value={draftSalaryMin}
+                    onChange={(e) => setDraftSalaryMin(e.target.value)}
+                    placeholder="e.g. 20000"
+                    min="0"
+                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
+                    Max salary (ETB)
+                  </label>
+                  <input
+                    type="number"
+                    value={draftSalaryMax}
+                    onChange={(e) => setDraftSalaryMax(e.target.value)}
+                    placeholder="e.g. 80000"
+                    min="0"
+                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
                 <div className="flex gap-2 pt-1">
                   <button
                     type="button"
@@ -729,17 +701,48 @@ function JobCard({
   onToggleSave: () => void
 }) {
   const brandLogo = sourceLogo(job.sourceName)
+  // Build structured salary display: prefer min/max range, fall back to free text.
+  const salaryLabel =
+    job.salaryMin != null || job.salaryMax != null
+      ? [
+          job.salaryCurrency || '',
+          job.salaryMin != null && job.salaryMax != null
+            ? `${job.salaryMin.toLocaleString()} – ${job.salaryMax.toLocaleString()}`
+            : job.salaryMin != null
+              ? `From ${job.salaryMin.toLocaleString()}`
+              : `Up to ${job.salaryMax!.toLocaleString()}`,
+          job.salaryPeriod ? `/${job.salaryPeriod}` : '',
+        ]
+          .filter(Boolean)
+          .join(' ')
+      : job.salary || ''
+
+  // Build experience display: prefer numeric range, fall back to text.
+  const experienceLabel =
+    job.experienceMinYears != null || job.experienceMaxYears != null
+      ? job.experienceMinYears != null && job.experienceMaxYears != null
+        ? `${job.experienceMinYears}–${job.experienceMaxYears} years`
+        : job.experienceMinYears != null
+          ? `${job.experienceMinYears}+ years`
+          : `Up to ${job.experienceMaxYears} years`
+      : job.experienceLevel || ''
+
   const meta = [
     {
       icon: 'location_on',
       label: job.location || 'Location not specified',
     },
-    { icon: 'payments', label: job.salary || 'Salary not specified' },
+    ...(salaryLabel
+      ? [{ icon: 'payments', label: salaryLabel }]
+      : [{ icon: 'payments', label: 'Salary not specified' }]),
     { icon: 'schedule', label: jobTypeLabel(job) },
-    ...(job.experienceLevel
-      ? [{ icon: 'work', label: job.experienceLevel }]
+    ...(experienceLabel
+      ? [{ icon: 'work', label: experienceLabel }]
       : []),
     ...(job.sectorName ? [{ icon: 'domain', label: job.sectorName }] : []),
+    ...(job.numberOfPositions > 1
+      ? [{ icon: 'group', label: `${job.numberOfPositions} positions` }]
+      : []),
     {
       icon: 'history',
       label: postedLabel(job.publishedAt, job.refreshedAt) || 'Posted recently',
@@ -749,8 +752,13 @@ function JobCard({
       : []),
   ]
 
+  const skills = parseSkills(job.skills).slice(0, 4)  // show max 4 chips on card
+
   return (
-    <article className="group flex flex-col overflow-hidden rounded-lg border border-surface-variant bg-surface-container-lowest transition-all duration-300 hover:border-outline-variant hover:shadow-sm">
+    <article
+      className="group flex flex-col overflow-hidden rounded-lg border border-surface-variant bg-surface-container-lowest transition-all duration-300 hover:border-outline-variant hover:shadow-sm"
+      onMouseEnter={() => prefetchJob(job.id)}
+    >
       {/* Header: company mark + title (mirrors the landing page cards) */}
       <div className="flex flex-grow flex-row items-center gap-4 border-b border-surface-variant/50 p-6">
         <div className="flex h-12 w-28 shrink-0 items-center justify-center overflow-hidden rounded bg-surface-container-low px-2">
@@ -817,6 +825,18 @@ function JobCard({
             </div>
           ))}
         </div>
+        {skills.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {skills.map((skill) => (
+              <span
+                key={skill}
+                className="inline-flex items-center rounded-full bg-primary-container/40 px-2.5 py-0.5 font-label-sm text-label-sm text-primary"
+              >
+                {skill}
+              </span>
+            ))}
+          </div>
+        )}
         <div className="mt-auto flex gap-2">
           {job.url ? (
             <a
@@ -948,7 +968,7 @@ function PreferencesPrompt({ onBrowseAll }: { onBrowseAll: () => void }) {
       </h2>
       <p className="mt-1 max-w-md font-body-md text-body-md text-on-surface-variant">
         Tell us the sectors you work in and SeraGo will only show you jobs that
-        matter — no more scrolling past roles you’d never apply for.
+        matter — no more scrolling past roles you'd never apply for.
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-3">
         <Link
@@ -967,4 +987,33 @@ function PreferencesPrompt({ onBrowseAll }: { onBrowseAll: () => void }) {
       </div>
     </div>
   )
+}
+
+/* ------------------------------------------------------------- Saved jobs toggle (SWR-backed) */
+
+/**
+ * Optimistic save/unsave toggle that uses the SWR-cached saved jobs list.
+ * After a toggle it mutates the cache so bookmark buttons across all pages
+ * update instantly.
+ */
+function useSavedJobsToggle() {
+  const { savedIds, refresh } = useSavedJobsQuery()
+
+  const toggleSaved = async (jobId: string): Promise<'saved' | 'removed' | null> => {
+    const tokens = getStoredAuthTokens()
+    if (!tokens) return null
+    const wasSaved = savedIds.has(jobId)
+    // Optimistic update — SWR will revalidate anyway.
+    try {
+      if (wasSaved) await unsaveJob(jobId, tokens.accessToken)
+      else await saveJob(jobId, tokens.accessToken)
+      // Revalidate the saved jobs cache so all bookmark buttons reflect the change.
+      refresh()
+      return wasSaved ? 'removed' : 'saved'
+    } catch {
+      return null
+    }
+  }
+
+  return { savedIds, toggleSaved }
 }

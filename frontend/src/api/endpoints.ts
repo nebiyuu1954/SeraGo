@@ -43,6 +43,22 @@ export const API_ENDPOINTS = {
     /** GET /api/saved-jobs — my saved jobs with lifecycle status. */
     list: '/saved-jobs',
   },
+  applications: {
+    /** POST /api/applications — apply to a Serago job. */
+    create: '/applications',
+    /** GET /api/applications — my applications (talent). */
+    list: '/applications',
+    /** GET /api/applications/stats — per-job application counts + view counts (recruiter). */
+    stats: '/applications/stats',
+    /** GET /api/applications/all — all applications across my posted jobs (recruiter). */
+    all: '/applications/all',
+    /** GET /api/applications/job/{jobId} — applications for a specific job (recruiter). */
+    byJob: (jobId: string) => `/applications/job/${jobId}`,
+    /** GET /api/applications/{id} — single application detail. */
+    detail: (id: string) => `/applications/${id}`,
+    /** PATCH /api/applications/{id}/status — update status (recruiter). */
+    status: (id: string) => `/applications/${id}/status`,
+  },
   sectors: {
     /** GET /api/sectors — the canonical sector list for pickers. */
     list: '/sectors',
@@ -51,8 +67,11 @@ export const API_ENDPOINTS = {
     /** POST /api/admin/sync/scraped-jobs — import + normalize scraped jobs. */
     syncScrapedJobs: '/admin/sync/scraped-jobs',
   },
-  stats: {
-    /** GET /api/admin/stats/top?period=day|week|month|year — top sectors + websites (admin). */
+  adminUsers: {
+    list: '/admin/users',
+    detail: (id: string) => `/admin/users/${id}`,
+  },
+  adminStats: {
     top: '/admin/stats/top',
   },
 } as const

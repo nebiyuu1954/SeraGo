@@ -55,6 +55,25 @@ builder.Services.AddRateLimiting(builder.Configuration); // API throttling (fixe
 builder.Services.AddInfrastructure(builder.Configuration); // PostgreSQL DbContext + AuthSeeder
 builder.Services.SetupAufy(builder.Configuration);         // Aufy: Identity + JWT + custom signup
 
+// Surface the main-DB connection source so connection-string issues are obvious at startup.
+{
+    var mainCs = builder.Configuration.GetConnectionString("DefaultConnection");
+    var envUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+    if (!string.IsNullOrWhiteSpace(mainCs))
+    {
+        var host = new Npgsql.NpgsqlConnectionStringBuilder(mainCs).Host;
+        Console.WriteLine($"[env] Main DB: using ConnectionStrings__DefaultConnection (host={host})");
+    }
+    else if (!string.IsNullOrWhiteSpace(envUrl))
+    {
+        Console.WriteLine($"[env] Main DB: using DATABASE_URL env var");
+    }
+    else
+    {
+        Console.WriteLine("[env] WARNING: no main DB connection string found in config or DATABASE_URL env var.");
+    }
+}
+
 // Scraper database (Neon) connection for the admin job sync — read from the
 // gitignored .env(SeraGo-Scraper) file, never from committed config.
 builder.Services.AddSingleton(new ScraperDbOptions
@@ -86,6 +105,7 @@ builder.Services.AddSingleton<JobLifecycleCleanupService>(); // weekly deadline+
 builder.Services.AddHostedService<SyncScheduler>();
 
 builder.Services.AddScoped<ISectorNormalizer, SectorNormalizer>(); // sector standardization
+builder.Services.AddSingleton<R2StorageService>(); // Cloudflare R2 file storage
 builder.Services.Configure<IdentityOptions>(options =>
 {
     // Accounts are only usable after their email is confirmed — the signup and
@@ -168,8 +188,11 @@ app.MapSeraGoEmailConfirmEndpoint();             // GET /api/account/email/confi
 
 app.MapJobEndpoints();   // /api/jobs — browse, search, post (draft flow), moderate
 app.MapSavedJobEndpoints(); // /api/saved-jobs — save/unsave/list with lifecycle status
+app.MapApplicationEndpoints(); // /api/applications — talent apply, recruiter manage
 app.MapSectorEndpoints(); // /api/sectors + admin sector management + scraped-job sync
 app.MapStatsEndpoints();  // /api/admin/stats — top sectors + websites per period (scraper DB)
+app.MapAdminUserEndpoints(); // /api/admin/users — admin user management
+app.MapFileUploadEndpoints(); // /api/upload — presigned URLs for file uploads
 
 app.MapGet("/", () => Results.Ok(new { service = "SeraGo API", docs = "/swagger" }));
 

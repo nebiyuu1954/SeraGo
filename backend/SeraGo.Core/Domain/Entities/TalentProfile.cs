@@ -33,6 +33,13 @@ public class TalentProfile
     /// <summary>Skill names, e.g. ["Canva", "Adobe Illustrator"] — mirrors scraper skills.</summary>
     public List<string> Skills { get; set; } = [];
 
+    /// <summary>
+    /// Per-skill visibility toggles as a JSON object. Keys are skill names,
+    /// values are booleans (true = share when applying). Null or missing
+    /// keys default to true. Lets talent show only relevant skills per application.
+    /// </summary>
+    public string SkillVisibility { get; set; } = "{}";
+
     /// <summary>Employment types they want — mirrors scraper JobType.</summary>
     public List<JobType> DesiredJobTypes { get; set; } = [];
 
@@ -48,10 +55,53 @@ public class TalentProfile
     /// <summary>How soon they can start.</summary>
     public Availability? Availability { get; set; }
 
+    // --------------------------------------------------- Identity / personal
+
+    /// <summary>Date of birth (nullable for privacy).</summary>
+    public DateOnly? DateOfBirth { get; set; }
+
+    /// <summary>Street address.</summary>
+    public string Address { get; set; } = string.Empty;
+
+    // --------------------------------------------------- Education
+
+    /// <summary>Highest education level: "HighSchool" / "Bachelors" / "Masters" / "PhD".</summary>
+    public string EducationLevel { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Education history as a JSON array. Each entry:
+    /// { level, institution, degree, gpa, startYear, endYear? }.
+    /// Variable-length — one entry per degree the talent wants to share.
+    /// </summary>
+    public string EducationHistory { get; set; } = "[]";
+
+    // --------------------------------------------------- Professional context
+
+    /// <summary>Current industry, e.g. "Technology" / "Finance".</summary>
+    public string CurrentIndustry { get; set; } = string.Empty;
+
+    /// <summary>Current profession / job title, e.g. "Software Engineer".</summary>
+    public string CurrentProfession { get; set; } = string.Empty;
+
+    /// <summary>Preferred locations as a JSON array of strings, e.g. ["Addis Ababa", "Remote"].</summary>
+    public string PreferredLocations { get; set; } = "[]";
+
+    // --------------------------------------------------- Links
+
     public string ResumeUrl { get; set; } = string.Empty;
     public string LinkedInUrl { get; set; } = string.Empty;
     public string GitHubUrl { get; set; } = string.Empty;
     public string PortfolioUrl { get; set; } = string.Empty;
+
+    // --------------------------------------------------- Privacy
+
+    /// <summary>
+    /// Per-field visibility toggles as a JSON object. Keys are field names,
+    /// values are booleans (true = share with recruiter on application).
+    /// Example: { "phone": true, "dateOfBirth": false, "education": true, ... }.
+    /// Null or missing keys default to true (share by default).
+    /// </summary>
+    public string ProfileVisibility { get; set; } = "{}";
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

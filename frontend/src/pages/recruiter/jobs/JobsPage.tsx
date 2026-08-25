@@ -2,17 +2,16 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   deleteJob,
-  fetchJobs,
   getApiErrorMessage,
   getStoredAuthTokens,
   submitJob,
 } from '../../../api'
+import { useJobsQuery } from '../../../hooks/query.ts'
 import { useRequireRole } from '../../../hooks'
 import type {
   JobResponse,
   JobStatus,
   JobType,
-  PaginationResponse,
 } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import {
@@ -67,7 +66,7 @@ function statusBadge(job: JobResponse): StatusBadge {
 /**
  * Recruiter's post-login landing: their own job postings (the "Jobs" table,
  * with a separate Drafts view) with search, filters, delete, and pagination —
- * wired to the jobs API.
+ * wired to SWR-cached queries.
  */
 export default function JobsPage() {
   const auth = useRequireRole('Recruiter')
@@ -88,12 +87,6 @@ export default function JobsPage() {
   const [draftLocation, setDraftLocation] = useState('')
 
   const [page, setPage] = useState(1)
-  const [refreshKey, setRefreshKey] = useState(0)
-
-  const [jobs, setJobs] = useState<JobResponse[]>([])
-  const [pagination, setPagination] = useState<PaginationResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
   const [toast, setToast] = useState<string | null>(
     (location.state as { toast?: string } | null)?.toast ?? null,
@@ -110,14 +103,13 @@ export default function JobsPage() {
     jobType !== '' || status !== '' || locationFilter.trim() !== ''
 
   // Auto-dismiss the success toast.
-  useEffect(() => {
+  useState(() => {
     if (!toast) return
     const t = setTimeout(() => setToast(null), 4000)
     return () => clearTimeout(t)
-  }, [toast])
+  })
 
-  // Debounced search input → applied query. A new query always starts at
-  // page 1, so both are updated together inside the debounce callback.
+  // Debounced search input → applied query.
   useEffect(() => {
     const t = setTimeout(() => {
       setAppliedQ(searchInput.trim())
@@ -126,51 +118,26 @@ export default function JobsPage() {
     return () => clearTimeout(t)
   }, [searchInput])
 
-  useEffect(() => {
-    const tokens = getStoredAuthTokens()
-    if (!tokens || auth.status !== 'authenticated') return
-    let cancelled = false
-    const load = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const data = await fetchJobs(
-          {
-            mine: true,
-            sort: 'newest',
-            page,
-            pageSize: PAGE_SIZE,
-            q: appliedQ || undefined,
-            jobType: jobType || undefined,
-            status: view === 'drafts' ? 'draft' : status || undefined,
-            location: locationFilter.trim() || undefined,
-          },
-          tokens.accessToken,
-        )
-        if (!cancelled) {
-          setJobs(data.items)
-          setPagination(data.pagination)
-        }
-      } catch (err) {
-        if (!cancelled) setError(getApiErrorMessage(err))
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [
-    auth.status,
-    view,
-    page,
-    appliedQ,
-    jobType,
-    status,
-    locationFilter,
-    refreshKey,
-  ])
+  // --- SWR job list query (mine=true, recruiter view) ---
+  const {
+    jobs,
+    pagination,
+    isLoading,
+    error,
+    refresh: refreshJobs,
+  } = useJobsQuery(
+    {
+      mine: true,
+      sort: 'newest',
+      page,
+      pageSize: PAGE_SIZE,
+      q: appliedQ || undefined,
+      jobType: jobType || undefined,
+      status: view === 'drafts' ? 'draft' : status || undefined,
+      location: locationFilter.trim() || undefined,
+    },
+    auth.status === 'authenticated',
+  )
 
   const switchView = (next: 'active' | 'drafts') => {
     if (next === view) return
@@ -186,15 +153,15 @@ export default function JobsPage() {
     const tokens = getStoredAuthTokens()
     if (!tokens) return
     const message = hard
-      ? `Delete the draft “${job.title}” permanently? This can't be undone.`
-      : `Delete “${job.title}”? It will be hidden from the platform.`
+      ? `Delete the draft "${job.title}" permanently? This can't be undone.`
+      : `Delete "${job.title}"? It will be hidden from the platform.`
     if (!window.confirm(message)) return
     deleteJob(job.id, tokens.accessToken, hard)
       .then(() => {
         setToast(hard ? 'Draft deleted permanently.' : 'Job deleted.')
-        setRefreshKey((k) => k + 1)
+        refreshJobs()
       })
-      .catch((err) => setError(getApiErrorMessage(err)))
+      .catch((err) => setToast(getApiErrorMessage(err)))
   }
 
   /** Publish a draft — sends it to the admin review queue. */
@@ -204,9 +171,9 @@ export default function JobsPage() {
     submitJob(job.id, tokens.accessToken)
       .then(() => {
         setToast('Job submitted for review.')
-        setRefreshKey((k) => k + 1)
+        refreshJobs()
       })
-      .catch((err) => setError(getApiErrorMessage(err)))
+      .catch((err) => setToast(getApiErrorMessage(err)))
   }
 
   const toggleFilter = () => {
@@ -336,11 +303,11 @@ export default function JobsPage() {
         >
           <span className="flex items-center gap-2.5">
             <span className="material-symbols-outlined text-lg">error</span>
-            <span>{error}</span>
+            <span>{getApiErrorMessage(error)}</span>
           </span>
           <button
             type="button"
-            onClick={() => setRefreshKey((k) => k + 1)}
+            onClick={() => refreshJobs()}
             className="rounded-lg border border-on-error-container/30 px-3 py-1.5 font-label-md text-label-md font-medium transition-colors hover:bg-on-error-container/10"
           >
             Retry
@@ -478,7 +445,7 @@ export default function JobsPage() {
         </div>
 
         {/* Table / states */}
-        {loading ? (
+        {isLoading ? (
           <SkeletonRows />
         ) : error ? null : jobs.length === 0 ? (
           <EmptyState

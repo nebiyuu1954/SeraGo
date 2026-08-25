@@ -1,5 +1,4 @@
 using System.Data.Common;
-using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -13,10 +12,12 @@ using SeraGo.Infrastructure.Data;
 namespace SeraGo.API.Services;
 
 /// <summary>
-/// Imports published jobs from the scraper's database (Neon) into SeraGo's
-/// Jobs table. This is the single implementation behind every trigger: the
-/// admin "Sync scraped jobs" endpoint, the auto-sync scheduler
-/// (<see cref="SyncScheduler"/>), and the scraper-side webhook (later).
+/// Imports published jobs from the scraper's <c>core_normalizedjob</c> table
+/// into SeraGo's Jobs table. NormalizedJob is the source-agnostic contract
+/// written by every scraper's <c>_normalize_for_export()</c> — the .NET sync
+/// reads this single flat table instead of the old 5-way LEFT JOIN across
+/// per-site models, so adding a new website is a pure Python concern.
+///
 /// Re-runs are idempotent — existing (SourceName, ExternalId) pairs are
 /// updated in place, never duplicated — and concurrent triggers are
 /// serialized by an internal gate, so overlapping runs are safe.
@@ -66,10 +67,6 @@ public sealed class ScrapedJobSyncService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-        // Resolve the registered singleton directly: IOptions<ScraperDbOptions>
-        // would create a fresh EMPTY instance (the type is registered as a
-        // plain singleton, not via Options.Create), so IsConfigured would
-        // always be false and the sync would always 400.
         var options = scope.ServiceProvider.GetRequiredService<ScraperDbOptions>();
 
         if (!options.IsConfigured)
@@ -103,20 +100,10 @@ public sealed class ScrapedJobSyncService
         var uncategorized = 0;
         var deactivated = 0;
         var unknownSectors = new SortedSet<string>();
-        // Bootstrap only: every active listing seen — the set-based deactivation
-        // pass at the end hides SeraGo jobs whose key is NOT in this set.
-        // Incremental runs deactivate per-item instead (the is_active branch
-        // in the loop below), so they never need a full-table scan.
         var seenKeys = new HashSet<string>();
-        // Newest scraper updated_at processed — becomes the next cursor.
         DateTime? maxUpdatedAt = null;
 
         // Load every existing scraped-sourced job ONCE, then match in memory.
-        // The previous per-row FirstOrDefaultAsync was an N+1 — one EF query
-        // per scraper row (~1,700 queries on the last full sync). The unique
-        // (SourceName, ExternalId) index guarantees at most one row per key.
-        // Reused by the deactivation pass below, so that pass needs no query
-        // of its own either.
         var existingJobs = await db.Jobs
             .Where(j => j.SourceName != null && j.ExternalId != null)
             .ToListAsync(ct);
@@ -126,6 +113,8 @@ public sealed class ScrapedJobSyncService
             jobsByKey[(existing.SourceName!, existing.ExternalId!)] = existing;
         }
 
+        // Read from the NormalizedJob table — the source-agnostic contract.
+        // No more 5-way LEFT JOIN across per-site models.
         await using var conn = new NpgsqlConnection(options.ConnectionString);
         await conn.OpenAsync(ct);
         await using var cmd = conn.CreateCommand();
@@ -134,9 +123,6 @@ public sealed class ScrapedJobSyncService
         {
             cmd.Parameters.AddWithValue("watermark", watermark!.Value);
         }
-        // Lifecycle window (deadline + 7 days — the same rule as the public
-        // feed): past-window listings are never imported, so a SeraGo row
-        // deleted by the weekly cleanup can't be resurrected by the next sync.
         cmd.Parameters.AddWithValue(
             "lifecycleCutoff",
             DateTime.UtcNow.AddDays(-JobLifecycle.GraceDays));
@@ -156,16 +142,13 @@ public sealed class ScrapedJobSyncService
 
             if (!isActive)
             {
-                // The listing disappeared — hide its job. Deactivation happens
-                // per-item here (driven by the scraper's is_active flip), so
-                // incremental runs never need a full-table scan.
                 if (jobsByKey.TryGetValue((sourceName, externalId), out var gone) && gone.IsActive)
                 {
                     gone.IsActive = false;
                     gone.UpdatedAt = DateTimeOffset.UtcNow;
                     deactivated++;
                 }
-                continue; // gone listings are never re-imported
+                continue;
             }
 
             if (isBootstrap)
@@ -173,8 +156,10 @@ public sealed class ScrapedJobSyncService
                 seenKeys.Add($"{sourceName}|{externalId}");
             }
 
-            var rawSector = PickRawSector(reader, sourceSlug, out var extraSector);
-            var title = reader.IsDBNull(reader.GetOrdinal("title")) ? string.Empty : reader.GetString(reader.GetOrdinal("title"));
+            // Sector resolution: the NormalizedJob carries the raw sector_name;
+            // we resolve it through aliases, then fall back to title classification.
+            var rawSector = ReadString(reader, "sector_name");
+            var title = ReadString(reader, "title") ?? string.Empty;
             var sector = ResolveSector(sectors, rawSector, title);
             if (sector is null)
             {
@@ -192,59 +177,106 @@ public sealed class ScrapedJobSyncService
             var jobType = MapJobType(ReadString(reader, "job_type"));
             var publishedAt = ReadDateTime(reader, "published_at");
             var deadline = ReadDateTime(reader, "deadline");
-            var description = ReadString(reader, "description");
-            var company = ReadString(reader, "company");
-            // Afriwork posts made by a hidden employer (entity_type =
-            // "private_client") show "Private Client" on the source site —
-            // the API leaks the real name, but we respect the poster's
-            // anonymity and mirror what the source displays.
-            if (sourceSlug == "afriwork"
-                && string.Equals(ReadString(reader, "afriwork_entity_type"), "private_client", StringComparison.OrdinalIgnoreCase))
-            {
-                company = "Private Client";
-            }
-            // When the source refreshed (reposted) a listing, the card shows
-            // the refresh date instead of the original publish date.
-            var refreshedAt = sourceSlug == "afriwork"
-                ? ReadDateTime(reader, "afriwork_refreshed_at")
-                : null;
-            var location = ReadString(reader, "location");
-            var url = ReadString(reader, "url");
-            var salary = ReadString(reader, "salary");
-            var logo = ReadString(reader, "company_logo") ?? ReadString(reader, "entity_logo");
-            // Blank logos are stored as null (matching the insert path) so
-            // the equality comparison and the stored value stay consistent.
+            var description = ReadString(reader, "description") ?? string.Empty;
+            var company = ReadString(reader, "company") ?? string.Empty;
+            var location = ReadString(reader, "location") ?? string.Empty;
+            var url = ReadString(reader, "url") ?? string.Empty;
+            var salary = ReadString(reader, "salary") ?? string.Empty;
+            var logo = ReadString(reader, "company_logo_url");
             logo = string.IsNullOrWhiteSpace(logo) ? null : logo;
-            var experience = MapExperience(reader, sourceSlug);
-            // Where the work happens: Afriwork's API carries job_site and
-            // EthioJobs' carries location_type (Office/Hybrid/Remote); the
-            // other sources expose neither, so they default to Onsite.
-            var workMode = sourceSlug switch
-            {
-                "afriwork" => MapWorkMode(ReadString(reader, "afriwork_job_site")),
-                "ethiojobs" => MapWorkMode(ReadString(reader, "ethio_location_type")),
-                _ => WorkMode.Onsite,
-            };
+            var experience = ReadString(reader, "experience_level");
+            var workMode = MapWorkMode(ReadString(reader, "work_mode"));
+            var skills = ReadJsonArray(reader, "skills");
 
-            // Compare EVERY imported field — the old 4-field subset meant
-            // edits to description/company/location/url/salary/publishedAt on
-            // the source never propagated, so the shelf silently went stale.
+            // Source-specific fields.
+            var sourceSectors = ReadJsonArray(reader, "afriwork_sectors");
+            var compCents = ReadNullableInt(reader, "compensation_amount_cents");
+            var compType = ReadString(reader, "compensation_type");
+            var compCurrency = ReadString(reader, "compensation_currency");
+            var entityType = ReadString(reader, "entity_type");
+            var ethioCategories = ReadJsonArray(reader, "ethio_categories");
+            var appMethod = ReadString(reader, "ethio_app_method") ?? ReadString(reader, "hahu_app_method");
+            var appEmail = ReadString(reader, "ethio_app_email") ?? ReadString(reader, "hahu_app_email");
+            var appUrl = ReadString(reader, "ethio_career_link") ?? ReadString(reader, "hahu_app_url");
+            var hahuLogo = ReadString(reader, "hahu_entity_logo");
+            var hahuSector = ReadString(reader, "hahu_sector");
+            var hahuSubSector = ReadString(reader, "hahu_sub_sector");
+            var hahuUpstream = ReadString(reader, "hahu_upstream");
+            var areaName = ReadString(reader, "area_name");
+            var hahuExp = ReadNullableInt(reader, "hahu_exp");
+            var numApplicants = ReadNullableInt(reader, "number_of_applicants");
+            var hahuSalary = ReadNullableDecimal(reader, "hahu_salary");
+            var geezLogo = ReadString(reader, "geez_logo");
+            var employmentText = ReadString(reader, "employment_text");
+            var jobTime = ReadString(reader, "job_time");
+            var geezJobType = ReadString(reader, "geez_job_type");
+            var experienceText = ReadString(reader, "experience_text");
+            var minExp = ReadNullableInt(reader, "min_experience_years");
+            var maxExp = ReadNullableInt(reader, "max_experience_years");
+            var geezPosted = ReadString(reader, "geez_posted");
+            var deadlineText = ReadString(reader, "deadline_text");
+            var reporterTypeText = ReadString(reader, "reporter_type_text");
+            var reporterPosted = ReadString(reader, "reporter_posted");
+            var refreshedAt = ReadDateTime(reader, "refreshed_at");
+
+            // Resolve the best company logo: prefer per-site logos over the universal one.
+            var bestLogo = logo;
+            if (string.IsNullOrWhiteSpace(bestLogo) && !string.IsNullOrWhiteSpace(hahuLogo)) bestLogo = hahuLogo;
+            if (string.IsNullOrWhiteSpace(bestLogo) && !string.IsNullOrWhiteSpace(geezLogo)) bestLogo = geezLogo;
+
+            // Resolve experience level: prefer the universal one, fall back to HaHu years.
+            var bestExperience = experience;
+            if (string.IsNullOrWhiteSpace(bestExperience) && hahuExp is not null)
+            {
+                bestExperience = MapExperienceLevel(hahuExp.Value);
+            }
+
+            // Resolve salary: prefer the universal text, fall back to HaHu decimal.
+            var bestSalary = salary;
+            if (string.IsNullOrWhiteSpace(bestSalary) && hahuSalary is not null)
+            {
+                bestSalary = $"{hahuSalary.Value:,.0f} ETB monthly";
+            }
+
+            // Compare EVERY imported field.
             var isSame = job is not null
                 && job.Title == title
-                && job.Description == (description ?? string.Empty)
-                && job.Company == (company ?? string.Empty)
-                && job.Location == (location ?? string.Empty)
+                && job.Description == description
+                && job.Company == company
+                && job.Location == location
                 && job.JobType == jobType
-                && job.Url == (url ?? string.Empty)
-                && job.Salary == (salary ?? string.Empty)
+                && job.Url == url
+                && job.Salary == bestSalary
                 && job.PublishedAt == publishedAt
                 && job.Deadline == deadline
-                && job.RefreshedAt == refreshedAt
                 && job.SectorId == sector?.Id
                 && job.SectorName == sector?.Name
-                && job.CompanyLogoUrl == logo
-                && job.ExperienceLevel == experience
-                && job.WorkMode == workMode;
+                && job.CompanyLogoUrl == bestLogo
+                && job.ExperienceLevel == bestExperience
+                && job.WorkMode == workMode
+                && job.Skills == skills
+                && job.SourceSectors == sourceSectors
+                && job.CompensationAmountCents == compCents
+                && job.CompensationType == compType
+                && job.CompensationCurrency == compCurrency
+                && job.EntityType == entityType
+                && job.SourceCategories == ethioCategories
+                && job.ApplicationMethod == appMethod
+                && job.ApplicationEmail == appEmail
+                && job.ApplicationUrl == appUrl
+                && job.UpstreamSource == hahuUpstream
+                && job.AreaName == areaName
+                && job.SubSectorName == hahuSubSector
+                && job.NumberOfApplicants == numApplicants
+                && job.EmploymentText == employmentText
+                && job.JobTime == jobTime
+                && job.SiteJobType == geezJobType
+                && job.ExperienceText == experienceText
+                && job.MaxExperienceYears == maxExp
+                && job.PostedText == (geezPosted ?? reporterPosted)
+                && job.DeadlineText == deadlineText
+                && job.JobTypeText == reporterTypeText
+                && job.RefreshedAt == refreshedAt;
             if (job is not null)
             {
                 if (isSame)
@@ -253,25 +285,44 @@ public sealed class ScrapedJobSyncService
                     continue;
                 }
                 job.Title = title;
-                job.Description = description ?? string.Empty;
-                job.Company = company ?? string.Empty;
-                job.Location = location ?? string.Empty;
+                job.Description = description;
+                job.Company = company;
+                job.Location = location;
                 job.JobType = jobType;
-                job.Url = url ?? string.Empty;
-                job.Salary = salary ?? string.Empty;
+                job.Url = url;
+                job.Salary = bestSalary;
                 job.PublishedAt = publishedAt;
                 job.Deadline = deadline;
-                job.RefreshedAt = refreshedAt;
                 job.SectorId = sector?.Id;
                 job.SectorName = sector?.Name;
-                job.CompanyLogoUrl = logo;
-                job.ExperienceLevel = experience;
+                job.CompanyLogoUrl = bestLogo;
+                job.ExperienceLevel = bestExperience;
                 job.WorkMode = workMode;
+                job.Skills = skills;
+                job.RefreshedAt = refreshedAt;
+                // Source-specific fields
+                job.SourceSectors = sourceSectors;
+                job.CompensationAmountCents = compCents;
+                job.CompensationType = compType;
+                job.CompensationCurrency = compCurrency;
+                job.EntityType = entityType;
+                job.SourceCategories = ethioCategories;
+                job.ApplicationMethod = appMethod;
+                job.ApplicationEmail = appEmail;
+                job.ApplicationUrl = appUrl;
+                job.UpstreamSource = hahuUpstream;
+                job.AreaName = areaName;
+                job.SubSectorName = hahuSubSector;
+                job.NumberOfApplicants = numApplicants;
+                job.EmploymentText = employmentText;
+                job.JobTime = jobTime;
+                job.SiteJobType = geezJobType;
+                job.ExperienceText = experienceText;
+                job.MaxExperienceYears = maxExp;
+                job.PostedText = geezPosted ?? reporterPosted;
+                job.DeadlineText = deadlineText;
+                job.JobTypeText = reporterTypeText;
                 job.Status = JobStatus.Published;
-                // IsActive is deliberately NOT forced true here: an admin who
-                // hid this job keeps it hidden even though the listing is
-                // still live on the source. Only the deactivation pass below
-                // (and inserts) touch IsActive.
                 job.UpdatedAt = DateTimeOffset.UtcNow;
                 updated++;
             }
@@ -281,14 +332,13 @@ public sealed class ScrapedJobSyncService
                 {
                     Id = Guid.NewGuid(),
                     Title = title,
-                    Description = description ?? string.Empty,
-                    Company = company ?? string.Empty,
-                    Location = location ?? string.Empty,
+                    Description = description,
+                    Company = company,
+                    Location = location,
                     JobType = jobType,
-                    Url = url ?? string.Empty,
-                    Salary = salary ?? string.Empty,
+                    Url = url,
+                    Salary = bestSalary,
                     PublishedAt = publishedAt,
-                    RefreshedAt = refreshedAt,
                     Deadline = deadline,
                     Status = JobStatus.Published,
                     IsActive = true,
@@ -298,22 +348,43 @@ public sealed class ScrapedJobSyncService
                     SourceName = sourceName,
                     SourceUrl = string.IsNullOrWhiteSpace(url) ? null : url,
                     ExternalId = externalId,
-                    CompanyLogoUrl = string.IsNullOrWhiteSpace(logo) ? null : logo,
+                    CompanyLogoUrl = bestLogo,
                     SectorId = sector?.Id,
                     SectorName = sector?.Name,
-                    ExperienceLevel = string.IsNullOrWhiteSpace(experience) ? null : experience,
+                    ExperienceLevel = string.IsNullOrWhiteSpace(bestExperience) ? null : bestExperience,
                     WorkMode = workMode,
+                    Skills = string.IsNullOrWhiteSpace(skills) ? null : skills,
+                    RefreshedAt = refreshedAt,
+                    // Source-specific fields
+                    SourceSectors = sourceSectors,
+                    CompensationAmountCents = compCents,
+                    CompensationType = compType,
+                    CompensationCurrency = compCurrency,
+                    EntityType = entityType,
+                    SourceCategories = ethioCategories,
+                    ApplicationMethod = appMethod,
+                    ApplicationEmail = appEmail,
+                    ApplicationUrl = appUrl,
+                    UpstreamSource = hahuUpstream,
+                    AreaName = areaName,
+                    SubSectorName = hahuSubSector,
+                    NumberOfApplicants = numApplicants,
+                    EmploymentText = employmentText,
+                    JobTime = jobTime,
+                    SiteJobType = geezJobType,
+                    ExperienceText = experienceText,
+                    MaxExperienceYears = maxExp,
+                    PostedText = geezPosted ?? reporterPosted,
+                    DeadlineText = deadlineText,
+                    JobTypeText = reporterTypeText,
                     CreatedAt = DateTimeOffset.UtcNow,
                     UpdatedAt = DateTimeOffset.UtcNow,
                 };
                 db.Jobs.Add(newJob);
-                // Track it so a duplicate key later in the same result set
-                // updates this row instead of inserting a second one.
                 jobsByKey[(sourceName, externalId)] = newJob;
                 inserted++;
             }
 
-            // Save in batches so one long import never holds a huge change set.
             if ((inserted + updated + unchanged) % 100 == 0)
             {
                 await db.SaveChangesAsync(ct);
@@ -322,17 +393,14 @@ public sealed class ScrapedJobSyncService
         await db.SaveChangesAsync(ct);
 
         // Bootstrap deactivation: hide SeraGo jobs whose listing never appeared
-        // in the scraper's active set (e.g. old seed rows). Reuses the
-        // existingJobs already loaded above, so no extra query. Incremental
-        // runs skip this — deactivation happened per-item in the loop.
-        // Admin-hidden jobs (IsActive already false) are never touched.
+        // in the scraper's active set.
         if (isBootstrap)
         {
             foreach (var job in existingJobs)
             {
                 if (!job.IsActive)
                 {
-                    continue; // admin-hidden or already hidden
+                    continue;
                 }
                 if (seenKeys.Contains($"{job.SourceName}|{job.ExternalId}"))
                 {
@@ -348,9 +416,7 @@ public sealed class ScrapedJobSyncService
             }
         }
 
-        // Advance the cursor to the NEWEST updated_at processed — not "now".
-        // If a run fails partway, the next run re-processes from the old
-        // cursor; re-processing is idempotent, so nothing is lost or doubled.
+        // Advance the cursor.
         if (maxUpdatedAt is not null)
         {
             var cursor = DateTime.SpecifyKind(maxUpdatedAt.Value, DateTimeKind.Utc);
@@ -372,32 +438,6 @@ public sealed class ScrapedJobSyncService
 
     // --------------------------------------------------------------- Helpers
 
-    /// <summary>
-    /// The source's own sector value, per source. Returns null when the
-    /// source carries none. Extra (sub-sector) values are ignored for now —
-    /// they become fields when the taxonomy grows its second level.
-    /// </summary>
-    private static string? PickRawSector(DbDataReader reader, string sourceSlug, out string? extraSector)
-    {
-        extraSector = null;
-        switch (sourceSlug)
-        {
-            case "afriwork":
-                // sectors is a JSON array like ["Sales & Promotion"].
-                var json = ReadString(reader, "afriwork_sectors");
-                return FirstJsonElement(json);
-            case "hahujobs":
-                extraSector = ReadString(reader, "hahu_sub_sector");
-                return ReadString(reader, "hahu_sector");
-            case "ethiojobs":
-                // catalogs is an array of { id, name, options } objects.
-                var catalogs = ReadString(reader, "ethio_catalogs");
-                return FirstCatalogName(catalogs);
-            default:
-                return null; // GeezJobs / Reporter carry no sector
-        }
-    }
-
     private static Sector? ResolveSector(
         List<Sector> sectors, string? rawSector, string? title)
     {
@@ -414,61 +454,6 @@ public sealed class ScrapedJobSyncService
         return slug is null ? null : sectors.FirstOrDefault(s => s.Slug == slug);
     }
 
-    /// <summary>Extracts the first string element of a JSON array (e.g. Afriwork's sectors).</summary>
-    private static string? FirstJsonElement(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return null;
-        }
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.ValueKind == JsonValueKind.Array
-                && doc.RootElement.GetArrayLength() > 0
-                && doc.RootElement[0].ValueKind == JsonValueKind.String)
-            {
-                return doc.RootElement[0].GetString();
-            }
-        }
-        catch (JsonException)
-        {
-            // Not JSON — treat the raw text as the sector name.
-            return json;
-        }
-        return null;
-    }
-
-    /// <summary>Extracts the first object's "name" from EthioJobs' catalogs array.</summary>
-    private static string? FirstCatalogName(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return null;
-        }
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in doc.RootElement.EnumerateArray())
-                {
-                    if (item.ValueKind == JsonValueKind.Object
-                        && item.TryGetProperty("name", out var name)
-                        && name.ValueKind == JsonValueKind.String)
-                    {
-                        return name.GetString();
-                    }
-                }
-            }
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-        return null;
-    }
-
     /// <summary>Source slug → display name (matches the existing seed/branding).</summary>
     private static string DisplaySourceName(string slug) => slug switch
     {
@@ -480,16 +465,12 @@ public sealed class ScrapedJobSyncService
         _ => slug,
     };
 
-    /// <summary>Tolerant job-type mapping: ints, common strings, else Other.</summary>
+    /// <summary>Tolerant job-type mapping.</summary>
     private static JobType MapJobType(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
             return JobType.Other;
-        }
-        if (int.TryParse(value, out var n) && Enum.IsDefined(typeof(JobType), n))
-        {
-            return (JobType)n;
         }
         var text = value.ToLowerInvariant();
         if (text.Contains("part")) return JobType.PartTime;
@@ -502,7 +483,7 @@ public sealed class ScrapedJobSyncService
         return JobType.Other;
     }
 
-    /// <summary>Tolerant work-mode mapping (scraper job_site: ONSITE/REMOTE/HYBRID).</summary>
+    /// <summary>Tolerant work-mode mapping (scraper values: ONSITE/REMOTE/HYBRID).</summary>
     private static WorkMode MapWorkMode(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -513,41 +494,6 @@ public sealed class ScrapedJobSyncService
         if (text.Contains("remote")) return WorkMode.Remote;
         if (text.Contains("hybrid")) return WorkMode.Hybrid;
         return WorkMode.Onsite;
-    }
-
-    /// <summary>Experience band from the source's year hints, else null.</summary>
-    private static string? MapExperience(DbDataReader reader, string sourceSlug)
-    {
-        double? years = null;
-        switch (sourceSlug)
-        {
-            case "geezjobs":
-                years = ReadDouble(reader, "geez_min_exp");
-                break;
-            case "hahujobs":
-                // years_of_experience is an INTEGER column in Postgres, and
-                // Npgsql rejects GetString on it (SQLite was lenient) — read
-                // the raw value and convert instead.
-                var raw = reader.GetValue(reader.GetOrdinal("hahu_exp"));
-                if (raw is not DBNull
-                    && double.TryParse(
-                        Convert.ToString(raw, CultureInfo.InvariantCulture),
-                        NumberStyles.Float,
-                        CultureInfo.InvariantCulture,
-                        out var h))
-                {
-                    years = h;
-                }
-                break;
-        }
-        return years switch
-        {
-            null => null,
-            < 1 => "Entry",
-            < 3 => "Junior",
-            < 5 => "Mid",
-            _ => "Senior",
-        };
     }
 
     private static string? ReadString(DbDataReader reader, string column)
@@ -564,9 +510,6 @@ public sealed class ScrapedJobSyncService
             return null;
         }
         var value = reader.GetDateTime(i);
-        // Django stores UTC in Postgres timestamptz (returned as Kind=Utc).
-        // Treat any Unspecified value as UTC too — casting it as local time
-        // would shift Addis-ababa jobs by the server's offset (e.g. +3h).
         if (value.Kind == DateTimeKind.Unspecified)
         {
             value = DateTime.SpecifyKind(value, DateTimeKind.Utc);
@@ -574,67 +517,112 @@ public sealed class ScrapedJobSyncService
         return new DateTimeOffset(value);
     }
 
-    private static double? ReadDouble(DbDataReader reader, string column)
+    private static int? ReadNullableInt(DbDataReader reader, string column)
     {
         var i = reader.GetOrdinal(column);
-        return reader.IsDBNull(i) ? null : Convert.ToDouble(reader.GetValue(i));
+        return reader.IsDBNull(i) ? null : reader.GetInt32(i);
     }
 
-    /// <summary>First-ever run: every ACTIVE listing (full import + set-based deactivation).</summary>
-    private const string SyncQueryBootstrap = """
+    private static decimal? ReadNullableDecimal(DbDataReader reader, string column)
+    {
+        var i = reader.GetOrdinal(column);
+        return reader.IsDBNull(i) ? null : reader.GetDecimal(i);
+    }
+
+    /// <summary>Read a JSONB array column and return it as a JSON string, or null.</summary>
+    private static string? ReadJsonArray(DbDataReader reader, string column)
+    {
+        var i = reader.GetOrdinal(column);
+        if (reader.IsDBNull(i))
+        {
+            return null;
+        }
+        var value = reader.GetValue(i);
+        if (value is string s)
+        {
+            return s;
+        }
+        // Npgsql may return it as a JsonDocument or object[].
+        return value?.ToString();
+    }
+
+    /// <summary>Map years of experience to a human-readable level band.</summary>
+    private static string MapExperienceLevel(int years)
+    {
+        if (years < 1) return "Entry";
+        if (years < 3) return "Junior";
+        if (years < 5) return "Mid";
+        return "Senior";
+    }
+
+    // --------------------------------------------------------------- Queries
+    //
+    // We read from scraped_items + per-site models via LEFT JOINs instead of
+    // the flat NormalizedJob table. This carries every source-specific field
+    // through to the .NET Job model so the frontend can render source-specific
+    // layouts (Afriwork skills/sectors, HaHu entity logo, GeezJobs employment
+    // text, etc.).
+
+    private const string SyncQueryBase = """
         SELECT
             i.external_id, i.title, i.description, i.company, i.location,
             i.job_type, i.url, i.salary, i.published_at, i.deadline,
-            i.is_active, i.updated_at,
-            s.name AS source_name, s.slug AS source_slug,
+            i.is_active, i.updated_at, s.slug AS source_slug,
+            -- Universal enriched fields
+            i.company_logo_url, i.work_mode, i.experience_level,
+            i.sector_name, i.skills,
+            -- Afriwork-specific
             a.sectors::text AS afriwork_sectors,
-            a.entity_type AS afriwork_entity_type, a.refreshed_at AS afriwork_refreshed_at,
-            a.job_site AS afriwork_job_site,
-            h.sector_name AS hahu_sector, h.sub_sector_name AS hahu_sub_sector,
-            h.entity_logo AS entity_logo, h.years_of_experience AS hahu_exp,
-            e.catalogs::text AS ethio_catalogs, e.location_type AS ethio_location_type,
-            g.employment_text AS geez_employment, g.company_logo AS company_logo,
-            g.min_experience_years AS geez_min_exp,
-            r.job_type AS reporter_type
+            a.compensation_amount_cents, a.compensation_type,
+            a.compensation_currency, a.entity_type,
+            a.refreshed_at,
+            -- EthioJobs-specific
+            e.catalogs::text AS ethio_categories,
+            e.application_method AS ethio_app_method,
+            e.application_email AS ethio_app_email,
+            e.career_page_link AS ethio_career_link,
+            e.company AS ethio_company,
+            -- HaHuJobs-specific
+            h.entity_logo AS hahu_entity_logo,
+            h.entity_name AS hahu_entity_name,
+            h.sector_name AS hahu_sector,
+            h.sub_sector_name AS hahu_sub_sector,
+            h.application_method AS hahu_app_method,
+            h.application_url AS hahu_app_url,
+            h.application_email AS hahu_app_email,
+            h.source AS hahu_upstream,
+            h.area_name,
+            h.years_of_experience AS hahu_exp,
+            h.number_of_applicants,
+            h.salary AS hahu_salary,
+            -- GeezJobs-specific
+            g.company_logo AS geez_logo,
+            g.employment_text, g.job_time,
+            g.job_type AS geez_job_type,
+            g.experience_text,
+            g.min_experience_years, g.max_experience_years,
+            g.posted_text AS geez_posted, g.deadline_text,
+            -- ReporterJobs-specific
+            r.job_type_text AS reporter_type_text,
+            r.posted_text AS reporter_posted
         FROM core_scrapeditem i
         JOIN core_source s ON s.id = i.source_id
         LEFT JOIN core_afriworkjob a ON a.id = i.afriwork_job_id
-        LEFT JOIN core_hahujob h ON h.id = i.hahujobs_job_id
         LEFT JOIN core_ethiojobsjob e ON e.id = i.ethiojobs_job_id
+        LEFT JOIN core_hahujob h ON h.id = i.hahujobs_job_id
         LEFT JOIN core_geezjob g ON g.id = i.geezjobs_job_id
         LEFT JOIN core_reporterjob r ON r.id = i.reporter_job_id
-        WHERE i.is_active = true
-          AND (i.deadline IS NULL OR i.deadline > @lifecycleCutoff)
         """;
 
-    /// <summary>
-    /// Later runs: only items CHANGED since the cursor (Django bumps
-    /// updated_at on every insert/update, including is_active flips), so the
-    /// sync costs what changed, not the whole table.
-    /// </summary>
-    private const string SyncQueryIncremental = """
-        SELECT
-            i.external_id, i.title, i.description, i.company, i.location,
-            i.job_type, i.url, i.salary, i.published_at, i.deadline,
-            i.is_active, i.updated_at,
-            s.name AS source_name, s.slug AS source_slug,
-            a.sectors::text AS afriwork_sectors,
-            a.entity_type AS afriwork_entity_type, a.refreshed_at AS afriwork_refreshed_at,
-            a.job_site AS afriwork_job_site,
-            h.sector_name AS hahu_sector, h.sub_sector_name AS hahu_sub_sector,
-            h.entity_logo AS entity_logo, h.years_of_experience AS hahu_exp,
-            e.catalogs::text AS ethio_catalogs, e.location_type AS ethio_location_type,
-            g.employment_text AS geez_employment, g.company_logo AS company_logo,
-            g.min_experience_years AS geez_min_exp,
-            r.job_type AS reporter_type
-        FROM core_scrapeditem i
-        JOIN core_source s ON s.id = i.source_id
-        LEFT JOIN core_afriworkjob a ON a.id = i.afriwork_job_id
-        LEFT JOIN core_hahujob h ON h.id = i.hahujobs_job_id
-        LEFT JOIN core_ethiojobsjob e ON e.id = i.ethiojobs_job_id
-        LEFT JOIN core_geezjob g ON g.id = i.geezjobs_job_id
-        LEFT JOIN core_reporterjob r ON r.id = i.reporter_job_id
+    /// <summary>First-ever run: every ACTIVE listing from scraped_items + per-site models.</summary>
+    private const string SyncQueryBootstrap = SyncQueryBase + @"
+        WHERE i.is_active = true
+          AND (i.deadline IS NULL OR i.deadline > @lifecycleCutoff)
+        ";
+
+    /// <summary>Incremental: only items changed since the cursor.</summary>
+    private const string SyncQueryIncremental = SyncQueryBase + @"
         WHERE i.updated_at > @watermark
           AND (i.deadline IS NULL OR i.deadline > @lifecycleCutoff)
-        """;
+        ";
 }

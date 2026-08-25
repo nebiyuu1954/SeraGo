@@ -14,10 +14,16 @@ import JobDetailPage from './pages/talent/jobs/JobDetailPage.tsx'
 import SavedJobsPage from './pages/talent/saved/SavedJobsPage.tsx'
 import RecruiterJobsPage from './pages/recruiter/jobs/JobsPage.tsx'
 import JobFormPage from './pages/recruiter/jobs/JobFormPage.tsx'
+import TalentApplicationsPage from './pages/talent/applications/ApplicationsPage.tsx'
+import RecruiterApplicationsPage from './pages/recruiter/applications/ApplicationsPage.tsx'
+import RecruiterTalentPreviewPage from './pages/recruiter/applications/TalentPreviewPage.tsx'
 import AdminDashboardPage from './pages/admin/dashboard/AdminDashboardPage.tsx'
 import AdminSectorsPage from './pages/admin/sectors/SectorsPage.tsx'
+import AdminUsersPage from './pages/admin/users/UsersPage.tsx'
+import AdminJobsPage from './pages/admin/jobs/AdminJobsPage.tsx'
 import RecruiterProfilePage from './pages/recruiter/profile/ProfilePage.tsx'
 import TalentProfilePage from './pages/talent/profile/ProfilePage.tsx'
+import TalentProfilePreviewPage from './pages/talent/profile/TalentProfilePreviewPage.tsx'
 import AdminProfilePage from './pages/admin/profile/ProfilePage.tsx'
 import NotFoundPage from './pages/shared/generic/NotFoundPage.tsx'
 
@@ -35,13 +41,18 @@ function App() {
           element={<JobDetailPage />}
         />
         <Route path="dashboard/talent/saved" element={<SavedJobsPage />} />
+        <Route path="dashboard/talent/applications" element={<TalentApplicationsPage />} />
         <Route path="dashboard/recruiter" element={<RecruiterJobsPage />} />
+        <Route path="dashboard/recruiter/applications" element={<RecruiterApplicationsPage />} />
+        <Route path="dashboard/recruiter/applications/:applicationId/talent" element={<RecruiterTalentPreviewPage />} />
         <Route path="dashboard/recruiter/jobs/new" element={<JobFormPage />} />
         <Route
           path="dashboard/recruiter/jobs/:jobId/edit"
           element={<JobFormPage />}
         />
         <Route path="dashboard/admin" element={<AdminDashboardPage />} />
+        <Route path="dashboard/admin/jobs" element={<AdminJobsPage />} />
+        <Route path="dashboard/admin/users" element={<AdminUsersPage />} />
         <Route path="dashboard/admin/sectors" element={<AdminSectorsPage />} />
         <Route
           path="dashboard/recruiter/profile"
@@ -50,6 +61,10 @@ function App() {
         <Route
           path="dashboard/talent/profile"
           element={<TalentProfilePage />}
+        />
+        <Route
+          path="dashboard/talent/profile/preview"
+          element={<TalentProfilePreviewPage />}
         />
         <Route path="dashboard/admin/profile" element={<AdminProfilePage />} />
         <Route path="*" element={<NotFoundPage />} />

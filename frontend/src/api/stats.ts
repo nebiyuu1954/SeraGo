@@ -17,7 +17,7 @@ export function fetchTopStats(
   limit = 10,
 ): Promise<StatsTopResponse> {
   const params = new URLSearchParams({ period, limit: String(limit) })
-  return request<StatsTopResponse>(`${API_ENDPOINTS.stats.top}?${params}`, {
+  return request<StatsTopResponse>(`${API_ENDPOINTS.adminStats.top}?${params}`, {
     headers: auth(accessToken),
   })
 }

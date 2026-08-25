@@ -42,14 +42,22 @@ public static class ProfileEndpoints
         string Headline, string About, string? ExperienceLevel, int? YearsOfExperience,
         List<string> DesiredRoles, List<string> Skills, List<string> DesiredJobTypes,
         string? WorkMode, string? Availability, List<Guid> PreferredSectorIds,
-        string ResumeUrl, string LinkedInUrl, string GitHubUrl, string PortfolioUrl);
+        string ResumeUrl, string LinkedInUrl, string GitHubUrl, string PortfolioUrl,
+        // New identity / personal fields
+        string MiddleName, string? PhoneNumber, string? DateOfBirth, string Address,
+        // Education
+        string EducationLevel, string EducationHistory,
+        // Professional context
+        string CurrentIndustry, string CurrentProfession, string PreferredLocations,
+        // Privacy
+        string ProfileVisibility, string SkillVisibility);
 
     public sealed record RecruiterProfileResponse(
         string CompanyName, string CompanyLogoUrl, string Industry, string CompanySize,
         string WebsiteUrl, string About);
 
     public sealed record ProfileResponse(
-        string FirstName, string LastName, string Email, string Role, string AvatarUrl,
+        string FirstName, string MiddleName, string LastName, string Email, string Role, string AvatarUrl,
         string City, string Country, TalentProfileResponse? Talent,
         RecruiterProfileResponse? Recruiter, ProfileCompletionResponse? Completion,
         bool HasPassword);
@@ -58,6 +66,7 @@ public static class ProfileEndpoints
     {
         // Common — shared by every role.
         public string? FirstName { get; set; }
+        public string? MiddleName { get; set; }
         public string? LastName { get; set; }
         public string? AvatarUrl { get; set; }
         public string? City { get; set; }
@@ -86,6 +95,24 @@ public static class ProfileEndpoints
         public string? LinkedInUrl { get; set; }
         public string? GitHubUrl { get; set; }
         public string? PortfolioUrl { get; set; }
+
+        // Identity / personal
+        public string? PhoneNumber { get; set; }
+        public string? DateOfBirth { get; set; }  // ISO date string yyyy-MM-dd
+        public string? Address { get; set; }
+
+        // Education
+        public string? EducationLevel { get; set; }
+        public string? EducationHistory { get; set; }  // JSON array
+
+        // Professional context
+        public string? CurrentIndustry { get; set; }
+        public string? CurrentProfession { get; set; }
+        public string? PreferredLocations { get; set; }  // JSON array
+
+        // Privacy
+        public string? ProfileVisibility { get; set; }  // JSON object
+        public string? SkillVisibility { get; set; }  // JSON object per-skill toggles
     }
 
     public sealed class RecruiterProfileUpdate
@@ -130,6 +157,7 @@ public static class ProfileEndpoints
 
         // Common fields (null = leave unchanged for strings shared with the user row).
         if (request.FirstName is not null) user.FirstName = request.FirstName.Trim();
+        if (request.MiddleName is not null) user.MiddleName = request.MiddleName.Trim();
         if (request.LastName is not null) user.LastName = request.LastName.Trim();
         if (request.AvatarUrl is not null) user.AvatarUrl = request.AvatarUrl.Trim();
         if (request.City is not null) user.City = request.City.Trim();
@@ -198,6 +226,35 @@ public static class ProfileEndpoints
                 profile.LinkedInUrl = request.Talent.LinkedInUrl?.Trim() ?? string.Empty;
                 profile.GitHubUrl = request.Talent.GitHubUrl?.Trim() ?? string.Empty;
                 profile.PortfolioUrl = request.Talent.PortfolioUrl?.Trim() ?? string.Empty;
+
+                // Identity / personal
+                if (!string.IsNullOrWhiteSpace(request.Talent.PhoneNumber))
+                {
+                    user.PhoneNumber = request.Talent.PhoneNumber.Trim();
+                }
+                if (DateOnly.TryParse(request.Talent.DateOfBirth, out var dob))
+                {
+                    profile.DateOfBirth = dob;
+                }
+                else if (request.Talent.DateOfBirth is not null)
+                {
+                    profile.DateOfBirth = null;
+                }
+                profile.Address = request.Talent.Address?.Trim() ?? string.Empty;
+
+                // Education
+                profile.EducationLevel = request.Talent.EducationLevel?.Trim() ?? string.Empty;
+                profile.EducationHistory = request.Talent.EducationHistory?.Trim() ?? "[]";
+
+                // Professional context
+                profile.CurrentIndustry = request.Talent.CurrentIndustry?.Trim() ?? string.Empty;
+                profile.CurrentProfession = request.Talent.CurrentProfession?.Trim() ?? string.Empty;
+                profile.PreferredLocations = request.Talent.PreferredLocations?.Trim() ?? "[]";
+
+                // Privacy
+                profile.ProfileVisibility = request.Talent.ProfileVisibility?.Trim() ?? "{}";
+                profile.SkillVisibility = request.Talent.SkillVisibility?.Trim() ?? "{}";
+
                 profile.UpdatedAt = DateTime.UtcNow;
                 break;
             }
@@ -265,7 +322,19 @@ public static class ProfileEndpoints
                     profile.DesiredJobTypes.Select(j => j.ToString()).ToList(),
                     profile.WorkMode?.ToString(), profile.Availability?.ToString(),
                     profile.PreferredSectorIds,
-                    profile.ResumeUrl, profile.LinkedInUrl, profile.GitHubUrl, profile.PortfolioUrl);
+                    profile.ResumeUrl, profile.LinkedInUrl, profile.GitHubUrl, profile.PortfolioUrl,
+                    // New fields
+                    user.MiddleName,
+                    user.PhoneNumber,
+                    profile.DateOfBirth?.ToString("yyyy-MM-dd"),
+                    profile.Address,
+                    profile.EducationLevel,
+                    profile.EducationHistory,
+                    profile.CurrentIndustry,
+                    profile.CurrentProfession,
+                    profile.PreferredLocations,
+                    profile.ProfileVisibility,
+                    profile.SkillVisibility);
                 completion = ComputeTalentCompletion(profile);
             }
         }
@@ -282,7 +351,7 @@ public static class ProfileEndpoints
         }
 
         return new ProfileResponse(
-            user.FirstName, user.LastName, user.Email ?? string.Empty, user.UserType.ToString(),
+            user.FirstName, user.MiddleName, user.LastName, user.Email ?? string.Empty, user.UserType.ToString(),
             user.AvatarUrl, user.City, user.Country, talent, recruiter, completion,
             user.PasswordHash is not null);
     }

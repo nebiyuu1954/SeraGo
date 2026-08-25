@@ -1,0 +1,54 @@
+import type { JobListParams } from '../types'
+
+/**
+ * Centralized SWR cache key factory.
+ *
+ * Every hook returns its key from here so:
+ *  - Identical requests are deduped automatically
+ *  - Mutations can invalidate related keys precisely
+ *  - The devtools (if ever added) show a readable key hierarchy
+ */
+export const queryKeys = {
+  /** All job-list queries, keyed by serialised filter params. */
+  jobs: {
+    /** Base key — mutate this to refetch all job lists. */
+    all: ['jobs'] as const,
+    /** Specific paginated/filtered list. */
+    list: (params: JobListParams) =>
+      ['jobs', 'list', params] as const,
+  },
+
+  /** Single job detail by id. */
+  job: (id: string) => ['job', id] as const,
+
+  /** The canonical sector vocabulary (changes rarely). */
+  sectors: ['sectors'] as const,
+
+  /** Distinct locations of the live feed. */
+  jobLocations: ['jobLocations'] as const,
+
+  /** Current user's profile (includes talent preferences). */
+  profile: ['profile'] as const,
+
+  /** Saved jobs list. */
+  savedJobs: {
+    all: ['savedJobs'] as const,
+    list: ['savedJobs', 'list'] as const,
+  },
+
+  /** Recruiter job stats (per-job application counts + view counts). */
+  recruiterJobStats: ['applications', 'stats'] as const,
+
+  /** Job applications. */
+  applications: {
+    all: ['applications'] as const,
+    /** Talent's own applications. */
+    my: (page: number) => ['applications', 'my', page] as const,
+    /** Recruiter: all applications across their posted jobs. */
+    recruiterAll: (page: number, pageSize: number, status: string, sort: string, search: string, jobId: string) =>
+      ['applications', 'recruiterAll', page, pageSize, status, sort, search, jobId] as const,
+    /** Recruiter's applications for a specific job. */
+    job: (jobId: string, page: number) =>
+      ['applications', 'job', jobId, page] as const,
+  },
+} as const

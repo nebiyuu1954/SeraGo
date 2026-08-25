@@ -10,6 +10,7 @@
     <PackageReference Include="Aufy.Core" Version="1.0.0" />
     <PackageReference Include="Aufy.EntityFrameworkCore" Version="1.0.0" />
     <PackageReference Include="Aufy.FluentEmail" Version="1.0.0" />
+    <PackageReference Include="AWSSDK.S3" Version="3.7.*" />
     <PackageReference Include="DotNetEnv" Version="3.2.0" />
     <PackageReference Include="FluentEmail.Core" Version="3.0.2" />
     <PackageReference Include="FluentEmail.SendGrid" Version="3.0.2" />

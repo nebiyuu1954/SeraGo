@@ -10,7 +10,9 @@ namespace SeraGo.Core.Domain.Entities;
 public class ApplicationUser : AufyUser
 {
     public string FirstName { get; set; } = string.Empty;
+    public string MiddleName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
+    public string? PhoneNumber { get; set; }
 
     // Common profile fields — every role has these.
     public string AvatarUrl { get; set; } = string.Empty;

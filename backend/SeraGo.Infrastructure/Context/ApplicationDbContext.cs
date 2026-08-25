@@ -23,6 +23,8 @@ public class ApplicationDbContext : AufyDbContext<ApplicationUser>
     public DbSet<Sector> Sectors => Set<Sector>();
     public DbSet<SectorAlias> SectorAliases => Set<SectorAlias>();
     public DbSet<SyncState> SyncState => Set<SyncState>();
+    public DbSet<JobApplication> JobApplications => Set<JobApplication>();
+    public DbSet<JobView> JobViews => Set<JobView>();
 
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
     {
@@ -150,6 +152,56 @@ public class ApplicationDbContext : AufyDbContext<ApplicationUser>
         modelBuilder.Entity<SyncState>(entity =>
         {
             entity.HasKey(s => s.Id);
+        });
+
+        // Job view tracking — one row per (JobId, UserId) for unique view counting.
+        modelBuilder.Entity<JobView>(entity =>
+        {
+            entity.HasKey(v => v.Id);
+
+            entity.HasOne(v => v.Job)
+                .WithMany()
+                .HasForeignKey(v => v.JobId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(v => v.User)
+                .WithMany()
+                .HasForeignKey(v => v.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Dedup indexes: one view per user per job, one view per IP per job (anonymous).
+            entity.HasIndex(v => new { v.JobId, v.UserId });
+            entity.HasIndex(v => new { v.JobId, v.IpAddress });
+        });
+
+        // Job applications — talent applies to Serago-posted jobs only.
+        modelBuilder.Entity<JobApplication>(entity =>
+        {
+            entity.HasKey(a => a.Id);
+
+            entity.HasOne(a => a.Job)
+                .WithMany()
+                .HasForeignKey(a => a.JobId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(a => a.User)
+                .WithMany()
+                .HasForeignKey(a => a.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One application per talent per job — idempotent.
+            entity.HasIndex(a => new { a.JobId, a.UserId }).IsUnique();
+
+            entity.HasIndex(a => a.UserId);
+            entity.HasIndex(a => a.JobId);
+            entity.HasIndex(a => a.Status);
+
+            // UTC DateTimeOffset normalization (same as Job).
+            var utcDateTimeOffset = new ValueConverter<DateTimeOffset, DateTimeOffset>(
+                v => v.ToUniversalTime(),
+                v => v);
+            entity.Property(a => a.AppliedAt).HasConversion(utcDateTimeOffset);
+            entity.Property(a => a.StatusUpdatedAt).HasConversion(utcDateTimeOffset);
         });
     }
 }

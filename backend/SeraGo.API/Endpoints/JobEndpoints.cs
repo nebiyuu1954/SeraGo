@@ -84,6 +84,15 @@ public static class JobEndpoints
         public int? PostedWithin { get; set; }       // days: published_at >= now - N
         public int? ClosingWithin { get; set; }      // days: deadline within the next N days
 
+        // Structured salary range filters
+        public decimal? SalaryMin { get; set; }       // minimum salary (inclusive)
+        public decimal? SalaryMax { get; set; }       // maximum salary (inclusive)
+        public string? SalaryCurrency { get; set; }   // ETB / USD
+
+        // Structured experience range filters
+        public int? ExperienceMinYears { get; set; }  // minimum years of experience
+        public int? ExperienceMaxYears { get; set; }  // maximum years of experience
+
         // Scope (recruiter/admin) — nullable so the binder never treats a
         // missing parameter as required.
         public bool? Mine { get; set; }            // my own jobs (any status) — owner only
@@ -124,6 +133,19 @@ public static class JobEndpoints
 
         /// <summary>Work arrangement: "onsite" | "remote" | "hybrid" (blank = onsite).</summary>
         public string? WorkMode { get; set; }
+
+        // Structured salary range
+        public decimal? SalaryMin { get; set; }
+        public decimal? SalaryMax { get; set; }
+        public string? SalaryCurrency { get; set; }
+        public string? SalaryPeriod { get; set; }
+
+        // Structured experience range
+        public int? ExperienceMinYears { get; set; }
+        public int? ExperienceMaxYears { get; set; }
+
+        // Hiring
+        public int? NumberOfPositions { get; set; }
     }
 
     public sealed record SetJobSectorRequest(Guid? SectorId);
@@ -140,6 +162,13 @@ public static class JobEndpoints
         string WorkMode,         // lowerCamel enum name, e.g. "remote" / "hybrid" / "onsite"
         string Url,
         string Salary,
+        decimal? SalaryMin,
+        decimal? SalaryMax,
+        string? SalaryCurrency,
+        string? SalaryPeriod,
+        int? ExperienceMinYears,
+        int? ExperienceMaxYears,
+        int NumberOfPositions,
         string? PublishedAt,     // UTC ISO-8601, e.g. "2026-09-15T14:00:00Z"
         string? RefreshedAt,     // UTC ISO-8601 — when the source last refreshed the listing
         string? Deadline,
@@ -156,7 +185,38 @@ public static class JobEndpoints
         string? CompanyLogoUrl,
         Guid? SectorId,
         string? SectorName,
-        string? ExperienceLevel);
+        string? ExperienceLevel,
+        string? Skills,
+        // Source-specific rendering fields — populated from per-site scraper models.
+        // Afriwork
+        string? SourceSectors,
+        int? CompensationAmountCents,
+        string? CompensationType,
+        string? CompensationCurrency,
+        string? EntityType,
+        // EthioJobs
+        string? SourceCategories,
+        // Shared (EthioJobs + HaHu)
+        string? ApplicationMethod,
+        string? ApplicationEmail,
+        string? ApplicationUrl,
+        // HaHuJobs
+        string? UpstreamSource,
+        string? AreaName,
+        string? SubSectorName,
+        int? NumberOfApplicants,
+        // GeezJobs
+        string? EmploymentText,
+        string? JobTime,
+        string? SiteJobType,
+        string? ExperienceText,
+        int? MaxExperienceYears,
+        string? PostedText,
+        string? DeadlineText,
+        // ReporterJobs
+        string? JobTypeText,
+        // Analytics
+        int ViewCount);
 
     public sealed record PaginationResponse(
         int Page, int PageSize, int TotalCount, int TotalPages, bool HasNextPage);
@@ -334,6 +394,32 @@ public static class JobEndpoints
             q = q.Where(j => j.Deadline != null && j.Deadline >= now && j.Deadline <= horizon);
         }
 
+        // Structured salary range filters.
+        if (query.SalaryMin is > 0)
+        {
+            q = q.Where(j => j.SalaryMax != null && j.SalaryMax >= query.SalaryMin.Value);
+        }
+        if (query.SalaryMax is > 0)
+        {
+            q = q.Where(j => j.SalaryMin != null && j.SalaryMin <= query.SalaryMax.Value);
+        }
+        if (!string.IsNullOrWhiteSpace(query.SalaryCurrency))
+        {
+            q = q.Where(j => j.SalaryCurrency == query.SalaryCurrency.Trim());
+        }
+
+        // Structured experience range filters.
+        if (query.ExperienceMinYears is > 0)
+        {
+            // Job's max must be >= the candidate's minimum.
+            q = q.Where(j => j.ExperienceMaxYears == null || j.ExperienceMaxYears >= query.ExperienceMinYears.Value);
+        }
+        if (query.ExperienceMaxYears is > 0)
+        {
+            // Job's min must be <= the candidate's maximum.
+            q = q.Where(j => j.ExperienceMinYears == null || j.ExperienceMinYears <= query.ExperienceMaxYears.Value);
+        }
+
         // Pagination metadata counts the filtered set (before sorting/paging).
         var totalCount = await q.CountAsync();
 
@@ -458,22 +544,20 @@ public static class JobEndpoints
         Guid id,
         ClaimsPrincipal claims,
         UserManager<ApplicationUser> userManager,
-        ApplicationDbContext db)
+        ApplicationDbContext db,
+        HttpContext http)
     {
         var user = await userManager.GetUserAsync(claims);
-        if (user is null)
-        {
-            return Results.Unauthorized();
-        }
+        var isAdmin = user is not null && await userManager.IsInRoleAsync(user, Roles.Admin);
 
-        var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == id);
+        // Use tracked entity so we can increment ViewCount.
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id);
         if (job is null)
         {
             return Results.NotFound();
         }
 
-        var isOwner = job.PostedByUserId == user.Id;
-        var isAdmin = await userManager.IsInRoleAsync(user, Roles.Admin);
+        var isOwner = user is not null && job.PostedByUserId == user.Id;
         var isLive = job.Status == JobStatus.Published && job.IsActive;
 
         // 404 (not 403) so hidden jobs don't leak their existence.
@@ -482,7 +566,41 @@ public static class JobEndpoints
             return Results.NotFound();
         }
 
-        return Results.Ok(ToResponse(job, user.Id));
+        // Track unique view: once per user (auth) or once per IP (anon).
+        if (isLive && !isOwner && !isAdmin)
+        {
+            var clientIp = http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+            bool alreadyViewed;
+            if (user is not null)
+            {
+                // Authenticated: dedup by (JobId, UserId).
+                alreadyViewed = await db.JobViews
+                    .AnyAsync(v => v.JobId == id && v.UserId == user.Id);
+            }
+            else
+            {
+                // Anonymous: dedup by (JobId, IpAddress).
+                alreadyViewed = await db.JobViews
+                    .AnyAsync(v => v.JobId == id && v.IpAddress == clientIp && v.UserId == null);
+            }
+
+            if (!alreadyViewed)
+            {
+                db.JobViews.Add(new JobView
+                {
+                    Id = Guid.NewGuid(),
+                    JobId = id,
+                    UserId = user?.Id,
+                    IpAddress = user is null ? clientIp : null,
+                    ViewedAt = DateTimeOffset.UtcNow,
+                });
+                job.ViewCount++;
+                await db.SaveChangesAsync();
+            }
+        }
+
+        return Results.Ok(ToResponse(job, user?.Id ?? string.Empty));
     }
 
     /// <summary>POST /api/jobs — create a job (recruiter or admin). Draft by default.</summary>
@@ -564,6 +682,13 @@ public static class JobEndpoints
             SectorId = null,
             SectorName = NullIfBlank(request.SectorName),
             ExperienceLevel = NullIfBlank(request.ExperienceLevel),
+            SalaryMin = request.SalaryMin,
+            SalaryMax = request.SalaryMax,
+            SalaryCurrency = NullIfBlank(request.SalaryCurrency),
+            SalaryPeriod = NullIfBlank(request.SalaryPeriod),
+            ExperienceMinYears = request.ExperienceMinYears,
+            ExperienceMaxYears = request.ExperienceMaxYears,
+            NumberOfPositions = Math.Clamp(request.NumberOfPositions ?? 1, 1, 999),
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -661,6 +786,18 @@ public static class JobEndpoints
         job.Salary = request.Salary?.Trim() ?? string.Empty;
         job.PublishedAt = request.PublishedAt;
         job.Deadline = request.Deadline;
+
+        // Structured salary / experience / positions
+        job.SalaryMin = request.SalaryMin;
+        job.SalaryMax = request.SalaryMax;
+        job.SalaryCurrency = NullIfBlank(request.SalaryCurrency);
+        job.SalaryPeriod = NullIfBlank(request.SalaryPeriod);
+        job.ExperienceMinYears = request.ExperienceMinYears;
+        job.ExperienceMaxYears = request.ExperienceMaxYears;
+        if (request.NumberOfPositions is not null)
+        {
+            job.NumberOfPositions = Math.Clamp(request.NumberOfPositions.Value, 1, 999);
+        }
 
         // Sector: set when provided (and only then — a recruiter editing their
         // own post must never wipe an imported sector by omitting the field).
@@ -925,6 +1062,13 @@ public static class JobEndpoints
         EnumCamel(job.WorkMode.ToString()),
         job.Url,
         job.Salary,
+        job.SalaryMin,
+        job.SalaryMax,
+        job.SalaryCurrency,
+        job.SalaryPeriod,
+        job.ExperienceMinYears,
+        job.ExperienceMaxYears,
+        job.NumberOfPositions,
         FormatDate(job.PublishedAt),
         FormatDate(job.RefreshedAt),
         FormatDate(job.Deadline),
@@ -940,7 +1084,31 @@ public static class JobEndpoints
         job.CompanyLogoUrl,
         job.SectorId,
         job.SectorName,
-        job.ExperienceLevel);
+        job.ExperienceLevel,
+        job.Skills,
+        // Source-specific rendering fields
+        job.SourceSectors,
+        job.CompensationAmountCents,
+        job.CompensationType,
+        job.CompensationCurrency,
+        job.EntityType,
+        job.SourceCategories,
+        job.ApplicationMethod,
+        job.ApplicationEmail,
+        job.ApplicationUrl,
+        job.UpstreamSource,
+        job.AreaName,
+        job.SubSectorName,
+        job.NumberOfApplicants,
+        job.EmploymentText,
+        job.JobTime,
+        job.SiteJobType,
+        job.ExperienceText,
+        job.MaxExperienceYears,
+        job.PostedText,
+        job.DeadlineText,
+        job.JobTypeText,
+        job.ViewCount);
 
     /// <summary>"FullTime" → "fullTime" — enum values follow the JSON camelCase keys.</summary>
     private static string EnumCamel(string enumName) =>
