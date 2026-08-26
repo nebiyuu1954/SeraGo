@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import RichTextDisplay from '../ui/RichTextDisplay'
 import type { ProfileSnapshot } from '../../types/profileSnapshot.ts'
 import ResumeLink from '../ui/ResumeLink.tsx'
 
@@ -181,9 +182,9 @@ export default function TalentProfileView({
                 About
               </h2>
               {snap.about && (
-                <p className="font-body-md text-body-md text-on-surface-variant mb-6 leading-relaxed">
-                  {snap.about}
-                </p>
+                <div className="mb-6">
+                  <RichTextDisplay html={snap.about} className="text-on-surface-variant" />
+                </div>
               )}
               <div className="flex flex-wrap gap-3">
                 {snap.currentIndustry && (
@@ -294,9 +295,7 @@ export default function TalentProfileView({
                 <span className="material-symbols-outlined">description</span>
                 Cover Letter
               </h2>
-              <p className="font-body-md text-body-md text-on-surface-variant whitespace-pre-line leading-relaxed">
-                {application.coverLetter}
-              </p>
+              <RichTextDisplay html={application.coverLetter} className="text-on-surface-variant" />
             </section>
           )}
         </div>

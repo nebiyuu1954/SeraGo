@@ -7,6 +7,7 @@ import {
   useSectorsQuery,
   useJobLocationsQuery,
   useSavedJobsQuery,
+  useMyApplicationsQuery,
 } from '../../../hooks/query.ts'
 import { prefetchJob } from '../../../hooks/useJobDetailQuery.ts'
 import { useRequireRole } from '../../../hooks'
@@ -139,6 +140,10 @@ export default function JobsPage() {
 
   // --- Saved jobs (shared cache with bookmark buttons) ---
   const { savedIds, toggleSaved } = useSavedJobsToggle()
+
+  // --- Applications (for showing "Applied" on cards) ---
+  const { applications: myApplications } = useMyApplicationsQuery(auth.status === 'authenticated')
+  const appliedIds = new Set(myApplications.map((a) => a.jobId))
 
   const { showToast } = useToast()
 
@@ -399,6 +404,7 @@ export default function JobsPage() {
                   key={job.id}
                   job={job}
                   saved={savedIds.has(job.id)}
+                  applied={appliedIds.has(job.id)}
                   onToggleSave={() => {
                     toggleSaved(job.id).then((result) => {
                       if (result === 'saved') showToast('Job saved for later')
@@ -694,10 +700,12 @@ export default function JobsPage() {
 function JobCard({
   job,
   saved,
+  applied,
   onToggleSave,
 }: {
   job: JobResponse
   saved: boolean
+  applied: boolean
   onToggleSave: () => void
 }) {
   const brandLogo = sourceLogo(job.sourceName)
@@ -838,7 +846,13 @@ function JobCard({
           </div>
         )}
         <div className="mt-auto flex gap-2">
-          {job.url ? (
+          {applied ? (
+            <span
+              className="flex-1 rounded border border-success/30 bg-success/10 px-4 py-2.5 text-center font-label-md text-label-md text-success"
+            >
+              Applied
+            </span>
+          ) : job.url ? (
             <a
               href={job.url}
               target="_blank"

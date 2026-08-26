@@ -28,6 +28,7 @@ import {
   EXPERIENCE_YEAR_OPTIONS,
 } from '../../../components/dashboard/jobOptions.ts'
 import { cn } from '../../../lib/cn.ts'
+import RichTextEditor from '../../../components/ui/RichTextEditor.tsx'
 
 const inputClass =
   'w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3.5 py-2.5 font-body-md text-body-md text-on-surface transition-colors placeholder:text-on-surface-variant/60 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60'
@@ -587,15 +588,11 @@ export default function JobFormPage() {
               </Field>
 
               <Field full label="Description">
-                <textarea
-                  name="description"
-                  rows={5}
+                <RichTextEditor
                   value={formik.values.description}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  disabled={!canEdit}
+                  onChange={(v) => formik.setFieldValue('description', v)}
                   placeholder="Role overview, responsibilities, requirements..."
-                  className={cn(inputClass, 'resize-y')}
+                  disabled={!canEdit}
                 />
               </Field>
             </div>

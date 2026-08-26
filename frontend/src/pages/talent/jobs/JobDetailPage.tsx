@@ -16,6 +16,7 @@ import { JOB_TYPE_LABELS } from '../../../components/dashboard/jobOptions.ts'
 import { formatDate, postedLabel } from '../../../lib/date.ts'
 import { cn } from '../../../lib/cn.ts'
 import FileUpload from '../../../components/ui/FileUpload.tsx'
+import RichTextEditor from '../../../components/ui/RichTextEditor.tsx'
 import {
   highlightLabels,
   parseDescriptionSections,
@@ -365,7 +366,7 @@ export default function JobDetailPage() {
       const payload: { jobId: string; coverLetter?: string; resumeUrl?: string } = {
         jobId: job.id,
       }
-      if (coverLetter.trim()) payload.coverLetter = coverLetter.trim()
+      if (coverLetter.trim() && coverLetter !== '<p></p>') payload.coverLetter = coverLetter
       // Use uploaded resume if available, otherwise use profile resume
       if (uploadedResumeUrl) {
         payload.resumeUrl = uploadedResumeUrl
@@ -737,7 +738,7 @@ export default function JobDetailPage() {
           />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div
-              className="w-full max-w-lg rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-xl"
+              className="w-full max-w-2xl rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between">
@@ -784,29 +785,49 @@ export default function JobDetailPage() {
                   <span className="material-symbols-outlined mr-1.5 align-middle text-lg">person</span>
                   Use my profile
                 </button>
+
               </div>
 
               {/* Cover letter — only in CV mode */}
               {applyMode === 'coverletter' && (
                 <div className="mt-5 space-y-4">
-                  <FileUpload
-                    fileType="resume"
-                    value={uploadedResumeUrl ?? undefined}
-                    onChange={(url) => setUploadedResumeUrl(url)}
-                    label="Resume (PDF)"
-                    hint="Upload your resume as a PDF. Max 10MB."
-                  />
+                  <div className="flex flex-col sm:flex-row gap-3 items-stretch">
+                    <div className={cn(talent?.resumeUrl && !uploadedResumeUrl ? 'sm:w-1/2' : 'w-full', 'flex flex-col')}
+                    >
+                      <FileUpload
+                        fileType="resume"
+                        value={uploadedResumeUrl ?? undefined}
+                        onChange={(url) => setUploadedResumeUrl(url)}
+                        label="Resume (PDF)"
+                        className="flex-1"
+                      />
+                    </div>
+                    {talent?.resumeUrl && !uploadedResumeUrl && (
+                      <div className="sm:w-1/2 flex flex-col">
+                        <div className="font-label-sm text-label-sm font-medium text-on-surface h-[22px]" />
+                        <button
+                          type="button"
+                          onClick={() => setUploadedResumeUrl(talent.resumeUrl)}
+                          className="flex-1 w-full flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-primary/40 bg-primary-container/10 p-6 transition-colors hover:bg-primary-container/20 cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-2xl text-primary">upload_file</span>
+                          <span className="font-label-sm text-label-sm text-primary font-medium">Use resume from profile</span>
+                          <span className="font-label-sm text-label-sm text-on-surface-variant/60 text-center">File name: {talent.resumeUrl.split('/').pop()?.replace(/^\d{8}_\d{6}_/, '').replace(/\.pdf$/i, '') || 'Uploaded resume'}</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   <div>
                     <label className="font-label-md text-label-md font-medium text-on-surface">
                       Cover letter <span className="text-on-surface-variant">(optional)</span>
                     </label>
-                    <textarea
-                      value={coverLetter}
-                      onChange={(e) => setCoverLetter(e.target.value)}
-                      placeholder="Tell the recruiter why you're a great fit for this role..."
-                      rows={6}
-                      className="mt-2 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-3 font-body-md text-body-md text-on-surface transition-colors placeholder:text-on-surface-variant/60 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
+                    <div className="mt-2">
+                      <RichTextEditor
+                        value={coverLetter}
+                        onChange={setCoverLetter}
+                        placeholder="Tell the recruiter why you're a great fit for this role..."
+                      />
+                    </div>
                   </div>
                 </div>
               )}
@@ -826,14 +847,25 @@ export default function JobDetailPage() {
                           <> · {talent.skills.slice(0, 3).join(', ')}{talent.skills.length > 3 ? ` +${talent.skills.length - 3} more` : ''}</>
                         )}
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => setShowProfilePreview(true)}
-                        className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-primary transition-colors hover:bg-primary-container/20"
-                      >
-                        <span className="material-symbols-outlined text-lg">visibility</span>
-                        See how my profile looks
-                      </button>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <a
+                          href="/dashboard/talent/profile/preview"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-primary transition-colors hover:bg-primary-container/20"
+                        >
+                          <span className="material-symbols-outlined text-lg">visibility</span>
+                          See how my profile looks
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => setShowProfilePreview(true)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-primary transition-colors hover:bg-primary-container/20"
+                        >
+                          <span className="material-symbols-outlined text-lg">tune</span>
+                          Edit what is sent
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>

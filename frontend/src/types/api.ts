@@ -161,11 +161,21 @@ export interface TalentProfileResponse {
 
 export interface RecruiterProfileResponse {
   companyName: string
-  companyLogoUrl: string
   industry: string
   companySize: string
   websiteUrl: string
   about: string
+  // New attributes
+  foundedYear: number | null
+  headquarters: string
+  phoneNumber: string
+  email: string
+  companyType: string | null  // PascalCase enum: Public | Private | NonProfit | …
+  linkedInUrl: string
+  twitterUrl: string
+  // Privacy
+  companyVisibility: string  // JSON object
+  isCompanyPrivate: boolean
 }
 
 export interface ProfileCompletionResponse {
@@ -237,11 +247,21 @@ export interface TalentProfileUpdate {
 /** Recruiter section of PUT /api/account/profile. CompanyName is required. */
 export interface RecruiterProfileUpdate {
   companyName: string
-  companyLogoUrl?: string
   industry?: string
   companySize?: string
   websiteUrl?: string
   about?: string
+  // New attributes
+  foundedYear?: number | null
+  headquarters?: string
+  phoneNumber?: string
+  email?: string
+  companyType?: string | null  // PascalCase enum name
+  linkedInUrl?: string
+  twitterUrl?: string
+  // Privacy
+  companyVisibility?: string  // JSON object
+  isCompanyPrivate?: boolean
 }
 
 // ---------------------------------------------------------------- Jobs

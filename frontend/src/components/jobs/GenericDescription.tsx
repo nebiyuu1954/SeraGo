@@ -3,6 +3,7 @@ import {
   parseDescriptionSections,
   type DescriptionSection,
 } from '../../lib/descriptionSections'
+import RichTextDisplay from '../ui/RichTextDisplay'
 
 /**
  * Generic description renderer — used for SeraGo-posted jobs and unknown sources.
@@ -10,9 +11,18 @@ import {
  * section heading + icon + content layout.
  */
 export default function GenericDescription({ job }: { job: JobResponse }) {
-  const sections = job.description
-    ? parseDescriptionSections(job.description)
-    : []
+  const description = job.description ?? ''
+
+  // Detect HTML content (from rich text editor) vs plain text
+  const isHtml = /<[a-z][\s\S]*>/i.test(description)
+
+  if (isHtml) {
+    // Rich text (HTML) — render directly
+    return <RichTextDisplay html={description} />
+  }
+
+  // Plain text — parse into sections (legacy/scraped content)
+  const sections = description ? parseDescriptionSections(description) : []
 
   if (sections.length === 0) {
     return (

@@ -5,6 +5,7 @@ import { useMyApplicationsQuery } from '../../../hooks/query.ts'
 import { useRequireRole } from '../../../hooks'
 import type { ApplicationResponse, ApplicationStatus } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
+import RichTextDisplay from '../../../components/ui/RichTextDisplay'
 import ResumeLink from '../../../components/ui/ResumeLink.tsx'
 
 function statusBadge(status: ApplicationStatus): { label: string; className: string } {
@@ -301,9 +302,7 @@ function ApplicationDetailDialog({
               Cover letter
             </p>
             {application.coverLetter ? (
-              <div className="mt-2 whitespace-pre-wrap rounded-xl border border-surface-variant bg-surface-container-low p-4 font-body-md text-body-md text-on-surface">
-                {application.coverLetter}
-              </div>
+              <div className="mt-2 rounded-xl border border-surface-variant bg-surface-container-low p-4"><RichTextDisplay html={application.coverLetter} /></div>
             ) : (
               <p className="mt-2 font-body-md text-body-md text-on-surface-variant italic">
                 No cover letter submitted

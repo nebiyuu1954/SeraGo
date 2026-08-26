@@ -216,7 +216,7 @@ export default function FileUpload({
 
   // ────── RESUME MODE: dashed upload zone ──────
   return (
-    <div className={cn('w-full', className)}>
+    <div className={cn('w-full flex flex-col', className)}>
       {label && (
         <label className="font-label-sm text-label-sm font-medium text-on-surface">
           {label}
@@ -229,7 +229,7 @@ export default function FileUpload({
         onDragLeave={handleDragLeave}
         onClick={handleClick}
         className={cn(
-          'relative mt-1.5 flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors cursor-pointer',
+          'relative mt-1.5 flex-1 flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors cursor-pointer',
           isDragging
             ? 'border-primary bg-primary/5'
             : 'border-outline-variant hover:border-primary/50 hover:bg-surface-container-low',

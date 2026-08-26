@@ -53,8 +53,13 @@ public static class ProfileEndpoints
         string ProfileVisibility, string SkillVisibility);
 
     public sealed record RecruiterProfileResponse(
-        string CompanyName, string CompanyLogoUrl, string Industry, string CompanySize,
-        string WebsiteUrl, string About);
+        string CompanyName, string Industry, string CompanySize,
+        string WebsiteUrl, string About,
+        // New attributes
+        int? FoundedYear, string Headquarters, string PhoneNumber, string Email,
+        string? CompanyType, string LinkedInUrl, string TwitterUrl,
+        // Privacy
+        string CompanyVisibility, bool IsCompanyPrivate);
 
     public sealed record ProfileResponse(
         string FirstName, string MiddleName, string LastName, string Email, string Role, string AvatarUrl,
@@ -118,11 +123,21 @@ public static class ProfileEndpoints
     public sealed class RecruiterProfileUpdate
     {
         public string? CompanyName { get; set; }
-        public string? CompanyLogoUrl { get; set; }
         public string? Industry { get; set; }
         public string? CompanySize { get; set; }
         public string? WebsiteUrl { get; set; }
         public string? About { get; set; }
+        // New attributes
+        public int? FoundedYear { get; set; }
+        public string? Headquarters { get; set; }
+        public string? PhoneNumber { get; set; }
+        public string? Email { get; set; }
+        public string? CompanyType { get; set; }  // PascalCase enum name
+        public string? LinkedInUrl { get; set; }
+        public string? TwitterUrl { get; set; }
+        // Privacy
+        public string? CompanyVisibility { get; set; }  // JSON object
+        public bool? IsCompanyPrivate { get; set; }
     }
 
     // -------------------------------------------------------------- Handlers
@@ -274,11 +289,34 @@ public static class ProfileEndpoints
                 }
 
                 profile.CompanyName = request.Recruiter.CompanyName.Trim();
-                profile.CompanyLogoUrl = request.Recruiter.CompanyLogoUrl?.Trim() ?? string.Empty;
                 profile.Industry = request.Recruiter.Industry?.Trim() ?? string.Empty;
                 profile.CompanySize = request.Recruiter.CompanySize?.Trim() ?? string.Empty;
                 profile.WebsiteUrl = request.Recruiter.WebsiteUrl?.Trim() ?? string.Empty;
                 profile.About = request.Recruiter.About?.Trim() ?? string.Empty;
+
+                // New attributes
+                profile.FoundedYear = request.Recruiter.FoundedYear;
+                profile.Headquarters = request.Recruiter.Headquarters?.Trim() ?? string.Empty;
+                profile.PhoneNumber = request.Recruiter.PhoneNumber?.Trim() ?? string.Empty;
+                profile.Email = request.Recruiter.Email?.Trim() ?? string.Empty;
+                if (TryParseEnum<CompanyType>(request.Recruiter.CompanyType, out var companyType))
+                {
+                    profile.CompanyType = companyType;
+                }
+                else
+                {
+                    return EnumError(typeof(CompanyType), request.Recruiter.CompanyType);
+                }
+                profile.LinkedInUrl = request.Recruiter.LinkedInUrl?.Trim() ?? string.Empty;
+                profile.TwitterUrl = request.Recruiter.TwitterUrl?.Trim() ?? string.Empty;
+
+                // Privacy
+                profile.CompanyVisibility = request.Recruiter.CompanyVisibility?.Trim() ?? "{}";
+                if (request.Recruiter.IsCompanyPrivate.HasValue)
+                {
+                    profile.IsCompanyPrivate = request.Recruiter.IsCompanyPrivate.Value;
+                }
+
                 profile.UpdatedAt = DateTime.UtcNow;
                 break;
             }
@@ -344,8 +382,11 @@ public static class ProfileEndpoints
             if (profile is not null)
             {
                 recruiter = new RecruiterProfileResponse(
-                    profile.CompanyName, profile.CompanyLogoUrl, profile.Industry,
-                    profile.CompanySize, profile.WebsiteUrl, profile.About);
+                    profile.CompanyName, profile.Industry,
+                    profile.CompanySize, profile.WebsiteUrl, profile.About,
+                    profile.FoundedYear, profile.Headquarters, profile.PhoneNumber, profile.Email,
+                    profile.CompanyType?.ToString(), profile.LinkedInUrl, profile.TwitterUrl,
+                    profile.CompanyVisibility, profile.IsCompanyPrivate);
                 completion = ComputeRecruiterCompletion(profile);
             }
         }
@@ -375,7 +416,7 @@ public static class ProfileEndpoints
         return Completion(missing, total);
     }
 
-    /// <summary>Fields a job post depends on. Logo is optional.</summary>
+    /// <summary>Fields a job post depends on.</summary>
     private static ProfileCompletionResponse ComputeRecruiterCompletion(RecruiterProfile profile)
     {
         var missing = new List<string>();
@@ -384,8 +425,13 @@ public static class ProfileEndpoints
         if (string.IsNullOrWhiteSpace(profile.CompanySize)) missing.Add("companySize");
         if (string.IsNullOrWhiteSpace(profile.WebsiteUrl)) missing.Add("websiteUrl");
         if (string.IsNullOrWhiteSpace(profile.About)) missing.Add("about");
+        if (profile.FoundedYear is null) missing.Add("foundedYear");
+        if (string.IsNullOrWhiteSpace(profile.Headquarters)) missing.Add("headquarters");
+        if (string.IsNullOrWhiteSpace(profile.PhoneNumber)) missing.Add("phoneNumber");
+        if (string.IsNullOrWhiteSpace(profile.Email)) missing.Add("email");
+        if (profile.CompanyType is null) missing.Add("companyType");
 
-        const int total = 5;
+        const int total = 10;
         return Completion(missing, total);
     }
 

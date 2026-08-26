@@ -22,6 +22,7 @@ import AdminSectorsPage from './pages/admin/sectors/SectorsPage.tsx'
 import AdminUsersPage from './pages/admin/users/UsersPage.tsx'
 import AdminJobsPage from './pages/admin/jobs/AdminJobsPage.tsx'
 import RecruiterProfilePage from './pages/recruiter/profile/ProfilePage.tsx'
+import RecruiterProfilePreviewPage from './pages/recruiter/profile/RecruiterProfilePreviewPage.tsx'
 import TalentProfilePage from './pages/talent/profile/ProfilePage.tsx'
 import TalentProfilePreviewPage from './pages/talent/profile/TalentProfilePreviewPage.tsx'
 import AdminProfilePage from './pages/admin/profile/ProfilePage.tsx'
@@ -57,6 +58,10 @@ function App() {
         <Route
           path="dashboard/recruiter/profile"
           element={<RecruiterProfilePage />}
+        />
+        <Route
+          path="dashboard/recruiter/profile/preview"
+          element={<RecruiterProfilePreviewPage />}
         />
         <Route
           path="dashboard/talent/profile"
