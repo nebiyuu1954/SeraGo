@@ -101,13 +101,40 @@ export default function TalentPreviewPage() {
       )}
 
       {/* Content */}
-      {!loading && !error && snap && (
-        <TalentProfileView
-          snapshot={snap}
-          application={application}
-          backLabel="Back to applications"
-          backTo="/dashboard/recruiter/applications"
-        />
+      {!loading && !error && (
+        snap ? (
+          <TalentProfileView
+            snapshot={snap}
+            application={application}
+            backLabel="Back to applications"
+            backTo="/dashboard/recruiter/applications"
+          />
+        ) : application ? (
+          <div className="mt-6">
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="inline-flex items-center gap-1.5 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
+            >
+              <span className="material-symbols-outlined text-lg">arrow_back</span>
+              Back to applications
+            </button>
+            <div className="mt-6 rounded-xl border border-surface-variant bg-surface-container-lowest p-8 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-container-low text-on-surface-variant mx-auto">
+                <span className="material-symbols-outlined text-3xl">person_off</span>
+              </span>
+              <h2 className="mt-4 font-headline-md text-headline-md font-semibold text-on-surface">
+                {application.applicantName}
+              </h2>
+              <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
+                {application.applicantEmail}
+              </p>
+              <p className="mt-3 font-label-md text-label-md text-on-surface-variant">
+                This applicant did not share their profile details.
+              </p>
+            </div>
+          </div>
+        ) : null
       )}
     </DashboardShell>
   )
