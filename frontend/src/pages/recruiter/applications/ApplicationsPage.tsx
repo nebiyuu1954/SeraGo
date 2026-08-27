@@ -13,6 +13,7 @@ import { useRequireRole } from '../../../hooks'
 import type {
   ApplicationResponse,
   ApplicationStatus,
+  ProfileSnapshot,
   RecruiterJobStats,
 } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
@@ -26,6 +27,7 @@ const STATUS_FILTERS: { value: ApplicationStatus | ''; label: string }[] = [
   { value: '', label: 'All' },
   { value: 'pending', label: 'Pending' },
   { value: 'reviewed', label: 'Reviewed' },
+  { value: 'shortlisted', label: 'Shortlisted' },
   { value: 'interview', label: 'Interview' },
   { value: 'hired', label: 'Hired' },
   { value: 'rejected', label: 'Rejected' },
@@ -42,6 +44,8 @@ function statusBadge(status: ApplicationStatus): { label: string; className: str
       return { label: 'Pending', className: 'bg-surface-container text-on-surface-variant' }
     case 'reviewed':
       return { label: 'Reviewed', className: 'bg-blue-100 text-blue-900' }
+    case 'shortlisted':
+      return { label: 'Shortlisted', className: 'bg-amber-100 text-amber-900' }
     case 'interview':
       return { label: 'Interview', className: 'bg-amber-100 text-amber-900' }
     case 'hired':
@@ -157,58 +161,103 @@ function JobCardsGrid({ onSelectJob }: { onSelectJob: (id: string, title: string
   )
 }
 
+/** Format a number with k suffix for thousands. */
+function formatCompact(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`
+  return String(n)
+}
+
+/**
+ * Donut chart job card for the recruiter applications grid.
+ * Shows a progress ring, total apps in the center, and a 2×2 micro-stat grid.
+ */
 function JobCard({ job, onSelect }: { job: RecruiterJobStats; onSelect: () => void }) {
   return (
     <button
       type="button"
       onClick={onSelect}
-      className="group flex flex-col rounded-2xl border border-surface-variant bg-surface-container-lowest p-5 text-left shadow-sm transition-all hover:border-primary/40 hover:shadow-md"
+      className="group flex flex-col rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 transition-all duration-300 hover:shadow-lg hover:border-accent hover:-translate-y-1 cursor-pointer text-left"
     >
-      {/* Header */}
-      <div className="min-w-0">
-        <h3 className="truncate font-headline-md text-headline-md font-semibold text-on-surface group-hover:text-primary">
+      {/* Top: title */}
+      <div className="mb-6">
+        <h2 className="font-headline-md text-headline-md text-on-surface truncate">
           {job.jobTitle}
-        </h3>
-        <p className="mt-1 truncate font-body-sm text-body-sm text-on-surface-variant">
-          {job.jobCompany || 'No company'}
-          {job.jobLocation ? ` · ${job.jobLocation}` : ''}
-        </p>
+        </h2>
       </div>
 
-      {/* View count */}
-      <div className="mt-4 flex items-center gap-1.5 text-on-surface-variant">
-        <span className="material-symbols-outlined text-base">visibility</span>
-        <span className="font-body-sm text-body-sm font-medium">{job.viewCount}</span>
-        <span className="font-body-sm text-body-sm">views</span>
+      {/* Middle: Three full donut rings */}
+      <div className="flex-1 flex items-center justify-center gap-4 mb-6">
+        <DonutRing value={job.totalApplications} color="donut-blue" label="Total Apps" />
+        <DonutRing value={formatCompact(job.viewCount)} color="donut-orange" label="Views" />
+        <DonutRing value={job.hiredCount} color="donut-green" label="Hired" />
       </div>
 
-      {/* Status breakdown */}
-      <div className="mt-3 grid grid-cols-5 gap-1.5">
-        <StatusPill label="Pending" count={job.pendingCount} color="text-on-surface-variant" />
-        <StatusPill label="Reviewed" count={job.reviewedCount} color="text-blue-900" />
-        <StatusPill label="Interview" count={job.interviewCount} color="text-amber-900" />
-        <StatusPill label="Hired" count={job.hiredCount} color="text-on-primary-fixed-variant" />
-        <StatusPill label="Rejected" count={job.rejectedCount} color="text-on-error-container" />
-      </div>
-
-      {/* Total + CTA */}
-      <div className="mt-auto flex items-center justify-between pt-4 border-t border-surface-variant">
-        <span className="font-label-md text-label-md font-medium text-on-surface-variant">
-          {job.totalApplications} application{job.totalApplications === 1 ? '' : 's'}
-        </span>
-        <span className="font-label-md text-label-md font-medium text-primary group-hover:underline">
-          View all →
-        </span>
+      {/* Stats + View all */}
+      <div className="mt-auto pt-4 border-t border-surface-variant">
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <MicroStat dot="bg-surface-variant" label="Pending" count={job.pendingCount} />
+          <MicroStat dot="bg-primary-container" label="Reviewed" count={job.reviewedCount} />
+          <MicroStat dot="bg-tertiary-container" label="Interviewing" count={job.interviewCount} />
+          <MicroStat dot="bg-error" label="Rejected" count={job.rejectedCount} />
+        </div>
+        <div className="flex justify-end">
+          <span className="inline-flex items-center gap-1 rounded-lg bg-accent/10 px-3 py-1.5 font-label-md text-label-md font-semibold text-accent transition-colors group-hover:bg-accent group-hover:text-on-accent">
+            View all
+            <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+          </span>
+        </div>
       </div>
     </button>
   )
 }
 
-function StatusPill({ label, count, color }: { label: string; count: number; color: string }) {
+
+
+/** Decorative full ring — always 100% filled, number displayed in center. */
+function DonutRing({
+  value,
+  color,
+  label,
+}: {
+  value: number | string
+  color: string
+  label: string
+}) {
+  const circumference = 2 * Math.PI * 38
   return (
-    <div className="flex flex-col items-center rounded-lg bg-surface-container-low px-1.5 py-1.5">
-      <span className={`font-label-lg text-label-lg font-bold ${color}`}>{count}</span>
-      <span className="font-label-xs text-label-xs text-on-surface-variant leading-tight">{label}</span>
+    <div className="flex flex-col items-center">
+      <div className="relative">
+        <svg className="w-[5.5rem] h-[5.5rem]" viewBox="0 0 100 100">
+          <circle className="donut-bg" cx="50" cy="50" r="38" />
+          <circle
+            className={`donut-progress ${color}`}
+            cx="50" cy="50" r="38"
+            style={{ strokeDasharray: circumference, strokeDashoffset: 0 }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+          <span className="font-headline-md text-headline-md text-on-surface block leading-none">
+            {value}
+          </span>
+        </div>
+      </div>
+      <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider mt-2">
+        {label}
+      </span>
+    </div>
+  )
+}
+
+function MicroStat({ dot, label, count }: { dot: string; label: string; count: number }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-lg bg-surface-container-low py-3 px-2">
+      <div className="flex items-center gap-1.5">
+        <div className={`w-2 h-2 rounded-full ${dot}`} />
+        <span className="font-label-sm text-label-sm text-on-surface-variant">{label}</span>
+      </div>
+      <span className="font-headline-md text-headline-md text-on-surface mt-1">
+        {count}
+      </span>
     </div>
   )
 }
@@ -217,14 +266,35 @@ function CardsSkeleton() {
   return (
     <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-5">
-          <div className="h-5 w-2/3 animate-pulse rounded bg-surface-container" />
-          <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-surface-container-low" />
-          <div className="mt-4 h-4 w-1/3 animate-pulse rounded bg-surface-container" />
-          <div className="mt-3 grid grid-cols-4 gap-2">
-            {Array.from({ length: 4 }).map((_, j) => (
-              <div key={j} className="h-12 animate-pulse rounded-lg bg-surface-container-low" />
+        <div key={i} className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-6">
+          {/* Title placeholder */}
+          <div className="mb-6">
+            <div className="h-5 w-2/3 animate-pulse rounded bg-surface-container" />
+          </div>
+          {/* Three donut placeholders */}
+          <div className="flex items-center justify-center gap-4 mb-6">
+            {Array.from({ length: 3 }).map((_, j) => (
+              <div key={j} className="flex flex-col items-center gap-2">
+                <div className="h-[5.5rem] w-[5.5rem] animate-pulse rounded-full bg-surface-container" />
+                <div className="h-2 w-14 animate-pulse rounded bg-surface-container-low" />
+              </div>
             ))}
+          </div>
+          {/* Stats placeholder */}
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            {Array.from({ length: 4 }).map((_, j) => (
+              <div key={j} className="flex flex-col items-center justify-center rounded-lg bg-surface-container-low py-3 px-2 gap-1.5">
+                <div className="flex items-center gap-1.5">
+                  <div className="h-2 w-2 animate-pulse rounded-full bg-surface-container" />
+                  <div className="h-2.5 w-14 animate-pulse rounded bg-surface-container-high" />
+                </div>
+                <div className="h-4 w-6 animate-pulse rounded bg-surface-container" />
+              </div>
+            ))}
+          </div>
+          {/* View all placeholder */}
+          <div className="flex justify-end pt-4 border-t border-surface-variant">
+            <div className="h-8 w-20 animate-pulse rounded-lg bg-surface-container-low" />
           </div>
         </div>
       ))}
@@ -243,6 +313,7 @@ function ApplicationsList({ jobId, onBack }: { jobId: string; onBack: () => void
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [detailApp, setDetailApp] = useState<ApplicationResponse | null>(null)
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid')
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(null)
 
   useEffect(() => {
@@ -328,6 +399,25 @@ function ApplicationsList({ jobId, onBack }: { jobId: string; onBack: () => void
           <div className="flex-1" />
 
           <div className="flex items-center gap-2">
+            {/* List / Grid toggle */}
+            <div className="flex rounded-lg border border-outline-variant bg-surface-container-lowest p-0.5">
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 font-label-md text-label-md transition-colors ${viewMode === 'list' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
+                title="List view"
+              >
+                <span className="material-symbols-outlined text-[18px]">view_list</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 font-label-md text-label-md transition-colors ${viewMode === 'grid' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
+                title="Grid view"
+              >
+                <span className="material-symbols-outlined text-[18px]">grid_view</span>
+              </button>
+            </div>
             <span className="material-symbols-outlined text-lg text-on-surface-variant">sort</span>
             <select value={sort} onChange={(e) => { setSort(e.target.value); setPage(1) }} className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
               {SORT_OPTIONS.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
@@ -336,26 +426,26 @@ function ApplicationsList({ jobId, onBack }: { jobId: string; onBack: () => void
         </div>
       </div>
 
-      {/* Table */}
-      <div className="mt-4 overflow-hidden rounded-xl border border-surface-variant bg-surface-container-lowest shadow-sm">
-        {isLoading ? (
-          <ListSkeleton />
-        ) : error ? (
-          <div className="px-6 py-8 text-center">
-            <p className="font-body-md text-body-md text-on-surface-variant">{getApiErrorMessage(error)}</p>
-            <button type="button" onClick={() => refresh()} className="mt-3 rounded-lg border border-outline-variant px-4 py-2 font-label-md text-label-md text-primary transition-colors hover:bg-surface-container-low">Retry</button>
-          </div>
-        ) : applications.length === 0 ? (
-          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-container-low text-on-surface-variant">
-              <span className="material-symbols-outlined text-3xl">person_search</span>
-            </span>
-            <h3 className="mt-4 font-headline-md text-headline-md font-semibold text-on-surface">No applications found</h3>
-            <p className="mt-1 max-w-sm font-body-md text-body-md text-on-surface-variant">
-              {statusFilter || debouncedSearch ? 'No applications match your filters.' : 'No one has applied to this job yet.'}
-            </p>
-          </div>
-        ) : (
+      {/* Content: list or grid */}
+      {isLoading ? (
+        viewMode === 'list' ? <ListSkeleton /> : <GridSkeleton />
+      ) : error ? (
+        <div className="mt-4 rounded-xl border border-surface-variant bg-surface-container-lowest px-6 py-8 text-center">
+          <p className="font-body-md text-body-md text-on-surface-variant">{getApiErrorMessage(error)}</p>
+          <button type="button" onClick={() => refresh()} className="mt-3 rounded-lg border border-outline-variant px-4 py-2 font-label-md text-label-md text-primary transition-colors hover:bg-surface-container-low">Retry</button>
+        </div>
+      ) : applications.length === 0 ? (
+        <div className="mt-4 flex flex-col items-center justify-center rounded-xl border border-surface-variant bg-surface-container-lowest px-6 py-16 text-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-container-low text-on-surface-variant">
+            <span className="material-symbols-outlined text-3xl">person_search</span>
+          </span>
+          <h3 className="mt-4 font-headline-md text-headline-md font-semibold text-on-surface">No applications found</h3>
+          <p className="mt-1 max-w-sm font-body-md text-body-md text-on-surface-variant">
+            {statusFilter || debouncedSearch ? 'No applications match your filters.' : 'No one has applied to this job yet.'}
+          </p>
+        </div>
+      ) : viewMode === 'list' ? (
+        <div className="mt-4 overflow-hidden rounded-xl border border-surface-variant bg-surface-container-lowest shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left">
               <thead>
@@ -374,7 +464,19 @@ function ApplicationsList({ jobId, onBack }: { jobId: string; onBack: () => void
               </tbody>
             </table>
           </div>
-        )}
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {applications.map((app) => (
+            <ApplicationCard
+              key={app.id}
+              application={app}
+              onStatusChange={refresh}
+              onViewDetails={handleOpenDetails}
+            />
+          ))}
+        </div>
+      )}
 
         {/* Pagination */}
         {pagination && pagination.totalCount > 0 && (
@@ -410,7 +512,6 @@ function ApplicationsList({ jobId, onBack }: { jobId: string; onBack: () => void
             </div>
           </div>
         )}
-      </div>
 
       {/* Detail dialog */}
       {detailApp && (
@@ -506,6 +607,200 @@ function ApplicationRow({ application, onStatusChange, onViewDetails }: { applic
         </div>
       </td>
     </tr>
+  )
+}
+
+function parseSnapshot(raw: string | null): ProfileSnapshot | null {
+  if (!raw) return null
+  try { return JSON.parse(raw) as ProfileSnapshot } catch { return null }
+}
+
+/** Grid card view for a single application — horizontal split layout. */
+function ApplicationCard({ application, onStatusChange, onViewDetails }: { application: ApplicationResponse; onStatusChange: () => void; onViewDetails: (app: ApplicationResponse) => void }) {
+  const { showToast } = useToast()
+  const [updating, setUpdating] = useState(false)
+  const badge = statusBadge(application.status)
+  const snap = parseSnapshot(application.profileSnapshot)
+
+  const handleStatusChange = async (newStatus: ApplicationStatus) => {
+    const tokens = getStoredAuthTokens()
+    if (!tokens) return
+    setUpdating(true)
+    try {
+      await updateApplicationStatus(application.id, { status: newStatus }, tokens.accessToken)
+      showToast(`Application ${newStatus}`)
+      onStatusChange()
+    } catch (err) {
+      showToast(getApiErrorMessage(err), 'error')
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  const initials = application.applicantName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+  let workExperience: { company?: string; title?: string }[] = []
+  try {
+    if (snap?.workExperience && snap.workExperience !== '[]') {
+      workExperience = JSON.parse(snap.workExperience)
+    }
+  } catch { /* keep empty */ }
+  const latestJob = workExperience[0]
+
+  return (
+    <div className="flex flex-row h-48 border border-surface-variant rounded-xl overflow-hidden group hover:border-primary/40 transition-colors duration-200 bg-surface-container-lowest shadow-sm hover:shadow">
+      {/* Left Pane: Avatar + Name + Profession */}
+      <div className="w-40 flex-shrink-0 bg-surface-container-low flex flex-col items-center justify-center p-4 border-r border-surface-variant group-hover:bg-primary-fixed/10 transition-colors">
+        {application.applicantAvatarUrl ? (
+          <img src={application.applicantAvatarUrl} alt="" className="w-16 h-16 rounded-full object-cover border-2 border-surface-container-lowest shadow-sm mb-3" />
+        ) : (
+          <span className="flex w-16 h-16 items-center justify-center rounded-full bg-primary-container/60 border-2 border-surface-container-lowest shadow-sm mb-3 font-headline-md text-headline-md font-semibold text-primary">
+            {initials}
+          </span>
+        )}
+        <h3 className="font-label-md text-label-md font-semibold text-on-surface text-center leading-tight truncate w-full px-1">
+          {application.applicantName}
+        </h3>
+        <p className="font-label-sm text-label-sm text-on-surface-variant text-center truncate w-full px-1 mt-1">
+          {snap?.currentProfession || application.applicantHeadline || '—'}
+        </p>
+      </div>
+
+      {/* Right Pane */}
+      <div className="flex-1 flex flex-row group-hover:bg-primary-fixed/5 transition-colors">
+        {/* Content Area */}
+        <div className="flex-1 flex flex-col p-3.5 pr-2">
+          {/* Status badge */}
+          <span className={`self-start px-2 py-0.5 font-label-sm text-label-sm rounded uppercase tracking-wider ${badge.className}`}>{badge.label}</span>
+
+          {/* Latest job */}
+          {latestJob && (
+            <span className="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1 mt-2">
+              <span className="material-symbols-outlined text-[14px]">work</span>
+              {latestJob.title || 'Role'}{latestJob.company ? ` at ${latestJob.company}` : ''}
+            </span>
+          )}
+
+          {/* Experience */}
+          {snap?.yearsOfExperience != null && snap.yearsOfExperience > 0 && (
+            <span className="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1 mt-1">
+              <span className="material-symbols-outlined text-[14px]">schedule</span>
+              {snap.yearsOfExperience} year{snap.yearsOfExperience === 1 ? '' : 's'} of experience
+            </span>
+          )}
+
+          {/* Applied date */}
+          <span className="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1 mt-2">
+            <span className="material-symbols-outlined text-[14px]">calendar_today</span>
+            Applied {formatDate(application.appliedAt)}
+          </span>
+          {/* Cover letter */}
+          <span className="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1 mt-1">
+            <span className="material-symbols-outlined text-[14px]">description</span>
+            {application.coverLetter ? 'Cover letter' : 'No cover letter'}
+          </span>
+
+          {/* Ghost action buttons */}
+          <div className="flex gap-2 mt-auto pt-2">
+            <Link
+              to={`/dashboard/recruiter/applications/${application.id}/talent`}
+              className="text-label-sm font-label-sm text-primary hover:bg-primary-fixed/30 px-2.5 py-1 rounded transition-colors flex items-center gap-1 border border-transparent hover:border-primary/20"
+            >
+              <span className="material-symbols-outlined text-[16px]">visibility</span>
+              Profile
+            </Link>
+            {application.resumeUrl && (
+              <ResumeLink
+                resumeUrl={application.resumeUrl}
+                className="text-label-sm font-label-sm text-primary hover:bg-primary-fixed/30 px-2.5 py-1 rounded transition-colors flex items-center gap-1 border border-transparent hover:border-primary/20"
+              >
+                <span className="material-symbols-outlined text-[16px]">download</span>
+                Resume
+              </ResumeLink>
+            )}
+          </div>
+        </div>
+
+        {/* Vertical Quick Actions — 4 icons, always visible */}
+        <div className="w-10 border-l border-surface-variant flex flex-col items-center py-3 gap-4 bg-surface-container-lowest group-hover:bg-primary-fixed/5 transition-colors">
+          {/* 1. Reviewed */}
+          {application.status === 'pending' ? (
+            <button type="button" disabled={updating} onClick={() => handleStatusChange('reviewed')} className="text-on-surface-variant hover:text-primary transition-colors" title="Mark as reviewed">
+              <span className="material-symbols-outlined text-[20px]">check_circle</span>
+            </button>
+          ) : (
+            <span className="text-success" title="Already reviewed">
+              <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+            </span>
+          )}
+          {/* 2. Shortlist */}
+          {(application.status === 'pending' || application.status === 'reviewed') ? (
+            <button type="button" disabled={updating} onClick={() => handleStatusChange('shortlisted')} className="text-on-surface-variant hover:text-amber-700 transition-colors" title="Shortlist">
+              <span className="material-symbols-outlined text-[20px]">bookmark_add</span>
+            </button>
+          ) : application.status === 'shortlisted' ? (
+            <span className="text-amber-700" title="Already shortlisted">
+              <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>bookmark</span>
+            </span>
+          ) : null}
+          {/* 3. Reject */}
+          {(application.status === 'pending' || application.status === 'reviewed' || application.status === 'shortlisted' || application.status === 'interview') && (
+            <button type="button" disabled={updating} onClick={() => handleStatusChange('rejected')} className="text-on-surface-variant hover:text-error transition-colors" title="Reject">
+              <span className="material-symbols-outlined text-[20px]">block</span>
+            </button>
+          )}
+          {/* 4. View details */}
+          <button type="button" disabled={updating} onClick={() => onViewDetails(application)} className="text-on-surface-variant hover:text-primary transition-colors mt-auto" title="View details">
+            <span className="relative flex items-center justify-center w-6 h-6">
+              <span className="material-symbols-outlined text-[20px]">circle</span>
+              <span className="material-symbols-outlined text-[14px] absolute">arrow_forward</span>
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function GridSkeleton() {
+  return (
+    <div className="mt-4 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="flex flex-row h-48 rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
+          {/* Left pane */}
+          <div className="w-40 flex-shrink-0 bg-surface-container-low flex flex-col items-center justify-center p-4 border-r border-surface-variant">
+            <div className="w-16 h-16 animate-pulse rounded-full bg-surface-container mb-3" />
+            <div className="h-3.5 w-24 animate-pulse rounded bg-surface-container" />
+            <div className="h-3 w-20 animate-pulse rounded bg-surface-container-low mt-1.5" />
+          </div>
+          {/* Right pane */}
+          <div className="flex-1 flex flex-row">
+            <div className="flex-1 flex flex-col p-3.5 pr-2">
+              <div className="flex justify-between items-start mb-2">
+                <div className="h-5 w-16 animate-pulse rounded bg-surface-container" />
+                <div className="h-3 w-20 animate-pulse rounded bg-surface-container-low" />
+              </div>
+              <div className="flex gap-3 mt-1">
+                <div className="h-3 w-20 animate-pulse rounded bg-surface-container-low" />
+                <div className="h-3 w-24 animate-pulse rounded bg-surface-container-low" />
+              </div>
+              <div className="flex gap-1.5 mt-2">
+                <div className="h-5 w-14 animate-pulse rounded-full bg-surface-container-low" />
+                <div className="h-5 w-16 animate-pulse rounded-full bg-surface-container-low" />
+                <div className="h-5 w-12 animate-pulse rounded-full bg-surface-container-low" />
+              </div>
+              <div className="flex gap-2 mt-auto pt-2">
+                <div className="h-6 w-16 animate-pulse rounded bg-surface-container-low" />
+                <div className="h-6 w-16 animate-pulse rounded bg-surface-container-low" />
+              </div>
+            </div>
+            <div className="w-10 border-l border-surface-variant flex flex-col items-center py-3 gap-3">
+              <div className="h-5 w-5 animate-pulse rounded bg-surface-container" />
+              <div className="h-5 w-5 animate-pulse rounded bg-surface-container" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 
