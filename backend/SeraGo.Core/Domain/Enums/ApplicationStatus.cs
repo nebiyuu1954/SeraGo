@@ -3,7 +3,7 @@ namespace SeraGo.Core.Domain.Enums;
 /// <summary>
 /// Lifecycle of a talent's application to a Serago-posted job.
 /// 
-/// Pending → Reviewed → Interview → Hired
+/// Pending → Reviewed → Shortlisted → Interview → Hired
 ///                          ↘ Rejected
 /// </summary>
 public enum ApplicationStatus
@@ -22,4 +22,7 @@ public enum ApplicationStatus
 
     /// <summary>Recruiter passed on the candidate at any stage.</summary>
     Rejected = 4,
+
+    /// <summary>Candidate shortlisted by the recruiter.</summary>
+    Shortlisted = 5,
 }

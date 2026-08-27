@@ -147,6 +147,8 @@ export interface TalentProfileResponse {
   phoneNumber: string | null
   dateOfBirth: string | null
   address: string
+  // Work experience
+  workExperience: string
   // Education
   educationLevel: string
   educationHistory: string
@@ -232,6 +234,8 @@ export interface TalentProfileUpdate {
   phoneNumber?: string
   dateOfBirth?: string
   address?: string
+  // Work experience
+  workExperience?: string
   // Education
   educationLevel?: string
   educationHistory?: string
@@ -541,7 +545,7 @@ export interface ApplicationResponse {
 }
 
 /** Application status — lowerCamel enum name. */
-export type ApplicationStatus = 'pending' | 'reviewed' | 'interview' | 'hired' | 'rejected'
+export type ApplicationStatus = 'pending' | 'reviewed' | 'interview' | 'hired' | 'rejected' | 'shortlisted'
 
 /** The `data` payload of GET /api/applications. */
 export interface ApplicationListData {

@@ -14,6 +14,8 @@ function statusBadge(status: ApplicationStatus): { label: string; className: str
       return { label: 'Pending', className: 'bg-surface-container text-on-surface-variant' }
     case 'reviewed':
       return { label: 'Reviewed', className: 'bg-blue-100 text-blue-900' }
+    case 'shortlisted':
+      return { label: 'Shortlisted', className: 'bg-amber-100 text-amber-900' }
     case 'interview':
       return { label: 'Interview', className: 'bg-amber-100 text-amber-900' }
     case 'hired':
