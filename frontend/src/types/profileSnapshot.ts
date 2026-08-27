@@ -5,6 +5,14 @@
  * talent opted into sharing (via `profileVisibility`) are present.
  * All fields are optional because the talent controls visibility.
  */
+export interface WorkExperienceEntry {
+  company?: string
+  title?: string
+  startDate?: string
+  endDate?: string
+  description?: string
+}
+
 export interface ProfileSnapshot {
   // Identity
   firstName?: string
@@ -26,6 +34,10 @@ export interface ProfileSnapshot {
   currentIndustry?: string
   currentProfession?: string
   desiredRoles?: string[]
+
+  // Work experience
+  /** JSON-encoded `WorkExperienceEntry[]` — parse with `JSON.parse()`. */
+  workExperience?: string
 
   // Education
   educationLevel?: string

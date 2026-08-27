@@ -66,6 +66,14 @@ const DEFAULT_COMPANY_VISIBILITY: Record<string, boolean> = {
   twitterUrl: true,
 }
 
+export interface WorkExperienceEntry {
+  company: string
+  title: string
+  startDate: string
+  endDate: string
+  description: string
+}
+
 export interface EducationEntry {
   level: string
   institution: string
@@ -211,6 +219,8 @@ interface ProfileFormValues {
   phoneNumber: string
   dateOfBirth: string
   address: string
+  // Work experience
+  workExperience: WorkExperienceEntry[]
   // Education
   educationLevel: string
   educationHistory: EducationEntry[]
@@ -262,6 +272,7 @@ const initialValues: ProfileFormValues = {
   phoneNumber: '',
   dateOfBirth: '',
   address: '',
+  workExperience: [],
   educationLevel: '',
   educationHistory: [],
   currentIndustry: '',
@@ -526,6 +537,14 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
       .then((p) => {
         if (cancelled) return
         setProfile(p)
+        // Parse work experience JSON
+        let parsedWorkExperience: WorkExperienceEntry[] = []
+        try {
+          if (p.talent?.workExperience && p.talent.workExperience !== '[]') {
+            parsedWorkExperience = JSON.parse(p.talent.workExperience)
+          }
+        } catch { /* keep empty */ }
+
         // Parse education history JSON
         let parsedEducation: EducationEntry[] = []
         try {
@@ -596,6 +615,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
             phoneNumber: p.talent?.phoneNumber ?? '',
             dateOfBirth: p.talent?.dateOfBirth ?? '',
             address: p.talent?.address ?? '',
+            workExperience: parsedWorkExperience,
             educationLevel: p.talent?.educationLevel ?? '',
             educationHistory: parsedEducation,
             currentIndustry: p.talent?.currentIndustry ?? '',
@@ -670,6 +690,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
         phoneNumber: values.phoneNumber.trim() || undefined,
         dateOfBirth: values.dateOfBirth || undefined,
         address: values.address.trim() || undefined,
+        workExperience: JSON.stringify(values.workExperience),
         educationLevel: values.educationLevel || undefined,
         educationHistory: JSON.stringify(values.educationHistory),
         currentIndustry: values.currentIndustry.trim() || undefined,
@@ -1541,7 +1562,109 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                 </Field>
               </AccordionSection>
 
-              {/* ── Section 4: Education ── */}
+              {/* ── Section 4: Work experience ── */}
+              <AccordionSection
+                title="Work experience"
+                description="Your work history — shown to recruiters when you apply."
+                icon="work_history"
+                completion={{ filled: formik.values.workExperience.length > 0 ? 1 : 0, total: 1 }}
+              >
+                <div className="md:col-span-2">
+                  <div className="space-y-4">
+                    {formik.values.workExperience.map((entry, idx) => (
+                      <div
+                        key={idx}
+                        className="rounded-lg border border-surface-variant p-4"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-label-sm text-label-sm font-medium text-on-surface">
+                            {entry.title || entry.company || `Experience ${idx + 1}`}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = [...formik.values.workExperience]
+                              next.splice(idx, 1)
+                              formik.setFieldValue('workExperience', next)
+                            }}
+                            className="text-on-surface-variant transition-colors hover:text-error"
+                          >
+                            <span className="material-symbols-outlined text-lg">delete</span>
+                          </button>
+                        </div>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <input
+                            value={entry.company}
+                            onChange={(e) => {
+                              const next = [...formik.values.workExperience]
+                              next[idx] = { ...next[idx], company: e.target.value }
+                              formik.setFieldValue('workExperience', next)
+                            }}
+                            placeholder="Company name"
+                            className={inputClass}
+                          />
+                          <input
+                            value={entry.title}
+                            onChange={(e) => {
+                              const next = [...formik.values.workExperience]
+                              next[idx] = { ...next[idx], title: e.target.value }
+                              formik.setFieldValue('workExperience', next)
+                            }}
+                            placeholder="Job title (e.g. Software Engineer)"
+                            className={inputClass}
+                          />
+                          <input
+                            value={entry.startDate}
+                            onChange={(e) => {
+                              const next = [...formik.values.workExperience]
+                              next[idx] = { ...next[idx], startDate: e.target.value }
+                              formik.setFieldValue('workExperience', next)
+                            }}
+                            placeholder="Start date (e.g. Jan 2020)"
+                            className={inputClass}
+                          />
+                          <input
+                            value={entry.endDate}
+                            onChange={(e) => {
+                              const next = [...formik.values.workExperience]
+                              next[idx] = { ...next[idx], endDate: e.target.value }
+                              formik.setFieldValue('workExperience', next)
+                            }}
+                            placeholder="End date (or blank if current)"
+                            className={inputClass}
+                          />
+                          <textarea
+                            value={entry.description}
+                            onChange={(e) => {
+                              const next = [...formik.values.workExperience]
+                              next[idx] = { ...next[idx], description: e.target.value }
+                              formik.setFieldValue('workExperience', next)
+                            }}
+                            placeholder="Brief description of your role"
+                            rows={2}
+                            className={`${inputClass} resize-none`}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = [...formik.values.workExperience, {
+                          company: '', title: '', startDate: '', endDate: '', description: '',
+                        }]
+                        formik.setFieldValue('workExperience', next)
+                      }}
+                      className="flex items-center gap-1.5 rounded-lg border border-dashed border-outline-variant px-4 py-2.5 font-label-md text-label-md text-primary transition-colors hover:bg-primary-container/20"
+                    >
+                      <span className="material-symbols-outlined text-lg">add</span>
+                      Add experience
+                    </button>
+                  </div>
+                </div>
+              </AccordionSection>
+
+              {/* ── Section 5: Education ── */}
               <AccordionSection
                 title="Education"
                 description="Your educational background — shown to recruiters when you apply."
@@ -1676,7 +1799,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                 </Field>
               </AccordionSection>
 
-              {/* ── Section 5: Links & resume ── */}
+              {/* ── Section 6: Links & resume ── */}
               <AccordionSection
                 title="Links & resume"
                 description="Where recruiters can find you online."

@@ -5,6 +5,15 @@ import ResumeLink from '../ui/ResumeLink.tsx'
 
 // ────────────────────── helpers ──────────────────────
 
+function parseWorkExperience(raw: string | undefined): WorkExperienceEntry[] {
+  if (!raw || raw === '[]') return []
+  try {
+    return JSON.parse(raw) as WorkExperienceEntry[]
+  } catch {
+    return []
+  }
+}
+
 function parseEducationHistory(raw: string | undefined): EducationEntry[] {
   if (!raw || raw === '[]') return []
   try {
@@ -21,6 +30,14 @@ function parsePreferredLocations(raw: string | undefined): string[] {
   } catch {
     return []
   }
+}
+
+interface WorkExperienceEntry {
+  company?: string
+  title?: string
+  startDate?: string
+  endDate?: string
+  description?: string
 }
 
 interface EducationEntry {
@@ -102,6 +119,7 @@ export default function TalentProfileView({
     .join(' ')
 
   const location = locationString(snap)
+  const workExperience = parseWorkExperience(snap.workExperience)
   const education = parseEducationHistory(snap.educationHistory)
   const preferredLocations = parsePreferredLocations(snap.preferredLocations)
 
@@ -237,6 +255,47 @@ export default function TalentProfileView({
                   ? `${snap.yearsOfExperience ?? ''} years of experience as ${snap.headline}.`
                   : `${snap.yearsOfExperience ?? ''} years of professional experience.`}
               </p>
+            </section>
+          )}
+
+          {/* Work Experience Card */}
+          {workExperience.length > 0 && (
+            <section className="bg-surface-container-lowest border border-surface-variant rounded-xl p-6">
+              <h2 className="font-headline-md text-headline-md text-primary mb-6 flex items-center gap-2">
+                <span className="material-symbols-outlined">work_history</span>
+                Work Experience
+              </h2>
+              <div className="flex flex-col gap-6">
+                {workExperience.map((entry, idx) => (
+                  <div key={idx} className="relative pl-6 before:absolute before:left-0 before:top-2 before:h-2 before:w-2 before:rounded-full before:bg-primary">
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <span className="font-headline-md text-headline-md font-semibold text-on-surface">
+                        {entry.title || 'Role'}
+                      </span>
+                      {entry.company && (
+                        <span className="font-body-md text-body-md text-on-surface-variant">
+                          at {entry.company}
+                        </span>
+                      )}
+                    </div>
+                    {(entry.startDate || entry.endDate) && (
+                      <span className="flex items-center gap-1 mt-1">
+                        <span className="material-symbols-outlined text-[14px] text-on-surface-variant">
+                          schedule
+                        </span>
+                        <span className="font-label-sm text-label-sm text-on-surface-variant">
+                          {entry.startDate || '?'} — {entry.endDate || 'Present'}
+                        </span>
+                      </span>
+                    )}
+                    {entry.description && (
+                      <p className="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">
+                        {entry.description}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
             </section>
           )}
 

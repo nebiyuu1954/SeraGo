@@ -63,6 +63,15 @@ public class TalentProfile
     /// <summary>Street address.</summary>
     public string Address { get; set; } = string.Empty;
 
+    // --------------------------------------------------- Work experience
+
+    /// <summary>
+    /// Work experience as a JSON array. Each entry:
+    /// { company, title, startDate, endDate?, description }.
+    /// Variable-length — one entry per job the talent wants to share.
+    /// </summary>
+    public string WorkExperience { get; set; } = "[]";
+
     // --------------------------------------------------- Education
 
     /// <summary>Highest education level: "HighSchool" / "Bachelors" / "Masters" / "PhD".</summary>

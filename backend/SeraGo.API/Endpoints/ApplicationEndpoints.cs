@@ -597,6 +597,13 @@ public static class ApplicationEndpoints
         if (IsVisible("currentProfession") && profile is not null && !string.IsNullOrWhiteSpace(profile.CurrentProfession))
             snapshot["currentProfession"] = profile.CurrentProfession;
 
+        // Work experience
+        if (IsVisible("experience") && profile is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(profile.WorkExperience) && profile.WorkExperience != "[]")
+                snapshot["workExperience"] = profile.WorkExperience;
+        }
+
         // Education
         if (IsVisible("education") && profile is not null)
         {

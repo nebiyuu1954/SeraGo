@@ -45,6 +45,8 @@ public static class ProfileEndpoints
         string ResumeUrl, string LinkedInUrl, string GitHubUrl, string PortfolioUrl,
         // New identity / personal fields
         string MiddleName, string? PhoneNumber, string? DateOfBirth, string Address,
+        // Work experience
+        string WorkExperience,
         // Education
         string EducationLevel, string EducationHistory,
         // Professional context
@@ -105,6 +107,9 @@ public static class ProfileEndpoints
         public string? PhoneNumber { get; set; }
         public string? DateOfBirth { get; set; }  // ISO date string yyyy-MM-dd
         public string? Address { get; set; }
+
+        // Work experience
+        public string? WorkExperience { get; set; }  // JSON array
 
         // Education
         public string? EducationLevel { get; set; }
@@ -257,6 +262,9 @@ public static class ProfileEndpoints
                 }
                 profile.Address = request.Talent.Address?.Trim() ?? string.Empty;
 
+                // Work experience
+                profile.WorkExperience = request.Talent.WorkExperience?.Trim() ?? "[]";
+
                 // Education
                 profile.EducationLevel = request.Talent.EducationLevel?.Trim() ?? string.Empty;
                 profile.EducationHistory = request.Talent.EducationHistory?.Trim() ?? "[]";
@@ -366,6 +374,7 @@ public static class ProfileEndpoints
                     user.PhoneNumber,
                     profile.DateOfBirth?.ToString("yyyy-MM-dd"),
                     profile.Address,
+                    profile.WorkExperience,
                     profile.EducationLevel,
                     profile.EducationHistory,
                     profile.CurrentIndustry,
