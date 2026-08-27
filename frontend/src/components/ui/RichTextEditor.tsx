@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
@@ -91,7 +91,7 @@ export default function RichTextEditor({
   // Sync external value changes (e.g. Formik reset) into the editor.
   useEffect(() => {
     if (editor && value !== editor.getHTML()) {
-      editor.commands.setContent(value || '', false)
+      editor.commands.setContent(value || '', { emitUpdate: false })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value])
@@ -110,12 +110,7 @@ export default function RichTextEditor({
 
   if (!editor) return null
 
-  const addImage = useCallback(() => {
-    const url = window.prompt('Enter image URL')
-    if (url) {
-      editor.chain().focus().setImage({ src: url }).run()
-    }
-  }, [editor])
+  const [expanded, setExpanded] = useState(false)
 
   return (
     <div className={cn('rounded-lg border border-outline-variant bg-surface-container-lowest overflow-hidden', className)}>
@@ -210,13 +205,29 @@ export default function RichTextEditor({
       </div>
 
       {/* Editor content */}
-      <EditorContent editor={editor} />
+      <div
+        className="overflow-y-auto transition-all duration-200"
+        style={{ height: expanded ? '400px' : minHeight }}
+      >
+        <EditorContent editor={editor} />
+      </div>
 
-      {/* Word count */}
-      <div className="border-t border-surface-variant px-4 py-1.5">
+      {/* Footer: word count + expand toggle */}
+      <div className="flex items-center justify-between border-t border-surface-variant px-4 py-1.5">
         <span className="font-label-sm text-label-sm text-on-surface-variant/50">
           {editor.storage.characterCount?.words?.() ?? editor.getText().split(/\s+/).filter(Boolean).length} words
         </span>
+        <button
+          type="button"
+          onClick={() => setExpanded((prev) => !prev)}
+          title={expanded ? 'Collapse editor' : 'Expand editor'}
+          className="flex items-center gap-1 rounded px-2 py-1 font-label-sm text-label-sm text-on-surface-variant/60 transition-colors hover:bg-surface-container-low hover:text-on-surface-variant"
+        >
+          <span className="material-symbols-outlined text-[16px]">
+            {expanded ? 'compress' : 'expand'}
+          </span>
+          {expanded ? 'Collapse' : 'Expand'}
+        </button>
       </div>
     </div>
   )
