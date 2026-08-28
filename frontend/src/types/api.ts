@@ -540,6 +540,8 @@ export interface ApplicationResponse {
   status: ApplicationStatus
   appliedAt: string
   statusUpdatedAt: string | null
+  /** True when the talent shared their full profile; false for resume-only applications. */
+  profileShared: boolean
   /** JSON snapshot of the talent's visible profile data at apply time. */
   profileSnapshot: string | null
 }
@@ -562,6 +564,7 @@ export interface ApplyRequest {
   jobId: string
   coverLetter?: string
   resumeUrl?: string
+  shareProfile?: boolean
 }
 
 /** Body of PATCH /api/applications/{id}/status. */

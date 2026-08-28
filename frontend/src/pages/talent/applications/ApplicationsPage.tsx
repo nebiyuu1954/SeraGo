@@ -1,12 +1,9 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { getApiErrorMessage } from '../../../api'
 import { useMyApplicationsQuery } from '../../../hooks/query.ts'
 import { useRequireRole } from '../../../hooks'
 import type { ApplicationResponse, ApplicationStatus } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
-import RichTextDisplay from '../../../components/ui/RichTextDisplay'
-import ResumeLink from '../../../components/ui/ResumeLink.tsx'
 
 function statusBadge(status: ApplicationStatus): { label: string; className: string } {
   switch (status) {
@@ -35,16 +32,6 @@ function formatDate(iso: string): string {
   })
 }
 
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-}
-
 /**
  * Talent's applications page: shows all jobs the talent has applied to,
  * with status, applied date, and a link to the job detail.
@@ -54,8 +41,6 @@ export default function ApplicationsPage() {
   const { applications, pagination, isLoading, error, refresh } = useMyApplicationsQuery(
     auth.status === 'authenticated',
   )
-  const [detailApp, setDetailApp] = useState<ApplicationResponse | null>(null)
-
   if (auth.status !== 'authenticated') {
     return (
       <div className="flex min-h-[50svh] items-center justify-center">
@@ -128,11 +113,9 @@ export default function ApplicationsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-variant">
-                {applications.map((app) => (
-                  <ApplicationRow
+                {applications.map((app) => (                    <ApplicationRow
                     key={app.id}
                     application={app}
-                    onViewDetails={() => setDetailApp(app)}
                   />
                 ))}
               </tbody>
@@ -149,25 +132,18 @@ export default function ApplicationsPage() {
         )}
       </div>
 
-      {/* Application details dialog */}
-      {detailApp && (
-        <ApplicationDetailDialog
-          application={detailApp}
-          onClose={() => setDetailApp(null)}
-        />
-      )}
+
     </DashboardShell>
   )
 }
 
 function ApplicationRow({
   application,
-  onViewDetails,
 }: {
   application: ApplicationResponse
-  onViewDetails: () => void
 }) {
   const badge = statusBadge(application.status)
+  const navigate = useNavigate()
 
   return (
     <tr className="group transition-colors hover:bg-surface-container-low">
@@ -199,7 +175,7 @@ function ApplicationRow({
         <div className="flex items-center justify-end gap-1">
           <button
             type="button"
-            onClick={onViewDetails}
+            onClick={() => navigate(`/dashboard/talent/applications/${application.id}`)}
             className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-surface-container hover:text-primary"
             title="View application details"
           >
@@ -215,132 +191,6 @@ function ApplicationRow({
         </div>
       </td>
     </tr>
-  )
-}
-
-/** Modal dialog showing full application details for the talent. */
-function ApplicationDetailDialog({
-  application,
-  onClose,
-}: {
-  application: ApplicationResponse
-  onClose: () => void
-}) {
-  const badge = statusBadge(application.status)
-
-  return (
-    <>
-      <div
-        className="fixed inset-0 z-50 bg-inverse-surface/50"
-        onClick={onClose}
-      />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div
-          className="w-full max-w-lg rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex items-center justify-between">
-            <h2 className="font-headline-md text-headline-md font-bold text-on-surface">
-              Application details
-            </h2>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-surface-container"
-            >
-              <span className="material-symbols-outlined">close</span>
-            </button>
-          </div>
-
-          {/* Job info */}
-          <div className="mt-5 rounded-xl border border-surface-variant bg-surface-container-low p-4">
-            <Link
-              to={`/dashboard/talent/jobs/${application.jobId}`}
-              className="font-body-lg font-semibold text-primary transition-colors hover:text-surface-tint"
-            >
-              {application.jobTitle}
-            </Link>
-            <p className="mt-1 font-body-md text-on-surface-variant">
-              {application.jobCompany || 'Company undisclosed'}
-              {application.jobLocation ? ` · ${application.jobLocation}` : ''}
-            </p>
-          </div>
-
-          {/* Status + Applied date */}
-          <div className="mt-4 flex items-center gap-4">
-            <div>
-              <p className="font-label-sm text-label-sm uppercase tracking-wide text-on-surface-variant">
-                Status
-              </p>
-              <span
-                className={`mt-1 inline-flex items-center rounded-full px-2.5 py-0.5 font-label-sm text-label-sm font-medium ${badge.className}`}
-              >
-                {badge.label}
-              </span>
-            </div>
-            <div>
-              <p className="font-label-sm text-label-sm uppercase tracking-wide text-on-surface-variant">
-                Applied
-              </p>
-              <p className="mt-1 font-body-md text-body-md text-on-surface">
-                {formatDateTime(application.appliedAt)}
-              </p>
-            </div>
-            {application.statusUpdatedAt && (
-              <div>
-                <p className="font-label-sm text-label-sm uppercase tracking-wide text-on-surface-variant">
-                  Last updated
-                </p>
-                <p className="mt-1 font-body-md text-body-md text-on-surface">
-                  {formatDateTime(application.statusUpdatedAt)}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Cover letter */}
-          <div className="mt-5">
-            <p className="font-label-sm text-label-sm uppercase tracking-wide text-on-surface-variant">
-              Cover letter
-            </p>
-            {application.coverLetter ? (
-              <div className="mt-2 rounded-xl border border-surface-variant bg-surface-container-low p-4"><RichTextDisplay html={application.coverLetter} /></div>
-            ) : (
-              <p className="mt-2 font-body-md text-body-md text-on-surface-variant italic">
-                No cover letter submitted
-              </p>
-            )}
-          </div>
-
-          {/* Resume */}
-          {application.resumeUrl && (
-            <div className="mt-4">
-              <p className="font-label-sm text-label-sm uppercase tracking-wide text-on-surface-variant">
-                Resume
-              </p>
-              <ResumeLink
-                resumeUrl={application.resumeUrl}
-                className="mt-2 inline-flex items-center gap-1.5 font-body-md text-body-md"
-              >
-                <span className="material-symbols-outlined text-lg">description</span>
-                View resume
-                <span className="material-symbols-outlined text-sm">open_in_new</span>
-              </ResumeLink>
-            </div>
-          )}
-
-          <div className="mt-6 flex justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-outline-variant bg-surface-container-lowest px-5 py-2.5 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      </div>
-    </>
   )
 }
 

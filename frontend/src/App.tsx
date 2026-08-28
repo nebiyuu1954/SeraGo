@@ -15,6 +15,8 @@ import SavedJobsPage from './pages/talent/saved/SavedJobsPage.tsx'
 import RecruiterJobsPage from './pages/recruiter/jobs/JobsPage.tsx'
 import JobFormPage from './pages/recruiter/jobs/JobFormPage.tsx'
 import TalentApplicationsPage from './pages/talent/applications/ApplicationsPage.tsx'
+import TalentApplicationDetailPage from './pages/talent/applications/ApplicationDetailPage.tsx'
+import TalentApplicationProfilePage from './pages/talent/applications/ApplicationProfilePreviewPage.tsx'
 import RecruiterApplicationsPage from './pages/recruiter/applications/ApplicationsPage.tsx'
 import RecruiterTalentPreviewPage from './pages/recruiter/applications/TalentPreviewPage.tsx'
 import AdminDashboardPage from './pages/admin/dashboard/AdminDashboardPage.tsx'
@@ -43,6 +45,8 @@ function App() {
         />
         <Route path="dashboard/talent/saved" element={<SavedJobsPage />} />
         <Route path="dashboard/talent/applications" element={<TalentApplicationsPage />} />
+        <Route path="dashboard/talent/applications/:applicationId" element={<TalentApplicationDetailPage />} />
+        <Route path="dashboard/talent/applications/:applicationId/profile" element={<TalentApplicationProfilePage />} />
         <Route path="dashboard/recruiter" element={<RecruiterJobsPage />} />
         <Route path="dashboard/recruiter/applications" element={<RecruiterApplicationsPage />} />
         <Route path="dashboard/recruiter/applications/:applicationId/talent" element={<RecruiterTalentPreviewPage />} />
