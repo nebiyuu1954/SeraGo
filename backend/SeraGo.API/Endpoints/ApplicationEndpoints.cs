@@ -47,9 +47,10 @@ public static class ApplicationEndpoints
     public sealed record ApplyRequest(
         Guid JobId,
         string? CoverLetter,
-        string? ResumeUrl);
+        string? ResumeUrl,
+        bool? ShareProfile);
 
-    public sealed record UpdateStatusRequest(
+    public sealed record UpdateApplicationStatusRequest(
         string Status,
         string? RecruiterNotes);
 
@@ -70,6 +71,7 @@ public static class ApplicationEndpoints
         string Status,
         string AppliedAt,
         string? StatusUpdatedAt,
+        bool ProfileShared,
         string? ProfileSnapshot);
 
     public sealed record ApplicationListData(
@@ -159,9 +161,10 @@ public static class ApplicationEndpoints
         var now = DateTimeOffset.UtcNow;
 
         // Snapshot the talent's visible profile data at apply time.
+        var shareProfile = request.ShareProfile ?? false;
         var profile = await db.TalentProfiles.AsNoTracking()
             .FirstOrDefaultAsync(p => p.UserId == user.Id, ct);
-        var profileSnapshot = BuildProfileSnapshot(user, profile);
+        var profileSnapshot = BuildProfileSnapshot(user, profile, shareProfile);
 
         var application = new JobApplication
         {
@@ -170,10 +173,11 @@ public static class ApplicationEndpoints
             UserId = user.Id,
             CoverLetter = request.CoverLetter?.Trim() ?? string.Empty,
             ResumeUrl = string.IsNullOrWhiteSpace(request.ResumeUrl)
-                ? (profile?.ResumeUrl ?? null)
+                ? (shareProfile ? null : (profile?.ResumeUrl ?? null))
                 : request.ResumeUrl.Trim(),
             Status = ApplicationStatus.Pending,
             AppliedAt = now,
+            ProfileShared = shareProfile,
             ProfileSnapshot = profileSnapshot,
             CreatedAt = now,
             UpdatedAt = now,
@@ -465,7 +469,7 @@ public static class ApplicationEndpoints
     [Authorize(Roles = Roles.Recruiter + "," + Roles.Admin)]
     private static async Task<IResult> UpdateStatusAsync(
         Guid id,
-        UpdateStatusRequest request,
+        UpdateApplicationStatusRequest request,
         ClaimsPrincipal claims,
         UserManager<ApplicationUser> userManager,
         ApplicationDbContext db,
@@ -522,11 +526,36 @@ public static class ApplicationEndpoints
     // --------------------------------------------------------------- Helpers
 
     /// <summary>
-    /// Build a JSON snapshot of the talent's visible profile data at apply time.
-    /// Respects ProfileVisibility — only includes fields the talent opted into sharing.
+    /// Build a JSON snapshot of the talent's profile data at apply time.
+    /// When shareProfile is true, includes all visible fields (respecting ProfileVisibility).
+    /// When false (resume-only), only mandatory fields are included: name, email,
+    /// city, country, experience level, years of experience, and highest education level.
     /// </summary>
-    private static string BuildProfileSnapshot(ApplicationUser user, TalentProfile? profile)
+    private static string BuildProfileSnapshot(ApplicationUser user, TalentProfile? profile, bool shareProfile)
     {
+        var snapshot = new Dictionary<string, object?>();
+
+        // ── Mandatory fields — always included ──
+        snapshot["firstName"] = user.FirstName;
+        snapshot["lastName"] = user.LastName;
+        if (!string.IsNullOrWhiteSpace(user.City))
+            snapshot["city"] = user.City;
+        if (!string.IsNullOrWhiteSpace(user.Country))
+            snapshot["country"] = user.Country;
+        if (profile is not null)
+        {
+            if (profile.ExperienceLevel is not null)
+                snapshot["experienceLevel"] = profile.ExperienceLevel.ToString();
+            if (profile.YearsOfExperience is not null)
+                snapshot["yearsOfExperience"] = profile.YearsOfExperience.Value;
+            if (!string.IsNullOrWhiteSpace(profile.EducationLevel))
+                snapshot["educationLevel"] = profile.EducationLevel;
+        }
+
+        // ── Full profile — only when talent explicitly shared it ──
+        if (!shareProfile)
+            return System.Text.Json.JsonSerializer.Serialize(snapshot);
+
         // Parse visibility toggles — default to true for any missing key.
         Dictionary<string, bool> visibility;
         try
@@ -543,13 +572,9 @@ public static class ApplicationEndpoints
 
         bool IsVisible(string key) => !visibility.TryGetValue(key, out var v) || v;
 
-        var snapshot = new Dictionary<string, object?>();
-
-        // Identity (from ApplicationUser)
-        snapshot["firstName"] = user.FirstName;
+        // Identity extras
         if (IsVisible("middleName") && !string.IsNullOrWhiteSpace(user.MiddleName))
             snapshot["middleName"] = user.MiddleName;
-        snapshot["lastName"] = user.LastName;
         if (IsVisible("phone") && !string.IsNullOrWhiteSpace(user.PhoneNumber))
             snapshot["phone"] = user.PhoneNumber;
         if (IsVisible("dateOfBirth") && profile?.DateOfBirth is not null)
@@ -558,21 +583,10 @@ public static class ApplicationEndpoints
             snapshot["avatarUrl"] = user.AvatarUrl;
         if (IsVisible("address") && !string.IsNullOrWhiteSpace(profile?.Address))
             snapshot["address"] = profile!.Address;
-        if (IsVisible("city") && !string.IsNullOrWhiteSpace(user.City))
-            snapshot["city"] = user.City;
-        if (IsVisible("country") && !string.IsNullOrWhiteSpace(user.Country))
-            snapshot["country"] = user.Country;
 
         // Professional
-        if (IsVisible("headline") && profile is not null && !string.IsNullOrWhiteSpace(profile.Headline))
-            snapshot["headline"] = profile.Headline;
-        if (IsVisible("experience") && profile is not null)
-        {
-            if (profile.ExperienceLevel is not null)
-                snapshot["experienceLevel"] = profile.ExperienceLevel.ToString();
-            if (profile.YearsOfExperience is not null)
-                snapshot["yearsOfExperience"] = profile.YearsOfExperience.Value;
-        }
+        if (IsVisible("about") && profile is not null && !string.IsNullOrWhiteSpace(profile.About))
+            snapshot["about"] = profile.About;
         if (IsVisible("skills") && profile is not null && profile.Skills.Count > 0)
         {
             // Per-skill visibility: only include skills the talent opted into.
@@ -596,6 +610,12 @@ public static class ApplicationEndpoints
             snapshot["currentIndustry"] = profile.CurrentIndustry;
         if (IsVisible("currentProfession") && profile is not null && !string.IsNullOrWhiteSpace(profile.CurrentProfession))
             snapshot["currentProfession"] = profile.CurrentProfession;
+        if (IsVisible("workMode") && profile is not null && profile.WorkMode is not null)
+            snapshot["workMode"] = profile.WorkMode.ToString();
+        if (IsVisible("availability") && profile is not null && profile.Availability is not null)
+            snapshot["availability"] = profile.Availability.ToString();
+        if (IsVisible("desiredRoles") && profile is not null && profile.DesiredRoles.Count > 0)
+            snapshot["desiredRoles"] = profile.DesiredRoles;
 
         // Work experience
         if (IsVisible("experience") && profile is not null)
@@ -604,11 +624,9 @@ public static class ApplicationEndpoints
                 snapshot["workExperience"] = profile.WorkExperience;
         }
 
-        // Education
+        // Education history
         if (IsVisible("education") && profile is not null)
         {
-            if (!string.IsNullOrWhiteSpace(profile.EducationLevel))
-                snapshot["educationLevel"] = profile.EducationLevel;
             if (!string.IsNullOrWhiteSpace(profile.EducationHistory) && profile.EducationHistory != "[]")
                 snapshot["educationHistory"] = profile.EducationHistory;
         }
@@ -648,6 +666,7 @@ public static class ApplicationEndpoints
         EnumCamel(a.Status.ToString()),
         FormatDate(a.AppliedAt),
         FormatDate(a.StatusUpdatedAt),
+        a.ProfileShared,
         a.ProfileSnapshot);
 
     private static string EnumCamel(string enumName) =>

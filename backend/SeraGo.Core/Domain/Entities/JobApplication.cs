@@ -38,6 +38,13 @@ public class JobApplication
     public string RecruiterNotes { get; set; } = string.Empty;
 
     /// <summary>
+    /// True when the talent chose "Use my profile" during application, sharing
+    /// their full visible profile. False when they only uploaded a resume (the
+    /// snapshot still contains mandatory fields in that case).
+    /// </summary>
+    public bool ProfileShared { get; set; }
+
+    /// <summary>
     /// Snapshot of the talent's visible profile data at the time of application.
     /// JSON object with the fields the talent chose to share (respecting
     /// ProfileVisibility). Stored so the recruiter sees what was shared then,
