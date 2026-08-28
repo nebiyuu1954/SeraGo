@@ -211,16 +211,20 @@ public static class ProfileEndpoints
                         statusCode: StatusCodes.Status400BadRequest);
                 }
 
-                profile.Headline = request.Talent.Headline?.Trim() ?? string.Empty;
-                profile.About = request.Talent.About?.Trim() ?? string.Empty;
-                profile.ExperienceLevel = experienceLevel;
-                profile.YearsOfExperience = request.Talent.YearsOfExperience;
-                profile.DesiredRoles = request.Talent.DesiredRoles ?? [];
-                profile.Skills = request.Talent.Skills ?? [];
-                profile.DesiredJobTypes = NormalizeJobTypes(request.Talent.DesiredJobTypes, out var jobTypeError);
-                if (jobTypeError is not null)
+                // Only overwrite fields the caller actually sent (null = leave unchanged).
+                if (request.Talent.Headline is not null) profile.Headline = request.Talent.Headline.Trim();
+                if (request.Talent.About is not null) profile.About = request.Talent.About.Trim();
+                if (request.Talent.ExperienceLevel is not null) profile.ExperienceLevel = experienceLevel;
+                if (request.Talent.YearsOfExperience is not null) profile.YearsOfExperience = request.Talent.YearsOfExperience;
+                if (request.Talent.DesiredRoles is not null) profile.DesiredRoles = request.Talent.DesiredRoles;
+                if (request.Talent.Skills is not null) profile.Skills = request.Talent.Skills;
+                if (request.Talent.DesiredJobTypes is not null)
                 {
-                    return Results.Problem(jobTypeError, statusCode: StatusCodes.Status400BadRequest);
+                    profile.DesiredJobTypes = NormalizeJobTypes(request.Talent.DesiredJobTypes, out var jobTypeError);
+                    if (jobTypeError is not null)
+                    {
+                        return Results.Problem(jobTypeError, statusCode: StatusCodes.Status400BadRequest);
+                    }
                 }
                 if (request.Talent.PreferredSectorIds is not null)
                 {
@@ -240,15 +244,15 @@ public static class ProfileEndpoints
                     }
                     profile.PreferredSectorIds = ids;
                 }
-                profile.WorkMode = workMode;
-                profile.Availability = availability;
-                profile.ResumeUrl = request.Talent.ResumeUrl?.Trim() ?? string.Empty;
-                profile.LinkedInUrl = request.Talent.LinkedInUrl?.Trim() ?? string.Empty;
-                profile.GitHubUrl = request.Talent.GitHubUrl?.Trim() ?? string.Empty;
-                profile.PortfolioUrl = request.Talent.PortfolioUrl?.Trim() ?? string.Empty;
+                if (request.Talent.WorkMode is not null) profile.WorkMode = workMode;
+                if (request.Talent.Availability is not null) profile.Availability = availability;
+                if (request.Talent.ResumeUrl is not null) profile.ResumeUrl = request.Talent.ResumeUrl.Trim();
+                if (request.Talent.LinkedInUrl is not null) profile.LinkedInUrl = request.Talent.LinkedInUrl.Trim();
+                if (request.Talent.GitHubUrl is not null) profile.GitHubUrl = request.Talent.GitHubUrl.Trim();
+                if (request.Talent.PortfolioUrl is not null) profile.PortfolioUrl = request.Talent.PortfolioUrl.Trim();
 
                 // Identity / personal
-                if (!string.IsNullOrWhiteSpace(request.Talent.PhoneNumber))
+                if (request.Talent.PhoneNumber is not null)
                 {
                     user.PhoneNumber = request.Talent.PhoneNumber.Trim();
                 }
@@ -260,23 +264,23 @@ public static class ProfileEndpoints
                 {
                     profile.DateOfBirth = null;
                 }
-                profile.Address = request.Talent.Address?.Trim() ?? string.Empty;
+                if (request.Talent.Address is not null) profile.Address = request.Talent.Address.Trim();
 
                 // Work experience
-                profile.WorkExperience = request.Talent.WorkExperience?.Trim() ?? "[]";
+                if (request.Talent.WorkExperience is not null) profile.WorkExperience = request.Talent.WorkExperience.Trim();
 
                 // Education
-                profile.EducationLevel = request.Talent.EducationLevel?.Trim() ?? string.Empty;
-                profile.EducationHistory = request.Talent.EducationHistory?.Trim() ?? "[]";
+                if (request.Talent.EducationLevel is not null) profile.EducationLevel = request.Talent.EducationLevel.Trim();
+                if (request.Talent.EducationHistory is not null) profile.EducationHistory = request.Talent.EducationHistory.Trim();
 
                 // Professional context
-                profile.CurrentIndustry = request.Talent.CurrentIndustry?.Trim() ?? string.Empty;
-                profile.CurrentProfession = request.Talent.CurrentProfession?.Trim() ?? string.Empty;
-                profile.PreferredLocations = request.Talent.PreferredLocations?.Trim() ?? "[]";
+                if (request.Talent.CurrentIndustry is not null) profile.CurrentIndustry = request.Talent.CurrentIndustry.Trim();
+                if (request.Talent.CurrentProfession is not null) profile.CurrentProfession = request.Talent.CurrentProfession.Trim();
+                if (request.Talent.PreferredLocations is not null) profile.PreferredLocations = request.Talent.PreferredLocations.Trim();
 
                 // Privacy
-                profile.ProfileVisibility = request.Talent.ProfileVisibility?.Trim() ?? "{}";
-                profile.SkillVisibility = request.Talent.SkillVisibility?.Trim() ?? "{}";
+                if (request.Talent.ProfileVisibility is not null) profile.ProfileVisibility = request.Talent.ProfileVisibility.Trim();
+                if (request.Talent.SkillVisibility is not null) profile.SkillVisibility = request.Talent.SkillVisibility.Trim();
 
                 profile.UpdatedAt = DateTime.UtcNow;
                 break;
@@ -297,16 +301,16 @@ public static class ProfileEndpoints
                 }
 
                 profile.CompanyName = request.Recruiter.CompanyName.Trim();
-                profile.Industry = request.Recruiter.Industry?.Trim() ?? string.Empty;
-                profile.CompanySize = request.Recruiter.CompanySize?.Trim() ?? string.Empty;
-                profile.WebsiteUrl = request.Recruiter.WebsiteUrl?.Trim() ?? string.Empty;
-                profile.About = request.Recruiter.About?.Trim() ?? string.Empty;
+                if (request.Recruiter.Industry is not null) profile.Industry = request.Recruiter.Industry.Trim();
+                if (request.Recruiter.CompanySize is not null) profile.CompanySize = request.Recruiter.CompanySize.Trim();
+                if (request.Recruiter.WebsiteUrl is not null) profile.WebsiteUrl = request.Recruiter.WebsiteUrl.Trim();
+                if (request.Recruiter.About is not null) profile.About = request.Recruiter.About.Trim();
 
                 // New attributes
                 profile.FoundedYear = request.Recruiter.FoundedYear;
-                profile.Headquarters = request.Recruiter.Headquarters?.Trim() ?? string.Empty;
-                profile.PhoneNumber = request.Recruiter.PhoneNumber?.Trim() ?? string.Empty;
-                profile.Email = request.Recruiter.Email?.Trim() ?? string.Empty;
+                if (request.Recruiter.Headquarters is not null) profile.Headquarters = request.Recruiter.Headquarters.Trim();
+                if (request.Recruiter.PhoneNumber is not null) profile.PhoneNumber = request.Recruiter.PhoneNumber.Trim();
+                if (request.Recruiter.Email is not null) profile.Email = request.Recruiter.Email.Trim();
                 if (TryParseEnum<CompanyType>(request.Recruiter.CompanyType, out var companyType))
                 {
                     profile.CompanyType = companyType;
@@ -315,11 +319,11 @@ public static class ProfileEndpoints
                 {
                     return EnumError(typeof(CompanyType), request.Recruiter.CompanyType);
                 }
-                profile.LinkedInUrl = request.Recruiter.LinkedInUrl?.Trim() ?? string.Empty;
-                profile.TwitterUrl = request.Recruiter.TwitterUrl?.Trim() ?? string.Empty;
+                if (request.Recruiter.LinkedInUrl is not null) profile.LinkedInUrl = request.Recruiter.LinkedInUrl.Trim();
+                if (request.Recruiter.TwitterUrl is not null) profile.TwitterUrl = request.Recruiter.TwitterUrl.Trim();
 
                 // Privacy
-                profile.CompanyVisibility = request.Recruiter.CompanyVisibility?.Trim() ?? "{}";
+                if (request.Recruiter.CompanyVisibility is not null) profile.CompanyVisibility = request.Recruiter.CompanyVisibility.Trim();
                 if (request.Recruiter.IsCompanyPrivate.HasValue)
                 {
                     profile.IsCompanyPrivate = request.Recruiter.IsCompanyPrivate.Value;
