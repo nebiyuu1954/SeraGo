@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useFormik } from 'formik'
-import { object, string } from 'yup'
+import { array, object, string } from 'yup'
 import {
   fetchProfile,
   fetchSectors,
@@ -147,6 +147,52 @@ const optionalUrl = string().test(
   (value) => !value || /^https?:\/\/[^\s]+$/i.test(value),
 )
 
+const workExperienceSchema = object().test(
+  'has-data',
+  null,
+  (entry) => {
+    if (!entry) return true
+    const hasAny = entry.company || entry.title || entry.startDate || entry.endDate || entry.description
+    if (!hasAny) return true // empty row — skip validation
+    return (
+      string().required('Company name is required.').max(255).isValidSync(entry.company) &&
+      string().required('Job title is required.').max(200).isValidSync(entry.title) &&
+      string().required('Start date is required.').isValidSync(entry.startDate)
+    )
+  },
+).shape({
+  company: string().max(255),
+  title: string().max(200),
+  startDate: string(),
+  endDate: string(),
+  description: string().max(2000, 'Description must be 2000 characters or less.'),
+})
+
+const educationEntrySchema = object().test(
+  'has-data',
+  null,
+  (entry) => {
+    if (!entry) return true
+    const hasAny = entry.level || entry.institution || entry.degree || entry.gpa || entry.startYear || entry.endYear
+    if (!hasAny) return true // empty row — skip validation
+    return (
+      string().required('Education level is required.').isValidSync(entry.level) &&
+      string().required('Institution name is required.').max(255).isValidSync(entry.institution) &&
+      string().required('Start year is required.').test(
+        'valid-year', '',
+        (v) => /^\d{4}$/.test(v) && Number(v) >= 1970 && Number(v) <= 2099,
+      ).isValidSync(entry.startYear)
+    )
+  },
+).shape({
+  level: string(),
+  institution: string().max(255),
+  degree: string().max(255),
+  gpa: string().max(20),
+  startYear: string(),
+  endYear: string(),
+})
+
 const commonSchema = object({
   firstName: string().required('First name is required.').max(120),
   lastName: string().required('Last name is required.').max(120),
@@ -158,7 +204,7 @@ const commonSchema = object({
 const talentSchema = commonSchema.concat(
   object({
     headline: string().max(200),
-    about: string().max(4000),
+    about: string().max(10000),
     yearsOfExperience: string().test(
       'non-negative-int',
       'Years of experience must be 0 or greater.',
@@ -168,6 +214,8 @@ const talentSchema = commonSchema.concat(
     linkedInUrl: optionalUrl,
     githubUrl: optionalUrl,
     portfolioUrl: optionalUrl,
+    workExperience: array().of(workExperienceSchema),
+    educationHistory: array().of(educationEntrySchema),
   }),
 )
 
@@ -177,7 +225,7 @@ const recruiterSchema = commonSchema.concat(
     industry: string().max(120),
     companySize: string().max(64),
     websiteUrl: optionalUrl,
-    about: string().max(4000),
+    about: string().max(10000),
     foundedYear: string().test(
       'valid-year',
       'Enter a valid year (e.g. 2015).',
@@ -728,6 +776,21 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
   }
 
   const saveFromDialog = useCallback(() => handleSave(formik.values), [formik.values])
+
+  /** Custom save handler that shows validation errors instead of silently blocking. */
+  const handleSaveClick = async () => {
+    const errors = await formik.validateForm()
+    if (Object.keys(errors).length > 0) {
+      // Mark all fields touched so error messages appear
+      const allTouched: Record<string, boolean> = {}
+      for (const key of Object.keys(formik.values)) {
+        allTouched[key] = true
+      }
+      formik.setTouched(allTouched as any)
+      return
+    }
+    handleSave(formik.values)
+  }
 
   const {
     dialogOpen,
@@ -1593,57 +1656,96 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                           </button>
                         </div>
                         <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                          <input
-                            value={entry.company}
-                            onChange={(e) => {
-                              const next = [...formik.values.workExperience]
-                              next[idx] = { ...next[idx], company: e.target.value }
-                              formik.setFieldValue('workExperience', next)
-                            }}
-                            placeholder="Company name"
-                            className={inputClass}
-                          />
-                          <input
-                            value={entry.title}
-                            onChange={(e) => {
-                              const next = [...formik.values.workExperience]
-                              next[idx] = { ...next[idx], title: e.target.value }
-                              formik.setFieldValue('workExperience', next)
-                            }}
-                            placeholder="Job title (e.g. Software Engineer)"
-                            className={inputClass}
-                          />
-                          <input
-                            value={entry.startDate}
-                            onChange={(e) => {
-                              const next = [...formik.values.workExperience]
-                              next[idx] = { ...next[idx], startDate: e.target.value }
-                              formik.setFieldValue('workExperience', next)
-                            }}
-                            placeholder="Start date (e.g. Jan 2020)"
-                            className={inputClass}
-                          />
-                          <input
-                            value={entry.endDate}
-                            onChange={(e) => {
-                              const next = [...formik.values.workExperience]
-                              next[idx] = { ...next[idx], endDate: e.target.value }
-                              formik.setFieldValue('workExperience', next)
-                            }}
-                            placeholder="End date (or blank if current)"
-                            className={inputClass}
-                          />
-                          <textarea
-                            value={entry.description}
-                            onChange={(e) => {
-                              const next = [...formik.values.workExperience]
-                              next[idx] = { ...next[idx], description: e.target.value }
-                              formik.setFieldValue('workExperience', next)
-                            }}
-                            placeholder="Brief description of your role"
-                            rows={2}
-                            className={`${inputClass} resize-none`}
-                          />
+                          <div>
+                            <label className="font-label-sm text-label-sm font-medium text-on-surface">Company name *</label>
+                            <input
+                              value={entry.company}
+                              onChange={(e) => {
+                                const next = [...formik.values.workExperience]
+                                next[idx] = { ...next[idx], company: e.target.value }
+                                formik.setFieldValue('workExperience', next)
+                              }}
+                              placeholder="e.g. Google"
+                              className={inputClass}
+                            />
+                            {formik.touched.workExperience?.[idx]?.company &&
+                              (formik.errors.workExperience as any)?.[idx]?.company && (
+                                <p className="mt-1 font-label-sm text-label-sm text-error">
+                                  {(formik.errors.workExperience as any)[idx].company}
+                                </p>
+                              )}
+                          </div>
+                          <div>
+                            <label className="font-label-sm text-label-sm font-medium text-on-surface">Job title *</label>
+                            <input
+                              value={entry.title}
+                              onChange={(e) => {
+                                const next = [...formik.values.workExperience]
+                                next[idx] = { ...next[idx], title: e.target.value }
+                                formik.setFieldValue('workExperience', next)
+                              }}
+                              placeholder="e.g. Software Engineer"
+                              className={inputClass}
+                            />
+                            {formik.touched.workExperience?.[idx]?.title &&
+                              (formik.errors.workExperience as any)?.[idx]?.title && (
+                                <p className="mt-1 font-label-sm text-label-sm text-error">
+                                  {(formik.errors.workExperience as any)[idx].title}
+                                </p>
+                              )}
+                          </div>
+                          <div>
+                            <label className="font-label-sm text-label-sm font-medium text-on-surface">Start date *</label>
+                            <input
+                              type="date"
+                              value={entry.startDate}
+                              onChange={(e) => {
+                                const next = [...formik.values.workExperience]
+                                next[idx] = { ...next[idx], startDate: e.target.value }
+                                formik.setFieldValue('workExperience', next)
+                              }}
+                              className={inputClass}
+                            />
+                            {formik.touched.workExperience?.[idx]?.startDate &&
+                              (formik.errors.workExperience as any)?.[idx]?.startDate && (
+                                <p className="mt-1 font-label-sm text-label-sm text-error">
+                                  {(formik.errors.workExperience as any)[idx].startDate}
+                                </p>
+                              )}
+                          </div>
+                          <div>
+                            <label className="font-label-sm text-label-sm font-medium text-on-surface">End date</label>
+                            <input
+                              type="date"
+                              value={entry.endDate}
+                              onChange={(e) => {
+                                const next = [...formik.values.workExperience]
+                                next[idx] = { ...next[idx], endDate: e.target.value }
+                                formik.setFieldValue('workExperience', next)
+                              }}
+                              className={inputClass}
+                            />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <label className="font-label-sm text-label-sm font-medium text-on-surface">Description</label>
+                            <textarea
+                              value={entry.description}
+                              onChange={(e) => {
+                                const next = [...formik.values.workExperience]
+                                next[idx] = { ...next[idx], description: e.target.value }
+                                formik.setFieldValue('workExperience', next)
+                              }}
+                              placeholder="Brief description of your role"
+                              rows={2}
+                              className={`${inputClass} resize-none`}
+                            />
+                            {formik.touched.workExperience?.[idx]?.description &&
+                              (formik.errors.workExperience as any)?.[idx]?.description && (
+                                <p className="mt-1 font-label-sm text-label-sm text-error">
+                                  {(formik.errors.workExperience as any)[idx].description}
+                                </p>
+                              )}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1707,78 +1809,112 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                           >
                             <span className="material-symbols-outlined text-lg">delete</span>
                           </button>
-                        </div>
-                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                          <select
-                            value={entry.level}
-                            onChange={(e) => {
-                              const next = [...formik.values.educationHistory]
-                              next[idx] = { ...next[idx], level: e.target.value }
-                              formik.setFieldValue('educationHistory', next)
-                            }}
-                            className={inputClass}
-                          >
-                            <option value="">Level</option>
-                            {EDUCATION_LEVELS.map((level) => (
-                              <option key={level} value={level}>{EDUCATION_LEVEL_LABELS[level]}</option>
-                            ))}
-                          </select>
-                          <input
-                            value={entry.institution}
-                            onChange={(e) => {
-                              const next = [...formik.values.educationHistory]
-                              next[idx] = { ...next[idx], institution: e.target.value }
-                              formik.setFieldValue('educationHistory', next)
-                            }}
-                            placeholder="Institution name"
-                            className={inputClass}
-                          />
-                          <input
-                            value={entry.degree}
-                            onChange={(e) => {
-                              const next = [...formik.values.educationHistory]
-                              next[idx] = { ...next[idx], degree: e.target.value }
-                              formik.setFieldValue('educationHistory', next)
-                            }}
-                            placeholder="Degree (e.g. BSc Computer Science)"
-                            className={inputClass}
-                          />
-                          <input
-                            value={entry.gpa}
-                            onChange={(e) => {
-                              const next = [...formik.values.educationHistory]
-                              next[idx] = { ...next[idx], gpa: e.target.value }
-                              formik.setFieldValue('educationHistory', next)
-                            }}
-                            placeholder="GPA (e.g. 3.8/4.0)"
-                            className={inputClass}
-                          />
-                          <input
-                            type="number"
-                            value={entry.startYear}
-                            onChange={(e) => {
-                              const next = [...formik.values.educationHistory]
-                              next[idx] = { ...next[idx], startYear: e.target.value }
-                              formik.setFieldValue('educationHistory', next)
-                            }}
-                            placeholder="Start year"
-                            min="1970"
-                            max="2099"
-                            className={inputClass}
-                          />
-                          <input
-                            type="number"
-                            value={entry.endYear}
-                            onChange={(e) => {
-                              const next = [...formik.values.educationHistory]
-                              next[idx] = { ...next[idx], endYear: e.target.value }
-                              formik.setFieldValue('educationHistory', next)
-                            }}
-                            placeholder="End year (or blank if current)"
-                            min="1970"
-                            max="2099"
-                            className={inputClass}
-                          />
+                        </div>                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="font-label-sm text-label-sm font-medium text-on-surface">Education level *</label>
+                            <select
+                              value={entry.level}
+                              onChange={(e) => {
+                                const next = [...formik.values.educationHistory]
+                                next[idx] = { ...next[idx], level: e.target.value }
+                                formik.setFieldValue('educationHistory', next)
+                              }}
+                              className={inputClass}
+                            >
+                              <option value="">Select level</option>
+                              {EDUCATION_LEVELS.map((level) => (
+                                <option key={level} value={level}>{EDUCATION_LEVEL_LABELS[level]}</option>
+                              ))}
+                            </select>
+                            {formik.touched.educationHistory?.[idx]?.level &&
+                              (formik.errors.educationHistory as any)?.[idx]?.level && (
+                                <p className="mt-1 font-label-sm text-label-sm text-error">
+                                  {(formik.errors.educationHistory as any)[idx].level}
+                                </p>
+                              )}
+                          </div>
+                          <div>
+                            <label className="font-label-sm text-label-sm font-medium text-on-surface">Institution *</label>
+                            <input
+                              value={entry.institution}
+                              onChange={(e) => {
+                                const next = [...formik.values.educationHistory]
+                                next[idx] = { ...next[idx], institution: e.target.value }
+                                formik.setFieldValue('educationHistory', next)
+                              }}
+                              placeholder="e.g. Addis Ababa University"
+                              className={inputClass}
+                            />
+                            {formik.touched.educationHistory?.[idx]?.institution &&
+                              (formik.errors.educationHistory as any)?.[idx]?.institution && (
+                                <p className="mt-1 font-label-sm text-label-sm text-error">
+                                  {(formik.errors.educationHistory as any)[idx].institution}
+                                </p>
+                              )}
+                          </div>
+                          <div>
+                            <label className="font-label-sm text-label-sm font-medium text-on-surface">Degree</label>
+                            <input
+                              value={entry.degree}
+                              onChange={(e) => {
+                                const next = [...formik.values.educationHistory]
+                                next[idx] = { ...next[idx], degree: e.target.value }
+                                formik.setFieldValue('educationHistory', next)
+                              }}
+                              placeholder="e.g. BSc Computer Science"
+                              className={inputClass}
+                            />
+                          </div>
+                          <div>
+                            <label className="font-label-sm text-label-sm font-medium text-on-surface">GPA</label>
+                            <input
+                              value={entry.gpa}
+                              onChange={(e) => {
+                                const next = [...formik.values.educationHistory]
+                                next[idx] = { ...next[idx], gpa: e.target.value }
+                                formik.setFieldValue('educationHistory', next)
+                              }}
+                              placeholder="e.g. 3.8/4.0"
+                              className={inputClass}
+                            />
+                          </div>
+                          <div>
+                            <label className="font-label-sm text-label-sm font-medium text-on-surface">Start year *</label>
+                            <input
+                              type="number"
+                              value={entry.startYear}
+                              onChange={(e) => {
+                                const next = [...formik.values.educationHistory]
+                                next[idx] = { ...next[idx], startYear: e.target.value }
+                                formik.setFieldValue('educationHistory', next)
+                              }}
+                              min="1970"
+                              max="2099"
+                              className={inputClass}
+                            />
+                            {formik.touched.educationHistory?.[idx]?.startYear &&
+                              (formik.errors.educationHistory as any)?.[idx]?.startYear && (
+                                <p className="mt-1 font-label-sm text-label-sm text-error">
+                                  {(formik.errors.educationHistory as any)[idx].startYear}
+                                </p>
+                              )}
+                          </div>
+                          <div>
+                            <label className="font-label-sm text-label-sm font-medium text-on-surface">End year</label>
+                            <input
+                              type="number"
+                              value={entry.endYear}
+                              onChange={(e) => {
+                                const next = [...formik.values.educationHistory]
+                                next[idx] = { ...next[idx], endYear: e.target.value }
+                                formik.setFieldValue('educationHistory', next)
+                              }}
+                              min="1970"
+                              max="2099"
+                              placeholder="Leave blank if current"
+                              className={inputClass}
+                            />
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -2256,7 +2392,8 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
               </span>
             )}
             <button
-              type="submit"
+              type="button"
+              onClick={handleSaveClick}
               disabled={formik.isSubmitting}
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-6 py-3 font-label-md text-label-md font-medium text-on-accent shadow-sm transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-60"
             >
