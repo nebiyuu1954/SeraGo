@@ -202,9 +202,12 @@ function SectorsTab() {
         <input
           type="text"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            if (e.target.value.length <= 120) setName(e.target.value)
+          }}
           onKeyDown={(e) => e.key === 'Enter' && add()}
           placeholder="New sector name, e.g. Government & Public Service"
+          maxLength={120}
           className="w-full flex-1 rounded-lg border border-outline-variant bg-surface-container-lowest px-3.5 py-2.5 font-body-md text-body-md text-on-surface transition-colors placeholder:text-on-surface-variant/60 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         />
         <button
@@ -242,8 +245,11 @@ function SectorsTab() {
                 <input
                   type="text"
                   value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
+                  onChange={(e) => {
+                    if (e.target.value.length <= 120) setEditName(e.target.value)
+                  }}
                   onKeyDown={(e) => e.key === 'Enter' && saveEdit(sector)}
+                  maxLength={120}
                   autoFocus
                   className="w-56 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
@@ -475,9 +481,12 @@ function AliasesTab() {
                 <input
                   type="text"
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={(e) => {
+                    if (e.target.value.length <= 500) setInput(e.target.value)
+                  }}
                   onKeyDown={(e) => e.key === 'Enter' && addAliases()}
                   placeholder="Add aliases, comma-separated — e.g. ICT, Information Technology"
+                  maxLength={500}
                   className="w-full flex-1 rounded-lg border border-outline-variant bg-surface-container-lowest px-3.5 py-2 font-body-md text-body-md text-on-surface transition-colors placeholder:text-on-surface-variant/60 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
                 <button
