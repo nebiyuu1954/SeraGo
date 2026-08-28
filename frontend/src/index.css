@@ -344,6 +344,50 @@
   opacity: 1;
 }
 
+/* ─── Sonner toast countdown bar ─── */
+[data-sonner-toast][data-styled='true'] {
+  position: relative;
+  overflow: hidden;
+}
+
+[data-sonner-toast][data-styled='true']::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  width: 100%;
+  background: currentColor;
+  opacity: 0.4;
+  border-radius: 0 0 8px 8px;
+  animation: sonner-countdown 3s linear forwards;
+}
+
+@keyframes sonner-countdown {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+[data-sonner-toast][data-styled='true'][data-type='success']::before {
+  background: #166534;
+  opacity: 0.6;
+}
+
+[data-sonner-toast][data-styled='true'][data-type='error']::before {
+  background: #991b1b;
+  opacity: 0.6;
+}
+
+[data-sonner-toast][data-styled='true'][data-type='warning']::before {
+  background: #9a3412;
+  opacity: 0.6;
+}
+
+[data-sonner-toast][data-styled='true'][data-type='info']::before {
+  background: #1e40af;
+  opacity: 0.6;
+}
+
 /* ─── Donut chart (Job Cards) ─── */
 @layer components {
   .donut-bg {
