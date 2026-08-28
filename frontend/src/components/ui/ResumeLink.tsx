@@ -48,7 +48,7 @@ export default function ResumeLink({
       href={url}
       target="_blank"
       rel="noreferrer"
-      className={cn('text-primary hover:underline', className)}
+      className={className || 'text-primary hover:underline'}
       {...props}
     >
       {children}

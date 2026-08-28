@@ -156,11 +156,6 @@ export default function TalentProfileView({
             <h1 className="font-headline-lg text-headline-lg text-primary mb-1">
               {fullName}
             </h1>
-            {snap.headline && (
-              <p className="font-body-lg text-body-lg text-on-surface-variant mb-2">
-                {snap.headline}
-              </p>
-            )}
             <div className="flex items-center gap-4">
               {location && (
                 <span className="flex items-center gap-1 font-label-sm text-label-sm text-secondary">
@@ -193,7 +188,7 @@ export default function TalentProfileView({
         {/* ──────── Left Column: Main Details (70%) ──────── */}
         <div className="w-full lg:w-[70%] flex flex-col gap-8">
           {/* About Card */}
-          {snap.headline && (
+          {(snap.about || snap.currentIndustry || snap.currentProfession) && (
             <section className="bg-surface-container-lowest border border-surface-variant rounded-xl p-6">
               <h2 className="font-headline-md text-headline-md text-primary mb-6 flex items-center gap-2">
                 <span className="material-symbols-outlined">person</span>
@@ -251,9 +246,7 @@ export default function TalentProfileView({
                 </div>
               </div>
               <p className="font-body-md text-body-md text-on-surface-variant">
-                {snap.headline
-                  ? `${snap.yearsOfExperience ?? ''} years of experience as ${snap.headline}.`
-                  : `${snap.yearsOfExperience ?? ''} years of professional experience.`}
+                {`${snap.yearsOfExperience ?? ''} years of professional experience.`}
               </p>
             </section>
           )}

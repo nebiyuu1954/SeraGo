@@ -26,10 +26,11 @@ export interface ProfileSnapshot {
   country?: string
 
   // Professional
-  headline?: string
   about?: string
   experienceLevel?: string
   yearsOfExperience?: number
+  workMode?: string
+  availability?: string
   skills?: string[]
   currentIndustry?: string
   currentProfession?: string
