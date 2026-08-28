@@ -297,6 +297,7 @@ export default function JobDetailPage() {
   const [uploadedResumeUrl, setUploadedResumeUrl] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [applySuccess, setApplySuccess] = useState(false)
+  const [applyError, setApplyError] = useState<string | null>(null)
   const [showProfilePreview, setShowProfilePreview] = useState(false)
 
   // Profile for the "use my profile" option.
@@ -361,6 +362,16 @@ export default function JobDetailPage() {
     if (!job) return
     const tokens = getStoredAuthTokens()
     if (!tokens) return
+
+    // Validate: resume is required in CV mode
+    if (applyMode === 'coverletter') {
+      const hasResume = !!uploadedResumeUrl || !!talent?.resumeUrl
+      if (!hasResume) {
+        setApplyError('Please upload a resume or use your profile resume.')
+        return
+      }
+    }
+    setApplyError(null)
     setSubmitting(true)
     try {
       const payload: { jobId: string; coverLetter?: string; resumeUrl?: string } = {
@@ -734,7 +745,7 @@ export default function JobDetailPage() {
         <>
           <div
             className="fixed inset-0 z-50 bg-inverse-surface/50"
-            onClick={() => !submitting && setShowApplyForm(false)}
+            onClick={() => { if (!submitting) { setShowApplyForm(false); setApplyError(null) } }}
           />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div
@@ -747,7 +758,7 @@ export default function JobDetailPage() {
                 </h2>
                 <button
                   type="button"
-                  onClick={() => !submitting && setShowApplyForm(false)}
+                  onClick={() => { if (!submitting) { setShowApplyForm(false); setApplyError(null) } }}
                   className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-surface-container"
                 >
                   <span className="material-symbols-outlined">close</span>
@@ -761,7 +772,7 @@ export default function JobDetailPage() {
               <div className="mt-5 flex rounded-lg border border-surface-variant bg-surface-container-lowest p-1">
                 <button
                   type="button"
-                  onClick={() => setApplyMode('coverletter')}
+                  onClick={() => { setApplyMode('coverletter'); setApplyError(null) }}
                   className={cn(
                     'flex-1 rounded-md px-4 py-2 font-label-md text-label-md transition-colors',
                     applyMode === 'coverletter'
@@ -774,7 +785,7 @@ export default function JobDetailPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setApplyMode('profile')}
+                  onClick={() => { setApplyMode('profile'); setApplyError(null) }}
                   className={cn(
                     'flex-1 rounded-md px-4 py-2 font-label-md text-label-md transition-colors',
                     applyMode === 'profile'
@@ -885,10 +896,13 @@ export default function JobDetailPage() {
                 </div>
               )}
 
+              {applyError && (
+                <p className="mt-3 font-label-sm text-label-sm text-error">{applyError}</p>
+              )}
               <div className="mt-5 flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => !submitting && setShowApplyForm(false)}
+                  onClick={() => { if (!submitting) { setShowApplyForm(false); setApplyError(null) } }}
                   disabled={submitting}
                   className="rounded-lg border border-outline-variant bg-surface-container-lowest px-5 py-2.5 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low disabled:opacity-50"
                 >
