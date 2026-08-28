@@ -17,6 +17,7 @@ import { formatDate, postedLabel } from '../../../lib/date.ts'
 import { cn } from '../../../lib/cn.ts'
 import FileUpload from '../../../components/ui/FileUpload.tsx'
 import RichTextEditor from '../../../components/ui/RichTextEditor.tsx'
+import RichTextDisplay from '../../../components/ui/RichTextDisplay'
 import {
   highlightLabels,
   parseDescriptionSections,
@@ -312,7 +313,8 @@ export default function JobDetailPage() {
     linkedin: true, github: true, portfolio: true, skills: true,
     experience: true, resume: true, avatar: true, middleName: true,
     city: true, country: true, currentIndustry: true, currentProfession: true,
-    preferredLocations: true,
+    preferredLocations: true, about: true, desiredRoles: true,
+    workMode: true, availability: true,
   }
   const [previewVisibility, setPreviewVisibility] = useState<Record<string, boolean>>(defaultVis)
   const [savingVisibility, setSavingVisibility] = useState(false)
@@ -374,15 +376,19 @@ export default function JobDetailPage() {
     setApplyError(null)
     setSubmitting(true)
     try {
-      const payload: { jobId: string; coverLetter?: string; resumeUrl?: string } = {
+      const payload: { jobId: string; coverLetter?: string; resumeUrl?: string; shareProfile?: boolean } = {
         jobId: job.id,
       }
       if (coverLetter.trim() && coverLetter !== '<p></p>') payload.coverLetter = coverLetter
-      // Use uploaded resume if available, otherwise use profile resume
+      // Use uploaded resume if available, otherwise use profile resume (only if resume visibility is on)
       if (uploadedResumeUrl) {
         payload.resumeUrl = uploadedResumeUrl
-      } else if (applyMode === 'profile' && talent?.resumeUrl) {
+      } else if (applyMode === 'profile' && talent?.resumeUrl && (previewVisibility['resume'] ?? true)) {
         payload.resumeUrl = talent.resumeUrl
+      }
+      // Signal whether the talent is sharing their full profile
+      if (applyMode === 'profile') {
+        payload.shareProfile = true
       }
       await applyToJob(payload, tokens.accessToken)
       setApplySuccess(true)
@@ -799,7 +805,7 @@ export default function JobDetailPage() {
 
               </div>
 
-              {/* Cover letter — only in CV mode */}
+              {/* Resume upload — only in CV mode */}
               {applyMode === 'coverletter' && (
                 <div className="mt-5 space-y-4">
                   <div className="flex flex-col sm:flex-row gap-3 items-stretch">
@@ -828,20 +834,22 @@ export default function JobDetailPage() {
                       </div>
                     )}
                   </div>
-                  <div>
-                    <label className="font-label-md text-label-md font-medium text-on-surface">
-                      Cover letter <span className="text-on-surface-variant">(optional)</span>
-                    </label>
-                    <div className="mt-2">
-                      <RichTextEditor
-                        value={coverLetter}
-                        onChange={setCoverLetter}
-                        placeholder="Tell the recruiter why you're a great fit for this role..."
-                      />
-                    </div>
-                  </div>
                 </div>
               )}
+
+              {/* Cover letter — shown in both CV and profile mode */}
+              <div className="mt-5">
+                <label className="font-label-md text-label-md font-medium text-on-surface">
+                  Cover letter <span className="text-on-surface-variant">(optional)</span>
+                </label>
+                <div className="mt-2">
+                  <RichTextEditor
+                    value={coverLetter}
+                    onChange={setCoverLetter}
+                    placeholder="Tell the recruiter why you're a great fit for this role..."
+                  />
+                </div>
+              </div>
 
               {/* Profile mode — show preview button + summary */}
               {applyMode === 'profile' && talent && (
@@ -853,10 +861,9 @@ export default function JobDetailPage() {
                         Your profile will be shared with the recruiter
                       </p>
                       <p className="mt-1 font-body-sm text-body-sm text-on-surface-variant">
-                        {talent.headline || 'No headline set'}
-                        {talent.skills.length > 0 && (
-                          <> · {talent.skills.slice(0, 3).join(', ')}{talent.skills.length > 3 ? ` +${talent.skills.length - 3} more` : ''}</>
-                        )}
+                        {talent.skills.length > 0
+                          ? talent.skills.slice(0, 3).join(', ') + (talent.skills.length > 3 ? ` +${talent.skills.length - 3} more` : '')
+                          : 'No skills added yet'}
                       </p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <a
@@ -939,7 +946,7 @@ export default function JobDetailPage() {
               />
               <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
                 <div
-                  className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-xl"
+                  className="w-full max-w-4xl max-h-[85vh] overflow-y-auto rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-xl"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex items-center justify-between">
@@ -958,38 +965,74 @@ export default function JobDetailPage() {
                     Toggle fields on/off to control what the recruiter sees.
                   </p>
 
-                  <div className="mt-5 space-y-4">
-                    {/* Identity */}
-                    <PreviewSection title="Personal details">
-                      <PreviewRow label="Name" value={`${profile?.firstName} ${talent.middleName || ''} ${profile?.lastName}`.replace(/\s+/g, ' ').trim()} />
-                      <PreviewToggle label="Phone" field="phone" value={talent.phoneNumber} visibility={previewVisibility} onToggle={setPreviewVisibility} />
-                      <PreviewToggle label="Date of birth" field="dateOfBirth" value={talent.dateOfBirth} visibility={previewVisibility} onToggle={setPreviewVisibility} />
-                      <PreviewToggle label="Address" field="address" value={talent.address} visibility={previewVisibility} onToggle={setPreviewVisibility} />
-                      <PreviewRow label="City" value={profile?.city} />
-                      <PreviewRow label="Country" value={profile?.country} />
-                    </PreviewSection>
+                  <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Left column */}
+                    <div className="space-y-4">
+                      <PreviewSection title="Personal details">
+                        <PreviewRow label="Name" value={`${profile?.firstName} ${talent.middleName || ''} ${profile?.lastName}`.replace(/\s+/g, ' ').trim()} />
+                        <PreviewToggle label="Profile photo" field="avatar" value={profile?.avatarUrl ? 'Uploaded' : null} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                        <PreviewToggle label="Phone" field="phone" value={talent.phoneNumber} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                        <PreviewToggle label="Date of birth" field="dateOfBirth" value={talent.dateOfBirth} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                        <PreviewToggle label="Address" field="address" value={talent.address} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                        <PreviewRow label="City" value={profile?.city} />
+                        <PreviewRow label="Country" value={profile?.country} />
+                      </PreviewSection>
 
-                    {/* Professional */}
-                    <PreviewSection title="Professional details">
-                      <PreviewRow label="Headline" value={talent.headline} />
-                      <PreviewToggle label="Experience" field="experience" value={talent.experienceLevel ? `${talent.experienceLevel}${talent.yearsOfExperience != null ? ` · ${talent.yearsOfExperience} years` : ''}` : null} visibility={previewVisibility} onToggle={setPreviewVisibility} />
-                      <PreviewToggle label="Skills" field="skills" value={talent.skills.length > 0 ? talent.skills.join(', ') : null} visibility={previewVisibility} onToggle={setPreviewVisibility} />
-                      <PreviewToggle label="Current industry" field="currentIndustry" value={talent.currentIndustry} visibility={previewVisibility} onToggle={setPreviewVisibility} />
-                      <PreviewToggle label="Current profession" field="currentProfession" value={talent.currentProfession} visibility={previewVisibility} onToggle={setPreviewVisibility} />
-                    </PreviewSection>
+                      <PreviewSection title="Professional details">
+                        <PreviewToggle label="Experience" field="experience" value={talent.experienceLevel ? `${talent.experienceLevel}${talent.yearsOfExperience != null ? ` · ${talent.yearsOfExperience} years` : ''}` : null} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                        <PreviewToggle label="Skills" field="skills" value={talent.skills.length > 0 ? talent.skills.join(', ') : null} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                        <PreviewToggle label="Current industry" field="currentIndustry" value={talent.currentIndustry} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                        <PreviewToggle label="Current profession" field="currentProfession" value={talent.currentProfession} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                        <PreviewToggle label="Work mode" field="workMode" value={talent.workMode} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                        <PreviewToggle label="Availability" field="availability" value={talent.availability} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                        <PreviewToggle label="Desired roles" field="desiredRoles" value={talent.desiredRoles.length > 0 ? talent.desiredRoles.join(', ') : null} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                      </PreviewSection>
+                    </div>
 
-                    {/* Education */}
-                    <PreviewSection title="Education">
-                      <PreviewToggle label="Education" field="education" value={talent.educationLevel || (talent.educationHistory !== '[]' ? 'Has entries' : null)} visibility={previewVisibility} onToggle={setPreviewVisibility} />
-                    </PreviewSection>
+                    {/* Right column */}
+                    <div className="space-y-4">
+                      {/* About with rendered HTML */}
+                      {talent.about && (
+                        <PreviewSection title="About">
+                          <div className="flex items-center justify-between px-4 py-2.5">
+                            <div className="min-w-0 flex-1">
+                              <div className="font-body-sm text-sm text-on-surface">
+                                <RichTextDisplay html={talent.about} />
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={previewVisibility['about'] ?? true}
+                              onClick={() => setPreviewVisibility(prev => ({ ...prev, about: !(prev['about'] ?? true) }))}
+                              className={cn(
+                                'relative ml-3 inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors',
+                                (previewVisibility['about'] ?? true) ? 'bg-primary' : 'bg-surface-variant',
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  'inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform mt-0.5',
+                                  (previewVisibility['about'] ?? true) ? 'translate-x-4' : 'translate-x-0.5',
+                                )}
+                              />
+                            </button>
+                          </div>
+                        </PreviewSection>
+                      )}
 
-                    {/* Links */}
-                    <PreviewSection title="Links">
-                      <PreviewToggle label="Resume" field="resume" value={talent.resumeUrl ? 'Attached' : null} visibility={previewVisibility} onToggle={setPreviewVisibility} />
-                      <PreviewToggle label="LinkedIn" field="linkedin" value={talent.linkedInUrl} visibility={previewVisibility} onToggle={setPreviewVisibility} />
-                      <PreviewToggle label="GitHub" field="github" value={talent.githubUrl} visibility={previewVisibility} onToggle={setPreviewVisibility} />
-                      <PreviewToggle label="Portfolio" field="portfolio" value={talent.portfolioUrl} visibility={previewVisibility} onToggle={setPreviewVisibility} />
-                    </PreviewSection>
+                      <PreviewSection title="Education">
+                        <PreviewToggle label="Education" field="education" value={talent.educationLevel || (talent.educationHistory !== '[]' ? 'Has entries' : null)} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                      </PreviewSection>
+
+                      <PreviewSection title="Links">
+                        <PreviewToggle label="Resume" field="resume" value={talent.resumeUrl ? 'Attached' : null} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                        <PreviewToggle label="LinkedIn" field="linkedin" value={talent.linkedInUrl} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                        <PreviewToggle label="GitHub" field="github" value={talent.githubUrl} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                        <PreviewToggle label="Portfolio" field="portfolio" value={talent.portfolioUrl} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                        <PreviewToggle label="Preferred locations" field="preferredLocations" value={talent.preferredLocations || null} visibility={previewVisibility} onToggle={setPreviewVisibility} />
+                      </PreviewSection>
+                    </div>
                   </div>
 
                   <div className="mt-6 flex justify-end gap-3">
