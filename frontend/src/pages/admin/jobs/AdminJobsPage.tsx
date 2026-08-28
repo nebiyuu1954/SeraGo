@@ -289,11 +289,17 @@ export default function AdminJobsPage() {
               <p className="mt-1 font-body-sm text-sm text-on-surface-variant">Optionally provide a reason — the recruiter will see it.</p>
               <textarea
                 value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
+                onChange={(e) => {
+                  if (e.target.value.length <= 500) setRejectReason(e.target.value)
+                }}
                 placeholder="Reason for rejection (optional)..."
                 rows={3}
+                maxLength={500}
                 className="mt-4 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-3 font-body-md text-body-md text-on-surface placeholder:text-on-surface-variant/60 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
+              <p className="mt-1 text-right font-label-sm text-label-sm text-on-surface-variant/60">
+                {rejectReason.length}/500
+              </p>
               <div className="mt-4 flex justify-end gap-3">
                 <button type="button" onClick={() => setRejectModal(null)}
                   className="rounded-lg border border-outline-variant px-5 py-2.5 font-label-md text-label-md text-on-surface hover:bg-surface-container-low">Cancel</button>
