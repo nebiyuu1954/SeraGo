@@ -99,6 +99,7 @@ public static class SavedJobEndpoints
             .AsNoTracking()
             .Where(s => s.UserId == user.Id && s.Job != null
                 && (s.Job!.Deadline == null || s.Job.Deadline > window))
+            .Include(s => s.Job).ThenInclude(j => j!.PostedBy)
             .Select(s => new { Saved = s, Job = s.Job! })
             .OrderByDescending(x => x.Saved.SavedAt)
             .ToListAsync(ct);
@@ -116,7 +117,7 @@ public static class SavedJobEndpoints
                 job.Company,
                 job.SourceName,
                 job.SourceUrl,
-                job.CompanyLogoUrl ?? x.Saved.CompanyLogoUrl,
+                NullIfBlank(job.CompanyLogoUrl) ?? NullIfBlank(job.PostedBy?.AvatarUrl) ?? x.Saved.CompanyLogoUrl,
                 job.Location,
                 job.Salary,
                 FormatDate(job.Deadline),
@@ -220,8 +221,9 @@ public static class SavedJobEndpoints
     private const string UtcDateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'";
 
     private static string FormatDate(DateTimeOffset value) =>
-        value.ToUniversalTime().ToString(UtcDateFormat, CultureInfo.InvariantCulture);
+        value.ToUniversalTime().ToString(UtcDateFormat, CultureInfo.InvariantCulture);    private static string? FormatDate(DateTimeOffset? value) => value.HasValue ? FormatDate(value.Value) : null;
 
-    private static string? FormatDate(DateTimeOffset? value) =>
-        value.HasValue ? FormatDate(value.Value) : null;
+    /// <summary>Blank strings become null.</summary>
+    private static string? NullIfBlank(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
