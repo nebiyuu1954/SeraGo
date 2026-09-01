@@ -27,4 +27,7 @@ public class ApplicationUser : AufyUser
 
     /// <summary>1:1 Recruiter profile — populated only for Recruiter users.</summary>
     public RecruiterProfile? RecruiterProfile { get; set; }
+
+    /// <summary>1:1 user settings — every role gets a row.</summary>
+    public UserSettings? UserSettings { get; set; }
 }
