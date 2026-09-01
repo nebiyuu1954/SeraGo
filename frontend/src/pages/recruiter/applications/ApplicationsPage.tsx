@@ -20,6 +20,7 @@ import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import RichTextDisplay from '../../../components/ui/RichTextDisplay'
 import ResumeLink from '../../../components/ui/ResumeLink.tsx'
 import { useToast } from '../../../components/dashboard/Toast.tsx'
+import { statusBadge, getChipClasses } from '../../../lib/statusBadge'
 
 const PER_PAGE_OPTIONS = [10, 20, 50]
 
@@ -38,24 +39,15 @@ const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: 'oldest', label: 'Oldest first' },
 ]
 
-function statusBadge(status: ApplicationStatus): { label: string; className: string } {
-  switch (status) {
-    case 'pending':
-      return { label: 'Pending', className: 'bg-surface-container text-on-surface-variant' }
-    case 'reviewed':
-      return { label: 'Reviewed', className: 'bg-blue-100 text-blue-900' }
-    case 'shortlisted':
-      return { label: 'Shortlisted', className: 'bg-amber-100 text-amber-900' }
-    case 'interview':
-      return { label: 'Interview', className: 'bg-amber-100 text-amber-900' }
-    case 'hired':
-      return { label: 'Hired', className: 'bg-primary-fixed text-on-primary-fixed-variant' }
-    case 'rejected':
-      return { label: 'Rejected', className: 'bg-error-container text-on-error-container' }
-    default:
-      return { label: status, className: 'bg-surface-container text-on-surface-variant' }
-  }
-}
+/** All statuses a recruiter can move an application to (from any current status). */
+const STATUS_CHANGE_OPTIONS: { value: ApplicationStatus; label: string; icon: string }[] = [
+  { value: 'pending', label: 'Pending', icon: 'inbox' },
+  { value: 'reviewed', label: 'Reviewed', icon: 'visibility' },
+  { value: 'shortlisted', label: 'Shortlisted', icon: 'bookmark_add' },
+  { value: 'interview', label: 'Interview', icon: 'event' },
+  { value: 'hired', label: 'Hired', icon: 'check_circle' },
+  { value: 'rejected', label: 'Rejected', icon: 'block' },
+]
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -387,9 +379,7 @@ function ApplicationsList({ jobId, onBack }: { jobId: string; onBack: () => void
               type="button"
               onClick={() => { setStatusFilter(filter.value); setPage(1) }}
               className={`rounded-full px-4 py-1.5 font-label-md text-label-md font-medium transition-colors ${
-                statusFilter === filter.value
-                  ? 'bg-primary text-on-primary'
-                  : 'border border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low'
+                getChipClasses(filter.value, statusFilter === filter.value)
               }`}
             >
               {filter.label}
@@ -573,28 +563,6 @@ function ApplicationRow({ application, onStatusChange, onViewDetails }: { applic
           <button type="button" disabled={updating} onClick={() => onViewDetails(application)} className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-blue-50 hover:text-blue-700" title="View details">
             <span className="material-symbols-outlined text-lg">visibility</span>
           </button>
-          {/* Pipeline actions: move forward or reject at each stage */}
-          {application.status === 'pending' && (
-            <button type="button" disabled={updating} onClick={() => handleStatusChange('reviewed')} className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-blue-50 hover:text-blue-700" title="Mark as reviewed">
-              <span className="material-symbols-outlined text-lg">visibility</span>
-            </button>
-          )}
-          {application.status === 'reviewed' && (
-            <button type="button" disabled={updating} onClick={() => handleStatusChange('interview')} className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-amber-50 hover:text-amber-700" title="Move to interview">
-              <span className="material-symbols-outlined text-lg">event</span>
-            </button>
-          )}
-          {application.status === 'interview' && (
-            <button type="button" disabled={updating} onClick={() => handleStatusChange('hired')} className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-primary-container/50 hover:text-primary" title="Hire">
-              <span className="material-symbols-outlined text-lg">check_circle</span>
-            </button>
-          )}
-          {/* Reject available from pending, reviewed, interview */}
-          {(application.status === 'pending' || application.status === 'reviewed' || application.status === 'interview') && (
-            <button type="button" disabled={updating} onClick={() => handleStatusChange('rejected')} className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error" title="Reject">
-              <span className="material-symbols-outlined text-lg">cancel</span>
-            </button>
-          )}
           {application.resumeUrl && (
             <ResumeLink
               resumeUrl={application.resumeUrl}
@@ -720,7 +688,7 @@ function ApplicationCard({ application, onStatusChange, onViewDetails }: { appli
           </div>
         </div>
 
-        {/* Vertical Quick Actions — 4 icons, always visible */}
+        {/* Vertical Quick Actions — icons, always visible */}
         <div className="w-10 border-l border-surface-variant flex flex-col items-center py-3 gap-4 bg-surface-container-lowest group-hover:bg-primary-fixed/5 transition-colors">
           {/* 1. Reviewed */}
           {application.status === 'pending' ? (
@@ -733,17 +701,17 @@ function ApplicationCard({ application, onStatusChange, onViewDetails }: { appli
             </span>
           )}
           {/* 2. Shortlist */}
-          {(application.status === 'pending' || application.status === 'reviewed') ? (
+          {application.status !== 'shortlisted' ? (
             <button type="button" disabled={updating} onClick={() => handleStatusChange('shortlisted')} className="text-on-surface-variant hover:text-amber-700 transition-colors" title="Shortlist">
               <span className="material-symbols-outlined text-[20px]">bookmark_add</span>
             </button>
-          ) : application.status === 'shortlisted' ? (
+          ) : (
             <span className="text-amber-700" title="Already shortlisted">
               <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>bookmark</span>
             </span>
-          ) : null}
+          )}
           {/* 3. Reject */}
-          {(application.status === 'pending' || application.status === 'reviewed' || application.status === 'shortlisted' || application.status === 'interview') && (
+          {application.status !== 'hired' && application.status !== 'rejected' && (
             <button type="button" disabled={updating} onClick={() => handleStatusChange('rejected')} className="text-on-surface-variant hover:text-error transition-colors" title="Reject">
               <span className="material-symbols-outlined text-[20px]">block</span>
             </button>
@@ -901,48 +869,19 @@ function ApplicationDetailDialog({ application, onClose, onStatusChange }: { app
           </div>
 
           <div className="mt-6 flex items-center justify-between border-t border-surface-variant pt-4">
-            <div className="flex gap-2">
-              {/* Pending → Review */}
-              {application.status === 'pending' && (
-                <button type="button" disabled={updating} onClick={() => handleStatusChange('reviewed')} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2.5 font-label-md text-label-md font-medium text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50">
-                  <span className="material-symbols-outlined text-lg">visibility</span>
-                  Mark as reviewed
-                </button>
-              )}
-              {/* Reviewed → Interview */}
-              {application.status === 'reviewed' && (
-                <button type="button" disabled={updating} onClick={() => handleStatusChange('interview')} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-2.5 font-label-md text-label-md font-medium text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50">
-                  <span className="material-symbols-outlined text-lg">event</span>
-                  Move to interview
-                </button>
-              )}
-              {/* Interview → Hired */}
-              {application.status === 'interview' && (
-                <button type="button" disabled={updating} onClick={() => handleStatusChange('hired')} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 font-label-md text-label-md font-medium text-on-primary shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50">
-                  <span className="material-symbols-outlined text-lg">check_circle</span>
-                  Hire
-                </button>
-              )}
-              {/* Reject from any active stage */}
-              {(application.status === 'pending' || application.status === 'reviewed' || application.status === 'interview') && (
-                <button type="button" disabled={updating} onClick={() => handleStatusChange('rejected')} className="inline-flex items-center gap-1.5 rounded-lg border border-error/30 bg-error-container px-4 py-2.5 font-label-md text-label-md font-medium text-on-error-container transition-colors hover:bg-error-container/80 disabled:opacity-50">
-                  <span className="material-symbols-outlined text-lg">cancel</span>
-                  Reject
-                </button>
-              )}
-              {/* Terminal states */}
-              {application.status === 'hired' && (
-                <span className="inline-flex items-center gap-1.5 rounded-lg bg-primary-fixed px-4 py-2.5 font-label-md text-label-md font-medium text-on-primary-fixed-variant">
-                  <span className="material-symbols-outlined text-lg">check_circle</span>
-                  Hired
-                </span>
-              )}
-              {application.status === 'rejected' && (
-                <span className="inline-flex items-center gap-1.5 rounded-lg border border-error/20 bg-error-container/50 px-4 py-2.5 font-label-md text-label-md font-medium text-on-error-container/70">
-                  <span className="material-symbols-outlined text-lg">cancel</span>
-                  Rejected
-                </span>
-              )}
+            <div className="flex items-center gap-3">
+              <span className="font-label-sm text-label-sm text-on-surface-variant">Change status:</span>
+              <select
+                value={application.status}
+                disabled={updating}
+                onChange={(e) => handleStatusChange(e.target.value as ApplicationStatus)}
+                className="rounded-lg border border-surface-variant bg-surface-container-lowest px-3 py-2 font-label-md text-label-md text-on-surface transition-colors hover:border-primary focus:border-primary focus:outline-none"
+              >
+                {STATUS_CHANGE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              {updating && <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />}
             </div>
             <button type="button" onClick={onClose} className="rounded-lg border border-outline-variant bg-surface-container-lowest px-5 py-2.5 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low">Close</button>
           </div>
