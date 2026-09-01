@@ -1,9 +1,12 @@
 using Aufy.Core;
+using Hangfire;
+using Hangfire.Dashboard;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using SeraGo.API.Email;
 using SeraGo.API.Endpoints;
 using SeraGo.API.Extensions;
+using SeraGo.API.Hubs;
 using SeraGo.API.Middleware;
 using SeraGo.API.Services;
 using SeraGo.Infrastructure;
@@ -54,6 +57,7 @@ builder.Services.AddRateLimiting(builder.Configuration); // API throttling (fixe
 
 builder.Services.AddInfrastructure(builder.Configuration); // PostgreSQL DbContext + AuthSeeder
 builder.Services.SetupAufy(builder.Configuration);         // Aufy: Identity + JWT + custom signup
+builder.Services.AddNotificationInfrastructure(builder.Configuration); // Hangfire + Redis + SignalR + NotificationService
 
 // Surface the main-DB connection source so connection-string issues are obvious at startup.
 {
@@ -193,6 +197,48 @@ app.MapSectorEndpoints(); // /api/sectors + admin sector management + scraped-jo
 app.MapStatsEndpoints();  // /api/admin/stats — top sectors + websites per period (scraper DB)
 app.MapAdminUserEndpoints(); // /api/admin/users — admin user management
 app.MapFileUploadEndpoints(); // /api/upload — presigned URLs for file uploads
+app.MapSettingsEndpoints();   // GET/PUT/PATCH /api/account/settings — user settings
+app.MapNotificationEndpoints(); // /api/notifications — bell icon, unread count, mark read
+
+// Telegram endpoints only when bot token is configured
+if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN"))
+    || !string.IsNullOrWhiteSpace(builder.Configuration["TELEGRAM_BOT_TOKEN"]))
+{
+    app.MapTelegramEndpoints(); // /api/telegram — account linking, webhook
+}
+
+// SignalR hub for real-time notifications
+app.MapHub<NotificationHub>("/hubs/notifications");
+
+// Hangfire dashboard (dev only — behind auth in production)
+if (app.Environment.IsDevelopment())
+{
+    app.UseHangfireDashboard("/hangfire");
+}
+
+// Register recurring Hangfire jobs
+{
+    var recurringJobs = app.Services.GetRequiredService<IRecurringJobManager>();
+    var orchestrator = app.Services.GetRequiredService<IServiceScopeFactory>();
+
+    recurringJobs.AddOrUpdate<NotificationOrchestrator>(
+        "notification-digest-emails",
+        o => o.SendDigestEmails(),
+        "0 8 * * *",  // daily at 8 AM UTC
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    recurringJobs.AddOrUpdate<NotificationOrchestrator>(
+        "notification-cleanup",
+        o => o.CleanupOldNotifications(),
+        "0 3 * * 0",  // weekly Sunday 3 AM UTC
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+    recurringJobs.AddOrUpdate<NotificationOrchestrator>(
+        "notification-redis-sync",
+        o => o.SyncRedisCounters(),
+        "0 * * * *",  // hourly
+        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+}
 
 app.MapGet("/", () => Results.Ok(new { service = "SeraGo API", docs = "/swagger" }));
 
