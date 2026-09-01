@@ -1301,29 +1301,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                 />
                 <button
                   type="button"
-                  role="switch"
-                  aria-checked={formik.values.profileVisibility.avatar ?? true}
-                  aria-label="Toggle profile picture visibility"
-                  onClick={() => toggleVisibility('avatar')}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low"
-                >
-                  <span
-                    className={cn(
-                      'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors',
-                      (formik.values.profileVisibility.avatar ?? true) ? 'bg-primary' : 'bg-surface-variant',
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        'inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform mt-0.5',
-                        (formik.values.profileVisibility.avatar ?? true) ? 'translate-x-4' : 'translate-x-0.5',
-                      )}
-                    />
-                  </span>
-                  {formik.values.profileVisibility.avatar ?? true ? 'Hide' : 'Show'}
-                </button>
-                <button
-                  type="button"
                   onClick={() => avatarInputRef.current?.click()}
                   disabled={avatarUploading}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low disabled:opacity-50"
