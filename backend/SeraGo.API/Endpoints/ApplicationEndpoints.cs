@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SeraGo.API.Services;
 using SeraGo.Core.Domain;
 using SeraGo.Core.Domain.Entities;
 using SeraGo.Core.Domain.Enums;
@@ -72,7 +73,10 @@ public static class ApplicationEndpoints
         string AppliedAt,
         string? StatusUpdatedAt,
         bool ProfileShared,
-        string? ProfileSnapshot);
+        string? ProfileSnapshot,
+        string? JobSalary,
+        string? JobDeadline,
+        string? CompanyLogoUrl);
 
     public sealed record ApplicationListData(
         List<ApplicationResponse> Items,
@@ -115,6 +119,7 @@ public static class ApplicationEndpoints
         ClaimsPrincipal claims,
         UserManager<ApplicationUser> userManager,
         ApplicationDbContext db,
+        NotificationService notificationService,
         CancellationToken ct)
     {
         var user = await userManager.GetUserAsync(claims);
@@ -124,6 +129,8 @@ public static class ApplicationEndpoints
         }
 
         var job = await db.Jobs.AsNoTracking()
+            .Include(j => j.PostedBy)
+                .ThenInclude(u => u!.RecruiterProfile)
             .FirstOrDefaultAsync(j => j.Id == request.JobId, ct);
         if (job is null)
         {
@@ -186,6 +193,24 @@ public static class ApplicationEndpoints
         db.JobApplications.Add(application);
         await db.SaveChangesAsync(ct);
 
+        // Notify the recruiter that someone applied
+        if (job.PostedByUserId is not null)
+        {
+            var talentName = user.FirstName is not null && user.LastName is not null
+                ? $"{user.FirstName} {user.LastName}"
+                : user.UserName ?? "A talent";
+
+            await notificationService.CreateAsync(new NotificationService.CreateNotificationRequest(
+                UserId: job.PostedByUserId,
+                Type: NotificationType.ApplicationReceived,
+                Title: "New application received",
+                Body: $"{talentName} applied to {job.Title}",
+                Data: $"{{\"job_id\":\"{job.Id}\",\"application_id\":\"{application.Id}\",\"actor_name\":\"{talentName}\"}}",
+                SkipEmail: false,
+                SkipTelegram: true
+            ));
+        }
+
         return Results.Created(
             $"/api/applications/{application.Id}",
             ToResponse(application, user, job));
@@ -197,7 +222,7 @@ public static class ApplicationEndpoints
         ClaimsPrincipal claims,
         UserManager<ApplicationUser> userManager,
         ApplicationDbContext db,
-        [AsParameters] PaginationQuery pagination,
+        [AsParameters] ApplicationListQuery query,
         CancellationToken ct)
     {
         var user = await userManager.GetUserAsync(claims);
@@ -206,17 +231,43 @@ public static class ApplicationEndpoints
             return Results.Unauthorized();
         }
 
-        var q = db.JobApplications
+        IQueryable<JobApplication> q = db.JobApplications
             .AsNoTracking()
-            .Where(a => a.UserId == user.Id)
-            .OrderByDescending(a => a.AppliedAt);
+            .Where(a => a.UserId == user.Id);
+
+        // Filter by status if provided.
+        if (!string.IsNullOrWhiteSpace(query.Status)
+            && Enum.TryParse<ApplicationStatus>(query.Status, ignoreCase: true, out var statusFilter))
+        {
+            q = q.Where(a => a.Status == statusFilter);
+        }
+
+        // Free-text search across job title and company.
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var search = query.Search.Trim().ToLower();
+            q = q.Where(a =>
+                (a.Job!.Title != null && a.Job.Title.ToLower().Contains(search))
+                || (a.Job.Company != null && a.Job.Company.ToLower().Contains(search))
+            );
+        }
+
+        // Sort.
+        q = query.Sort?.ToLowerInvariant() switch
+        {
+            "oldest" => q.OrderBy(a => a.AppliedAt),
+            _ => q.OrderByDescending(a => a.AppliedAt),
+        };
 
         var totalCount = await q.CountAsync(ct);
-        var page = Math.Clamp(pagination.Page ?? 1, 1, 100_000);
-        var pageSize = Math.Clamp(pagination.PageSize ?? 20, 1, 50);
+        var page = Math.Clamp(query.Page ?? 1, 1, 100_000);
+        var pageSize = Math.Clamp(query.PageSize ?? 20, 1, 50);
 
+        // Load job + user + the job poster's RecruiterProfile (for company-privacy check).
         var items = await q
             .Include(a => a.Job)
+                .ThenInclude(j => j!.PostedBy)
+                    .ThenInclude(u => u!.RecruiterProfile)
             .Include(a => a.User)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -444,6 +495,8 @@ public static class ApplicationEndpoints
         var application = await db.JobApplications
             .AsNoTracking()
             .Include(a => a.Job)
+                .ThenInclude(j => j!.PostedBy)
+                    .ThenInclude(u => u!.RecruiterProfile)
             .Include(a => a.User)
             .ThenInclude(u => u!.TalentProfile)
             .FirstOrDefaultAsync(a => a.Id == id, ct);
@@ -473,6 +526,7 @@ public static class ApplicationEndpoints
         ClaimsPrincipal claims,
         UserManager<ApplicationUser> userManager,
         ApplicationDbContext db,
+        NotificationService notificationService,
         CancellationToken ct)
     {
         var user = await userManager.GetUserAsync(claims);
@@ -515,6 +569,30 @@ public static class ApplicationEndpoints
         }
 
         await db.SaveChangesAsync(ct);
+
+        // Notify the talent that their application status changed
+        var talentName = application.User?.FirstName is not null && application.User?.LastName is not null
+            ? $"{application.User.FirstName} {application.User.LastName}"
+            : application.User?.UserName ?? "You";
+        var jobTitle = application.Job?.Title ?? "the job";
+        var statusLabel = newStatus switch
+        {
+            ApplicationStatus.Reviewed => "reviewed",
+            ApplicationStatus.Interview => "moved to interview",
+            ApplicationStatus.Hired => "accepted",
+            ApplicationStatus.Rejected => "not selected",
+            _ => newStatus.ToString().ToLower()
+        };
+
+        await notificationService.CreateAsync(new NotificationService.CreateNotificationRequest(
+            UserId: application.UserId,
+            Type: NotificationType.ApplicationStatusChanged,
+            Title: "Application status updated",
+            Body: $"Your application for {jobTitle} has been {statusLabel}",
+            Data: $"{{\"job_id\":\"{application.JobId}\",\"application_id\":\"{application.Id}\",\"new_status\":\"{newStatus}\"}}",
+            SkipEmail: false,
+            SkipTelegram: true
+        ));
 
         // Reload with navigation properties for the response.
         await db.Entry(application).Reference(a => a.User).LoadAsync(ct);
@@ -649,12 +727,21 @@ public static class ApplicationEndpoints
     }
 
     private static ApplicationResponse ToResponse(
-        JobApplication a, ApplicationUser user, Job job) => new(
+        JobApplication a, ApplicationUser user, Job job)
+    {
+        // Check if the job poster's company is private.
+        var isCompanyPrivate = job.PostedBy?.RecruiterProfile?.IsCompanyPrivate == true;
+
+        // Company logo: prefer job's own logo, fall back to the recruiter's avatar.
+        var companyLogo = NullIfBlank(job.CompanyLogoUrl)
+                          ?? NullIfBlank(job.PostedBy?.AvatarUrl);
+
+        return new(
         a.Id,
         a.JobId,
         job.Title,
-        job.Company,
-        job.Location,
+        isCompanyPrivate ? "Confidential Company" : job.Company,
+        isCompanyPrivate ? null : job.Location,
         job.SourceName,
         a.UserId,
         $"{user.FirstName} {user.LastName}".Trim(),
@@ -667,7 +754,11 @@ public static class ApplicationEndpoints
         FormatDate(a.AppliedAt),
         FormatDate(a.StatusUpdatedAt),
         a.ProfileShared,
-        a.ProfileSnapshot);
+        a.ProfileSnapshot,
+        NullIfBlank(job.Salary),
+        FormatDate(job.Deadline),
+        isCompanyPrivate ? null : companyLogo);
+    }
 
     private static string EnumCamel(string enumName) =>
         char.ToLowerInvariant(enumName[0]) + enumName[1..];
