@@ -39,8 +39,12 @@ export function fetchMyApplications(
   accessToken: string,
   page = 1,
   pageSize = 20,
+  opts?: { status?: string; sort?: string; search?: string },
 ): Promise<ApplicationListData> {
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+  if (opts?.status) params.set('status', opts.status)
+  if (opts?.sort) params.set('sort', opts.sort)
+  if (opts?.search) params.set('search', opts.search)
   return request(`${API_ENDPOINTS.applications.list}?${params}`, {
     headers: auth(accessToken),
   })
