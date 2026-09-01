@@ -46,3 +46,14 @@ export type {
   WhoAmIResponse,
 } from './api.ts'
 export type { ProfileSnapshot } from './profileSnapshot.ts'
+export type {
+  AccountSettings,
+  AISettings,
+  EmailNotificationSettings,
+  InAppNotificationSettings,
+  NotificationSettings,
+  SecuritySettings,
+  SettingsResponse,
+  UserSettings,
+} from './settings.ts'
+export { DEFAULT_SETTINGS, LANGUAGE_OPTIONS } from './settings.ts'
