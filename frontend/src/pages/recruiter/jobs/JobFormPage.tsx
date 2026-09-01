@@ -5,6 +5,7 @@ import { object, string } from 'yup'
 import {
   createJob,
   fetchJob,
+  fetchSectors,
   getApiErrorMessage,
   getStoredAuthTokens,
   submitJob,
@@ -15,6 +16,7 @@ import type {
   JobResponse,
   JobType,
   JobWriteRequest,
+  SectorResponse,
   WorkMode,
 } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
@@ -50,6 +52,7 @@ const initialValues = {
   experienceMaxYears: '' as string | '',
   numberOfPositions: '1',
   deadline: '',
+  sectorId: '' as string | '',
 }
 
 const validationSchema = object({
@@ -115,6 +118,7 @@ export default function JobFormPage() {
   const [rejection, setRejection] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [canEdit, setCanEdit] = useState(true)
+  const [sectors, setSectors] = useState<SectorResponse[]>([])
 
   const formik = useFormik({
     initialValues,
@@ -124,6 +128,15 @@ export default function JobFormPage() {
     validateOnChange: true,
     onSubmit: (values) => handleSubmit(values, submitMode.current),
   })
+
+  // Fetch available sectors for the picker
+  useEffect(() => {
+    const tokens = getStoredAuthTokens()
+    if (!tokens) return
+    fetchSectors(tokens.accessToken)
+      .then(setSectors)
+      .catch(() => {})
+  }, [])
 
   // Load the job when editing (prefill + status banners).
   useEffect(() => {
@@ -158,6 +171,7 @@ export default function JobFormPage() {
           experienceMaxYears: job.experienceMaxYears != null ? String(job.experienceMaxYears) : '',
           numberOfPositions: String(job.numberOfPositions || 1),
           deadline: job.deadline ? toLocalDateTimeInput(job.deadline) : '',
+          sectorId: job.sectorId || '',
         })
       })
       .catch((err) => {
@@ -203,6 +217,7 @@ export default function JobFormPage() {
       deadline: values.deadline
         ? new Date(values.deadline).toISOString()
         : undefined,
+      sectorId: values.sectorId || undefined,
       saveAsDraft: true,
     }
 
@@ -368,6 +383,24 @@ export default function JobFormPage() {
                   placeholder="e.g. Senior Flutter Developer"
                   className={inputClass}
                 />
+              </Field>
+
+              <Field label="Sector *" error={formik.touched.sectorId ? formik.errors.sectorId : undefined}>
+                <select
+                  name="sectorId"
+                  value={formik.values.sectorId}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  disabled={!canEdit}
+                  className={inputClass}
+                >
+                  <option value="">Select a sector</option>
+                  {sectors.map((sector) => (
+                    <option key={sector.id} value={sector.id}>
+                      {sector.name}
+                    </option>
+                  ))}
+                </select>
               </Field>
 
               <Field label="Job type">
