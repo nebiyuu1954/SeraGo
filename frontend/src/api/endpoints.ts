@@ -28,6 +28,8 @@ export const API_ENDPOINTS = {
     passwordForgot: '/account/password/forgot',
     passwordReset: '/account/password/reset',
     passwordSet: '/account/password/set',
+    /** GET/PUT/PATCH /api/account/settings — user settings (versioned JSON blob). */
+    settings: '/account/settings',
     /** GET — confirm email from the emailed link: ?code=…&userId=… */
     emailConfirm: '/account/email/confirm',
     /** POST — resend the confirmation email: { email } */
@@ -73,6 +75,16 @@ export const API_ENDPOINTS = {
   },
   adminStats: {
     top: '/admin/stats/top',
+  },
+  notifications: {
+    /** GET /api/notifications — paginated notification list. */
+    list: '/notifications',
+    /** GET /api/notifications/unread-count — badge count (Redis-backed). */
+    unreadCount: '/notifications/unread-count',
+    /** PATCH /api/notifications/read — mark specific notifications as read. */
+    read: '/notifications/read',
+    /** PATCH /api/notifications/read-all — mark all as read. */
+    readAll: '/notifications/read-all',
   },
 } as const
 
