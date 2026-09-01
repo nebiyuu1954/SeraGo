@@ -71,3 +71,8 @@ export {
   uploadFile,
   getPresignedDownloadUrl,
 } from './fileUpload.ts'
+export {
+  fetchSettings,
+  updateSettings,
+  patchSettingsCategory,
+} from './settings.ts'
