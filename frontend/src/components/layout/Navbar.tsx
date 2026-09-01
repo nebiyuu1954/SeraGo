@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '../ui/Button.tsx'
 import { getStoredAuthTokens } from '../../api'
-import { useAuthUser, useSignOut } from '../../hooks'
+import { useAuthUser, useSignOut, useNotifications } from '../../hooks'
 import type { RequiredRole } from '../../hooks'
 import { useSidebar } from '../../context'
 import { pickRole, roleHome } from '../dashboard/roleNav.ts'
 import { initialsOf } from '../../lib/initials.ts'
+import { NotificationBell } from '../notifications'
 
 const publicNavLinks = ['Platform', 'Solutions', 'Developers', 'Pricing']
 
@@ -190,6 +191,7 @@ function RoleNavbar({
   const [open, setOpen] = useState(false)
   const [avatarOpen, setAvatarOpen] = useState(false)
   const { drawerOpen, setDrawerOpen } = useSidebar()
+  const { unreadCount, isConnected, markAsRead, markAllAsRead } = useNotifications()
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-surface-variant bg-surface-container-lowest">
@@ -204,8 +206,18 @@ function RoleNavbar({
           SeraGo
         </Link>
 
-        {/* Right group — avatar (desktop) + mobile menu toggle */}
+        {/* Right group — bell + avatar (desktop) + mobile menu toggle */}
         <div className="flex shrink-0 items-center gap-3">
+          {/* Notification bell (desktop) */}
+          <div className="hidden md:block">
+            <NotificationBell
+              unreadCount={unreadCount}
+              isConnected={isConnected}
+              onMarkAsRead={markAsRead}
+              onMarkAllAsRead={markAllAsRead}
+            />
+          </div>
+
           {/* Avatar menu (desktop) */}
           <div className="relative hidden md:block">
             <button
@@ -300,14 +312,22 @@ function RoleNavbar({
                 </p>
               )}
             </div>
-            <button
-              type="button"
-              onClick={onSignOut}
-              className="ml-auto flex items-center gap-1.5 rounded-lg px-3 py-2 font-label-md text-label-md text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
-            >
-              <span className="material-symbols-outlined text-lg">logout</span>
-              Sign out
-            </button>
+            <div className="ml-auto flex items-center gap-1">
+              <NotificationBell
+                unreadCount={unreadCount}
+                isConnected={isConnected}
+                onMarkAsRead={markAsRead}
+                onMarkAllAsRead={markAllAsRead}
+              />
+              <button
+                type="button"
+                onClick={onSignOut}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-2 font-label-md text-label-md text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
+              >
+                <span className="material-symbols-outlined text-lg">logout</span>
+                Sign out
+              </button>
+            </div>
           </div>
         </div>
       )}
