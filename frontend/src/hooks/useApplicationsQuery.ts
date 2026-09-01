@@ -7,15 +7,20 @@ import type { ApplicationListData } from '../types'
 /**
  * SWR-backed query for the talent's own applications.
  */
-export function useMyApplicationsQuery(enabled = true, page = 1) {
+export function useMyApplicationsQuery(
+  enabled = true,
+  page = 1,
+  pageSize = 20,
+  opts?: { status?: string; sort?: string; search?: string },
+) {
   const tokens = getStoredAuthTokens()
   const key = enabled && tokens
-    ? queryKeys.applications.my(page)
+    ? queryKeys.applications.my(page, pageSize, opts?.status ?? '', opts?.sort ?? '', opts?.search ?? '')
     : null
 
   const { data, error, isLoading, mutate } = useSWR<ApplicationListData>(
     key,
-    () => fetchMyApplications(tokens!.accessToken, page),
+    () => fetchMyApplications(tokens!.accessToken, page, pageSize, opts),
     {
       revalidateOnFocus: true,
       shouldRetryOnError: false,
