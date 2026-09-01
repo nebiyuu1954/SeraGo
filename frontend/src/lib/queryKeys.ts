@@ -43,7 +43,8 @@ export const queryKeys = {
   applications: {
     all: ['applications'] as const,
     /** Talent's own applications. */
-    my: (page: number) => ['applications', 'my', page] as const,
+    my: (page: number, pageSize: number, status: string, sort: string, search: string) =>
+      ['applications', 'my', page, pageSize, status, sort, search] as const,
     /** Recruiter: all applications across their posted jobs. */
     recruiterAll: (page: number, pageSize: number, status: string, sort: string, search: string, jobId: string) =>
       ['applications', 'recruiterAll', page, pageSize, status, sort, search, jobId] as const,
