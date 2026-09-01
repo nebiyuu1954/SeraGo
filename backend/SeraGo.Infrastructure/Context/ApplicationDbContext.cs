@@ -25,6 +25,8 @@ public class ApplicationDbContext : AufyDbContext<ApplicationUser>
     public DbSet<SyncState> SyncState => Set<SyncState>();
     public DbSet<JobApplication> JobApplications => Set<JobApplication>();
     public DbSet<JobView> JobViews => Set<JobView>();
+    public DbSet<UserSettings> UserSettings => Set<UserSettings>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
     {
@@ -202,6 +204,54 @@ public class ApplicationDbContext : AufyDbContext<ApplicationUser>
                 v => v);
             entity.Property(a => a.AppliedAt).HasConversion(utcDateTimeOffset);
             entity.Property(a => a.StatusUpdatedAt).HasConversion(utcDateTimeOffset);
+        });
+
+        // 1:1 per-user settings — every role gets a row, shared PK.
+        modelBuilder.Entity<UserSettings>(entity =>
+        {
+            entity.HasKey(s => s.UserId);
+            entity.HasOne(s => s.User)
+                .WithOne(u => u.UserSettings)
+                .HasForeignKey<UserSettings>(s => s.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Notifications — in-app notification records, source of truth for all channels.
+        modelBuilder.Entity<Notification>(entity =>
+        {
+            entity.HasKey(n => n.Id);
+
+            entity.HasOne(n => n.User)
+                .WithMany()
+                .HasForeignKey(n => n.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // "Get my notifications" — paginated list, newest first.
+            entity.HasIndex(n => new { n.UserId, n.CreatedAt })
+                .IsDescending(false, true);
+
+            // "Get my unread count" — partial index on unread rows only.
+            // Once marked read, rows drop out of this index.
+            entity.HasIndex(n => new { n.UserId, n.CreatedAt })
+                .HasFilter("\"IsRead\" = FALSE")
+                .HasDatabaseName("IX_notifications_user_unread");
+
+            // Digest email assembly — find unsent emails by batch.
+            entity.HasIndex(n => new { n.EmailBatchId, n.UserId })
+                .HasFilter("\"EmailBatchId\" IS NOT NULL AND \"EmailSent\" = FALSE")
+                .HasDatabaseName("IX_notifications_email_batch");
+
+            // Cleanup job — delete old notifications.
+            entity.HasIndex(n => n.CreatedAt)
+                .HasDatabaseName("IX_notifications_created_at");
+
+            // UTC DateTimeOffset normalization (same as Job/JobApplication).
+            var utcDateTimeOffset = new ValueConverter<DateTimeOffset, DateTimeOffset>(
+                v => v.ToUniversalTime(), v => v);
+            entity.Property(n => n.CreatedAt).HasConversion(utcDateTimeOffset);
+            entity.Property(n => n.ReadAt).HasConversion(utcDateTimeOffset);
+            entity.Property(n => n.EmailSentAt).HasConversion(utcDateTimeOffset);
+            entity.Property(n => n.TelegramSentAt).HasConversion(utcDateTimeOffset);
         });
     }
 }
