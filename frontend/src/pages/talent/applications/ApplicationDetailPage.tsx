@@ -2,31 +2,11 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { fetchApplication, getApiErrorMessage, getStoredAuthTokens } from '../../../api'
 import { useRequireRole } from '../../../hooks'
-import type { ApplicationResponse, ApplicationStatus } from '../../../types'
+import type { ApplicationResponse } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import RichTextDisplay from '../../../components/ui/RichTextDisplay'
 import ResumeLink from '../../../components/ui/ResumeLink.tsx'
-
-// ────────────────────── helpers ──────────────────────
-
-function statusBadge(status: ApplicationStatus): { label: string; className: string } {
-  switch (status) {
-    case 'pending':
-      return { label: 'Pending', className: 'bg-surface-container text-on-surface-variant' }
-    case 'reviewed':
-      return { label: 'Reviewed', className: 'bg-blue-100 text-blue-900' }
-    case 'shortlisted':
-      return { label: 'Shortlisted', className: 'bg-amber-100 text-amber-900' }
-    case 'interview':
-      return { label: 'Interview', className: 'bg-amber-100 text-amber-900' }
-    case 'hired':
-      return { label: 'Hired', className: 'bg-primary-fixed text-on-primary-fixed-variant' }
-    case 'rejected':
-      return { label: 'Rejected', className: 'bg-error-container text-on-error-container' }
-    default:
-      return { label: status, className: 'bg-surface-container text-on-surface-variant' }
-  }
-}
+import { statusBadge } from '../../../lib/statusBadge'
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('en-US', {
