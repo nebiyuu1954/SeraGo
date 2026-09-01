@@ -89,9 +89,7 @@ function SidebarBody({
   userCompany?: string
   userAvatarUrl?: string
   onSignOut: () => void
-  /** Icon-rail mode: labels hidden, icons centered, tooltips on hover. */
   collapsed: boolean
-  /** Desktop only — the collapse/expand toggle rendered under Settings. */
   onToggle?: () => void
 }) {
   const location = useLocation()
