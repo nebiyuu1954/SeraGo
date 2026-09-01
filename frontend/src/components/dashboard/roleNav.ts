@@ -20,14 +20,14 @@ export const ROLE_NAV: Record<RequiredRole, RoleNavItem[]> = {
     { label: 'Jobs', icon: 'work', to: '/dashboard/recruiter' },
     { label: 'Applications', icon: 'description', to: '/dashboard/recruiter/applications' },
     { label: 'Profile', icon: 'person', to: '/dashboard/recruiter/profile' },
-    { label: 'Settings', icon: 'settings', sidebarOnly: true },
+    { label: 'Settings', icon: 'settings', to: '/dashboard/recruiter/settings', sidebarOnly: true },
   ],
   Talent: [
     { label: 'Find jobs', icon: 'search', to: '/dashboard/talent' },
     { label: 'Saved jobs', icon: 'bookmark', to: '/dashboard/talent/saved' },
     { label: 'Applications', icon: 'description', to: '/dashboard/talent/applications' },
     { label: 'Profile', icon: 'person', to: '/dashboard/talent/profile' },
-    { label: 'Settings', icon: 'settings', sidebarOnly: true },
+    { label: 'Settings', icon: 'settings', to: '/dashboard/talent/settings', sidebarOnly: true },
   ],
   Admin: [
     { label: 'Overview', icon: 'dashboard', to: '/dashboard/admin' },
@@ -35,7 +35,7 @@ export const ROLE_NAV: Record<RequiredRole, RoleNavItem[]> = {
     { label: 'Users', icon: 'group', to: '/dashboard/admin/users' },
     { label: 'Sectors', icon: 'category', to: '/dashboard/admin/sectors' },
     { label: 'Profile', icon: 'person', to: '/dashboard/admin/profile' },
-    { label: 'Settings', icon: 'settings', sidebarOnly: true },
+    { label: 'Settings', icon: 'settings', to: '/dashboard/admin/settings', sidebarOnly: true },
   ],
 }
 
