@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SeraGo.API.Services;
 using SeraGo.Core.Domain;
 using SeraGo.Core.Domain.Entities;
 using SeraGo.Core.Domain.Enums;
@@ -242,7 +243,9 @@ public static class JobEndpoints
 
         var isAdmin = await userManager.IsInRoleAsync(user, Roles.Admin);
 
-        var q = db.Jobs.AsNoTracking().AsQueryable();
+        var q = db.Jobs.AsNoTracking()
+            .Include(j => j.PostedBy)
+            .AsQueryable();
 
         // Scope + visibility.
         if (query.Mine == true)
@@ -609,7 +612,8 @@ public static class JobEndpoints
         JobWriteRequest request,
         ClaimsPrincipal claims,
         UserManager<ApplicationUser> userManager,
-        ApplicationDbContext db)
+        ApplicationDbContext db,
+        NotificationService notificationService)
     {
         var user = await userManager.GetUserAsync(claims);
         if (user is null)
@@ -639,6 +643,14 @@ public static class JobEndpoints
             && !Uri.TryCreate(request.Url, UriKind.Absolute, out _))
         {
             return Results.Problem("Url must be an absolute URL (e.g. https://...).",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        // Sector is required when submitting (not drafting) — needed for job alerts
+        if (!request.SaveAsDraft && request.SectorId is null)
+        {
+            return Results.Problem(
+                "Sector is required when submitting a job for review. This helps us notify the right talents.",
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
@@ -711,6 +723,12 @@ public static class JobEndpoints
 
         db.Jobs.Add(job);
         await db.SaveChangesAsync();
+
+        // If job was published immediately (admin), notify matching talents
+        if (status == JobStatus.Published)
+        {
+            await NotifyMatchingTalentsAsync(db, notificationService, job);
+        }
 
         return Results.Created($"/api/jobs/{job.Id}", ToResponse(job, user.Id));
     }
@@ -946,7 +964,8 @@ public static class JobEndpoints
     [Authorize(Roles = Roles.Admin)]
     private static async Task<IResult> ApproveJobAsync(
         Guid id,
-        ApplicationDbContext db)
+        ApplicationDbContext db,
+        NotificationService notificationService)
     {
         var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id);
         if (job is null)
@@ -963,18 +982,36 @@ public static class JobEndpoints
         job.Status = JobStatus.Published;
         job.ApprovedAt = now;
         job.IsActive = true;
-        job.UpdatedAt = now;
+        job.UpdatedAt = now;        await db.SaveChangesAsync();
 
-        await db.SaveChangesAsync();
+        // Notify the recruiter their job was approved
+        if (job.PostedByUserId is not null)
+        {
+            await notificationService.CreateAsync(new NotificationService.CreateNotificationRequest(
+                UserId: job.PostedByUserId,
+                Type: NotificationType.AdminReviewResult,
+                Title: "Job posting approved",
+                Body: $"Your job \"{job.Title}\" is now live and visible to talents.",
+                Data: $"{{\"job_id\":\"{job.Id}\",\"status\":\"approved\"}}",
+                SkipEmail: false,
+                SkipTelegram: true
+            ));
+        }
+
+        // Notify matching talents about the new job
+        await NotifyMatchingTalentsAsync(db, notificationService, job);
+
         return Results.Ok(ToResponse(job, string.Empty));
     }
+
 
     /// <summary>PATCH /api/jobs/{id}/reject — admin rejects a pending job with a reason.</summary>
     [Authorize(Roles = Roles.Admin)]
     private static async Task<IResult> RejectJobAsync(
         Guid id,
         [FromBody] RejectJobRequest request,
-        ApplicationDbContext db)
+        ApplicationDbContext db,
+        NotificationService notificationService)
     {
         var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id);
         if (job is null)
@@ -995,6 +1032,25 @@ public static class JobEndpoints
         job.UpdatedAt = now;
 
         await db.SaveChangesAsync();
+
+        // Notify the recruiter their job was rejected
+        if (job.PostedByUserId is not null)
+        {
+            var reason = string.IsNullOrWhiteSpace(job.RejectionReason)
+                ? "No reason provided"
+                : job.RejectionReason;
+
+            await notificationService.CreateAsync(new NotificationService.CreateNotificationRequest(
+                UserId: job.PostedByUserId,
+                Type: NotificationType.AdminReviewResult,
+                Title: "Job posting rejected",
+                Body: $"Your job \"{job.Title}\" was rejected. Reason: {reason}",
+                Data: $"{{\"job_id\":\"{job.Id}\",\"status\":\"rejected\",\"reason\":\"{reason.Replace("\"", "\\\"")}\"}}",
+                SkipEmail: false,
+                SkipTelegram: true
+            ));
+        }
+
         return Results.Ok(ToResponse(job, string.Empty));
     }
 
@@ -1081,7 +1137,7 @@ public static class JobEndpoints
         job.SourceName,
         job.SourceUrl,
         job.ExternalId,
-        job.CompanyLogoUrl,
+        NullIfBlank(job.CompanyLogoUrl) ?? NullIfBlank(job.PostedBy?.AvatarUrl),
         job.SectorId,
         job.SectorName,
         job.ExperienceLevel,
@@ -1172,4 +1228,59 @@ public static class JobEndpoints
         Results.Problem(
             $"Invalid value '{value}' for {enumType.Name}. Valid values: {(enumType == typeof(JobType) ? JobTypes.ValidValuesDescription : string.Join(", ", Enum.GetNames(enumType)))}.",
             statusCode: StatusCodes.Status400BadRequest);
+
+    /// <summary>
+    /// Notify all talents whose sector preference matches the new job.
+    /// In production, the Django AI service handles this via the batch endpoint.
+    /// This is the fallback for SeraGo-posted jobs.
+    /// </summary>
+    private static async Task NotifyMatchingTalentsAsync(
+        ApplicationDbContext db,
+        NotificationService notificationService,
+        Job job)
+    {
+        try
+        {
+            // Find talents who have this job's sector in their preferences
+            IQueryable<string> matchingUserIds;
+
+            if (job.SectorId is not null)
+            {
+                // Match talents whose preferred sectors include this job's sector
+                matchingUserIds = db.TalentProfiles
+                    .Where(tp => tp.PreferredSectorIds.Contains(job.SectorId.Value))
+                    .Select(tp => tp.UserId);
+            }
+            else
+            {
+                // No sector info — notify all active talents
+                matchingUserIds = db.Users
+                    .Where(u => u.UserType == Core.Domain.Enums.UserType.Talent && u.IsActive)
+                    .Select(u => u.Id);
+            }
+
+            var userIds = await matchingUserIds.Take(500).ToListAsync(); // cap at 500
+
+            if (userIds.Count == 0) return;
+
+            // Create individual notifications (not batch — these are real-time alerts)
+            foreach (var userId in userIds)
+            {
+                await notificationService.CreateAsync(new NotificationService.CreateNotificationRequest(
+                    UserId: userId,
+                    Type: NotificationType.JobAlert,
+                    Title: "New job posted",
+                    Body: $"{job.Title} at {job.Company} in {job.Location}",
+                    Data: $"{{\"job_id\":\"{job.Id}\",\"sector\":\"{job.SectorName ?? "General"}\"}}",
+                    SkipEmail: true, // defer email to digest
+                    SkipTelegram: true
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            // Don't fail the request if notifications fail
+            // Log would go here in production
+        }
+    }
 }
