@@ -544,6 +544,12 @@ export interface ApplicationResponse {
   profileShared: boolean
   /** JSON snapshot of the talent's visible profile data at apply time. */
   profileSnapshot: string | null
+  /** Salary string from the job posting, e.g. "10,000 - 15,000 ETB/month". */
+  jobSalary: string | null
+  /** Deadline ISO-8601 datetime of the job posting, or null. */
+  jobDeadline: string | null
+  /** Company logo image URL, or null. */
+  companyLogoUrl: string | null
 }
 
 /** Application status — lowerCamel enum name. */
