@@ -10,10 +10,15 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
+using Hangfire;
+using Hangfire.PostgreSql;
 using SeraGo.API.Auth;
+using Telegram.Bot;
 using SeraGo.API.Email;
+using SeraGo.API.Services;
 using SeraGo.Core.Domain.Entities;
 using SeraGo.Infrastructure.Context;
+using StackExchange.Redis;
 using System.Threading.RateLimiting;
 
 namespace SeraGo.API.Extensions;
@@ -214,6 +219,86 @@ public static class ServicesExtensions
                 sp.GetRequiredService<IHttpClientFactory>(),
                 sp.GetRequiredService<ILogger<EmailJsSender>>()));
         }
+
+        return services;
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  Notification Infrastructure: Hangfire + Redis + SignalR
+    // ══════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Registers Hangfire (background jobs using PostgreSQL), Redis
+    /// (unread counts + online presence), SignalR (real-time push),
+    /// and the NotificationService.
+    /// </summary>
+    public static IServiceCollection AddNotificationInfrastructure(
+        this IServiceCollection services, IConfiguration configuration)
+    {
+        // ── Hangfire ──
+        services.AddHangfire(config => config
+            .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+            .UseSimpleAssemblyNameTypeSerializer()
+            .UseRecommendedSerializerSettings()
+            .UsePostgreSqlStorage(options =>
+                options.UseNpgsqlConnection(
+                    configuration.GetConnectionString("DefaultConnection"))));
+
+        services.AddHangfireServer(options =>
+        {
+            options.Queues = ["email", "telegram", "maintenance"];
+            options.WorkerCount = Environment.ProcessorCount * 2;
+        });
+
+        // ── Redis ──
+        var redisConnectionString = configuration["REDIS_CONNECTION"]
+            ?? configuration["ConnectionStrings:Redis"];
+
+        if (!string.IsNullOrWhiteSpace(redisConnectionString))
+        {
+            services.AddSingleton<IConnectionMultiplexer>(sp =>
+                ConnectionMultiplexer.Connect(redisConnectionString));
+        }
+
+        // ── SignalR ──
+        services.AddSignalR()
+            .AddJsonProtocol(options =>
+            {
+                options.PayloadSerializerOptions.PropertyNamingPolicy =
+                    System.Text.Json.JsonNamingPolicy.CamelCase;
+            });
+
+        // ── Notification service ──
+        services.AddScoped<NotificationService>();
+        services.AddScoped<NotificationOrchestrator>();
+
+        // ── Telegram Bot ──
+        // Only registered when TELEGRAM_BOT_TOKEN is set.
+        // When absent, Telegram endpoints are not mapped (see Program.cs).
+        var telegramToken = configuration["TELEGRAM_BOT_TOKEN"]
+            ?? Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN");
+
+        if (!string.IsNullOrWhiteSpace(telegramToken))
+        {
+            services.AddSingleton<ITelegramBotClient>(new TelegramBotClient(telegramToken));
+            services.AddScoped<TelegramBotService>();
+        }
+
+        // ── Internal API authorization policy ──
+        // Used by the batch notification endpoint (Django → .NET webhook).
+        // Protected by a shared API key in the X-API-Key header.
+        services.AddAuthorization(options =>
+        {
+            options.AddPolicy("InternalApi", policy =>
+            {
+                policy.AddAuthenticationSchemes("ApiKey");
+                policy.RequireAuthenticatedUser();
+            });
+        });
+
+        services.AddAuthentication()
+            .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ApiKeyHandler>(
+                "ApiKey", options => { });
 
         return services;
     }
