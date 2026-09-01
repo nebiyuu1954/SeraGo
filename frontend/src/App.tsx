@@ -28,6 +28,9 @@ import RecruiterProfilePreviewPage from './pages/recruiter/profile/RecruiterProf
 import TalentProfilePage from './pages/talent/profile/ProfilePage.tsx'
 import TalentProfilePreviewPage from './pages/talent/profile/TalentProfilePreviewPage.tsx'
 import AdminProfilePage from './pages/admin/profile/ProfilePage.tsx'
+import TalentSettingsPage from './pages/talent/settings/SettingsPage.tsx'
+import RecruiterSettingsPage from './pages/recruiter/settings/SettingsPage.tsx'
+import AdminSettingsPage from './pages/admin/settings/SettingsPage.tsx'
 import NotFoundPage from './pages/shared/generic/NotFoundPage.tsx'
 
 function App() {
@@ -76,6 +79,9 @@ function App() {
           element={<TalentProfilePreviewPage />}
         />
         <Route path="dashboard/admin/profile" element={<AdminProfilePage />} />
+        <Route path="dashboard/talent/settings" element={<TalentSettingsPage />} />
+        <Route path="dashboard/recruiter/settings" element={<RecruiterSettingsPage />} />
+        <Route path="dashboard/admin/settings" element={<AdminSettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
       {/* Standalone auth screens — full-viewport, outside the app chrome */}
