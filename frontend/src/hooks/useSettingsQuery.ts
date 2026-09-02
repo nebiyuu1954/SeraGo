@@ -3,11 +3,7 @@ import { useCallback, useMemo } from 'react'
 import { fetchSettings, updateSettings } from '../api/settings.ts'
 import { getStoredAuthTokens } from '../api/auth.ts'
 import { DEFAULT_SETTINGS } from '../types/settings.ts'
-import type { UserSettings, NotificationChannelToggles } from '../types/settings.ts'
-
-/** Default channel toggles (all on except telegram). */
-const ON: NotificationChannelToggles = { email: true, inApp: true, telegram: false }
-const OFF: NotificationChannelToggles = { email: false, inApp: false, telegram: false }
+import type { UserSettings } from '../types/settings.ts'
 
 /**
  * Migrate old settings format → new format.
