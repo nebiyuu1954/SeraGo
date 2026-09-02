@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using SeraGo.API.Services;
 using SeraGo.Core.Domain.Entities;
 using SeraGo.Core.Domain.Enums;
 using SeraGo.Infrastructure.Context;
@@ -167,12 +168,36 @@ public static class ProfileEndpoints
         UpdateProfileRequest request,
         ClaimsPrincipal claims,
         UserManager<ApplicationUser> userManager,
-        ApplicationDbContext db)
+        ApplicationDbContext db,
+        MatchingClient matchingClient)
     {
         var user = await userManager.GetUserAsync(claims);
         if (user is null)
         {
             return Results.Unauthorized();
+        }
+
+        // Snapshot the talent profile before update (for staleness comparison)
+        Dictionary<string, object?>? previousProfile = null;
+        if (user.UserType == UserType.Talent)
+        {
+            var existing = await db.TalentProfiles.FirstOrDefaultAsync(p => p.UserId == user.Id);
+            if (existing is not null)
+            {
+                previousProfile = new Dictionary<string, object?>
+                {
+                    ["city"] = user.City,
+                    ["country"] = user.Country,
+                    ["experienceLevel"] = existing.ExperienceLevel.ToString(),
+                    ["yearsOfExperience"] = existing.YearsOfExperience,
+                    ["currentIndustry"] = existing.CurrentIndustry,
+                    ["currentProfession"] = existing.CurrentProfession,
+                    ["workMode"] = existing.WorkMode.ToString(),
+                    ["skills"] = existing.Skills,
+                    ["workExperience"] = existing.WorkExperience,
+                    ["educationHistory"] = existing.EducationHistory,
+                };
+            }
         }
 
         // Common fields (null = leave unchanged for strings shared with the user row).
@@ -335,6 +360,30 @@ public static class ProfileEndpoints
         }
 
         await db.SaveChangesAsync();
+
+        // ── AI Matching: notify about talent profile update ──
+        if (user.UserType == UserType.Talent)
+        {
+            var updatedProfile = await db.TalentProfiles.FirstOrDefaultAsync(p => p.UserId == user.Id);
+            if (updatedProfile is not null)
+            {
+                var currentProfile = new Dictionary<string, object?>
+                {
+                    ["city"] = user.City,
+                    ["country"] = user.Country,
+                    ["experienceLevel"] = updatedProfile.ExperienceLevel.ToString(),
+                    ["yearsOfExperience"] = updatedProfile.YearsOfExperience,
+                    ["currentIndustry"] = updatedProfile.CurrentIndustry,
+                    ["currentProfession"] = updatedProfile.CurrentProfession,
+                    ["workMode"] = updatedProfile.WorkMode.ToString(),
+                    ["skills"] = updatedProfile.Skills,
+                    ["workExperience"] = updatedProfile.WorkExperience,
+                    ["educationHistory"] = updatedProfile.EducationHistory,
+                };
+                await matchingClient.NotifyTalentUpdatedAsync(user.Id, currentProfile, previousProfile);
+            }
+        }
+
         return Results.Ok(await BuildResponseAsync(user, db));
     }
 
