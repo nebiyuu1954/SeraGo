@@ -965,7 +965,8 @@ public static class JobEndpoints
     private static async Task<IResult> ApproveJobAsync(
         Guid id,
         ApplicationDbContext db,
-        NotificationService notificationService)
+        NotificationService notificationService,
+        MatchingClient matchingClient)
     {
         var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id);
         if (job is null)
@@ -1000,6 +1001,46 @@ public static class JobEndpoints
 
         // Notify matching talents about the new job
         await NotifyMatchingTalentsAsync(db, notificationService, job);
+
+        // ── AI Matching: score this job against eligible talents ──
+        var eligibleTalents = await db.TalentProfiles
+            .Include(tp => tp.User)
+            .Where(tp => tp.User != null && tp.User.UserType == Core.Domain.Enums.UserType.Talent)
+            .ToListAsync();
+
+        var eligibleTalentModels = eligibleTalents.Select(tp => new MatchingClient.TalentProfileForMatching
+            {
+                UserId = tp.UserId,
+                Headline = tp.Headline,
+                About = tp.About,
+                Skills = tp.Skills,
+                ExperienceLevel = tp.ExperienceLevel.ToString(),
+                YearsOfExperience = tp.YearsOfExperience,
+                DesiredRoles = tp.DesiredRoles,
+                DesiredJobTypes = tp.DesiredJobTypes?.Select(j => j.ToString()).ToList() ?? [],
+                CurrentIndustry = tp.CurrentIndustry,
+                CurrentProfession = tp.CurrentProfession,
+                WorkMode = tp.WorkMode.ToString(),
+                PreferredLocations = string.IsNullOrEmpty(tp.PreferredLocations) ? [] : (System.Text.Json.JsonSerializer.Deserialize<List<string>>(tp.PreferredLocations) ?? []),
+                WorkExperience = tp.WorkExperience,
+                EducationHistory = tp.EducationHistory,
+            })
+            .ToList();
+
+        await matchingClient.NotifyJobPublishedAsync(
+            jobId: job.Id,
+            title: job.Title,
+            description: job.Description,
+            company: job.Company,
+            sectorId: job.SectorId,
+            sectorName: job.SectorName,
+            experienceLevel: job.ExperienceLevel.ToString(),
+            jobType: job.JobType.ToString(),
+            workMode: job.WorkMode.ToString(),
+            skills: job.Skills,
+            experienceMinYears: job.ExperienceMinYears,
+            experienceMaxYears: job.ExperienceMaxYears,
+            eligibleTalents: eligibleTalentModels);
 
         return Results.Ok(ToResponse(job, string.Empty));
     }
