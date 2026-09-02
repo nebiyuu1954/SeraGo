@@ -120,6 +120,7 @@ public static class ApplicationEndpoints
         UserManager<ApplicationUser> userManager,
         ApplicationDbContext db,
         NotificationService notificationService,
+        MatchingClient matchingClient,
         CancellationToken ct)
     {
         var user = await userManager.GetUserAsync(claims);
@@ -210,6 +211,37 @@ public static class ApplicationEndpoints
                 SkipTelegram: true
             ));
         }
+
+        // ── AI Matching: store application for deferred scoring ──
+        var talentProfileDict = new Dictionary<string, object?>
+        {
+            ["userId"] = user.Id,
+            ["headline"] = profile?.Headline,
+            ["about"] = profile?.About,
+            ["skills"] = profile?.Skills ?? [],
+            ["experienceLevel"] = profile?.ExperienceLevel.ToString(),
+            ["yearsOfExperience"] = profile?.YearsOfExperience,
+            ["currentIndustry"] = profile?.CurrentIndustry,
+            ["currentProfession"] = profile?.CurrentProfession,
+            ["workMode"] = profile?.WorkMode.ToString(),
+            ["workExperience"] = profile?.WorkExperience,
+            ["educationHistory"] = profile?.EducationHistory,
+        };
+        var jobDict = new Dictionary<string, object?>
+        {
+            ["jobId"] = job.Id.ToString(),
+            ["title"] = job.Title,
+            ["description"] = job.Description,
+            ["company"] = job.Company,
+            ["sectorId"] = job.SectorId?.ToString(),
+            ["sectorName"] = job.SectorName,
+            ["experienceLevel"] = job.ExperienceLevel.ToString(),
+            ["jobType"] = job.JobType.ToString(),
+            ["workMode"] = job.WorkMode.ToString(),
+            ["skills"] = job.Skills,
+        };
+        await matchingClient.NotifyApplicationCreatedAsync(
+            application.Id, user.Id, job.Id, talentProfileDict, jobDict, ct);
 
         return Results.Created(
             $"/api/applications/{application.Id}",
