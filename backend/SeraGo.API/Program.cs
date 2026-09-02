@@ -52,6 +52,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerWithJwt();
 builder.Services.AddHttpClient(); // HttpClient factory for the EmailJS relay
+builder.Services.AddHttpClient<MatchingClient>(); // AI matching engine client
 builder.Services.AddSingleton<EmailThrottleService>(); // per-email throttle for email-sending flows
 builder.Services.AddRateLimiting(builder.Configuration); // API throttling (fixed-window per IP)
 
