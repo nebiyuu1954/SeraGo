@@ -518,21 +518,6 @@ function ApplicationRow({ application, onStatusChange, onViewDetails }: { applic
   const [updating, setUpdating] = useState(false)
   const badge = statusBadge(application.status)
 
-  const handleStatusChange = async (newStatus: ApplicationStatus) => {
-    const tokens = getStoredAuthTokens()
-    if (!tokens) return
-    setUpdating(true)
-    try {
-      await updateApplicationStatus(application.id, { status: newStatus }, tokens.accessToken)
-      showToast(`Application ${newStatus}`)
-      onStatusChange()
-    } catch (err) {
-      showToast(getApiErrorMessage(err), 'error')
-    } finally {
-      setUpdating(false)
-    }
-  }
-
   return (
     <tr className="group transition-colors hover:bg-surface-container-low">
       <td className="px-6 py-4">
