@@ -49,8 +49,6 @@ export type { ProfileSnapshot } from './profileSnapshot.ts'
 export type {
   AccountSettings,
   AISettings,
-  EmailNotificationSettings,
-  InAppNotificationSettings,
   NotificationSettings,
   SecuritySettings,
   SettingsResponse,
