@@ -43,12 +43,6 @@ public class TalentProfile
     /// <summary>Employment types they want — mirrors scraper JobType.</summary>
     public List<JobType> DesiredJobTypes { get; set; } = [];
 
-    /// <summary>
-    /// Canonical sectors the talent wants to see. The "For you" feed shows
-    /// only jobs whose SectorId is in this list; empty means not configured.
-    /// </summary>
-    public List<Guid> PreferredSectorIds { get; set; } = [];
-
     /// <summary>Onsite / Remote / Hybrid preference.</summary>
     public WorkMode? WorkMode { get; set; }
 
