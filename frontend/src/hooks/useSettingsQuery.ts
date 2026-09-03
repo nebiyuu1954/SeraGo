@@ -3,7 +3,7 @@ import { useCallback, useMemo } from 'react'
 import { fetchSettings, updateSettings } from '../api/settings.ts'
 import { getStoredAuthTokens } from '../api/auth.ts'
 import { DEFAULT_SETTINGS } from '../types/settings.ts'
-import type { UserSettings } from '../types/settings.ts'
+import type { NotificationChannelToggles, UserSettings } from '../types/settings.ts'
 
 /**
  * Migrate old settings format → new format.
@@ -52,6 +52,7 @@ function mergeWithDefaults(saved: string): UserSettings {
     return {
       version: parsed.version ?? 1,
       account: { ...DEFAULT_SETTINGS.account, ...parsed.account },
+      forYou: { ...DEFAULT_SETTINGS.forYou, ...parsed.forYou },
       notifications: migrateNotifications(parsed.notifications),
       security: { ...DEFAULT_SETTINGS.security, ...parsed.security },
       ai: { ...DEFAULT_SETTINGS.ai, ...parsed.ai },
