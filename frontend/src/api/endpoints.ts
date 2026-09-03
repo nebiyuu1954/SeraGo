@@ -40,6 +40,8 @@ export const API_ENDPOINTS = {
     list: '/jobs',
     /** GET /api/jobs/locations — distinct locations of the live feed, for the filter dropdown. */
     locations: '/jobs/locations',
+    /** POST /api/jobs/for-you/match — run AI matching on the For You feed now. */
+    forYouMatch: '/jobs/for-you/match',
   },
   savedJobs: {
     /** GET /api/saved-jobs — my saved jobs with lifecycle status. */
@@ -56,6 +58,8 @@ export const API_ENDPOINTS = {
     all: '/applications/all',
     /** GET /api/applications/job/{jobId} — applications for a specific job (recruiter). */
     byJob: (jobId: string) => `/applications/job/${jobId}`,
+    /** POST /api/applications/job/{jobId}/match — run AI matching on the job's applicants. */
+    matchJob: (jobId: string) => `/applications/job/${jobId}/match`,
     /** GET /api/applications/{id} — single application detail. */
     detail: (id: string) => `/applications/${id}`,
     /** PATCH /api/applications/{id}/status — update status (recruiter). */
