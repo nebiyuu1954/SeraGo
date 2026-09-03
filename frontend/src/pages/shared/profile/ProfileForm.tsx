@@ -3,7 +3,6 @@ import { useFormik } from 'formik'
 import { array, object, string } from 'yup'
 import {
   fetchProfile,
-  fetchSectors,
   getApiErrorMessage,
   getStoredAuthTokens,
   updateProfile,
@@ -136,7 +135,6 @@ const FIELD_LABELS: Record<string, string> = {
   desiredJobTypes: 'Desired job types',
   workMode: 'Work mode',
   availability: 'Availability',
-  preferredSectorIds: 'Preferred sectors',
   resumeUrl: 'Resume',
   linkedInUrl: 'LinkedIn',
   githubUrl: 'GitHub',
@@ -189,7 +187,6 @@ const MISSING_LABELS: Record<string, string> = {
   desiredJobTypes: 'Desired job types',
   workMode: 'Work mode',
   availability: 'Availability',
-  preferredSectors: 'Preferred sectors',
   companyName: 'Company name',
   industry: 'Industry',
   companySize: 'Company size',
@@ -299,10 +296,6 @@ const talentSchema = commonSchema
         .min(1, 'Add at least one skill.'),
       desiredRoles: array().of(string()),
       desiredJobTypes: array().of(string()),
-      preferredSectorIds: array()
-        .of(string())
-        .required()
-        .min(1, 'Select at least one preferred sector.'),
       resumeUrl: string().max(512),
       linkedInUrl: optionalUrl,
       githubUrl: optionalUrl,
@@ -388,7 +381,6 @@ interface ProfileFormValues {
   desiredJobTypes: string[]
   workMode: string
   availability: string
-  preferredSectorIds: string[]
   resumeUrl: string
   linkedInUrl: string
   githubUrl: string
@@ -441,7 +433,6 @@ const initialValues: ProfileFormValues = {
   desiredJobTypes: [],
   workMode: '',
   availability: '',
-  preferredSectorIds: [],
   resumeUrl: '',
   linkedInUrl: '',
   githubUrl: '',
@@ -659,7 +650,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const [sectors, setSectors] = useState<{ id: string; name: string }[]>([])
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [photoModalOpen, setPhotoModalOpen] = useState(false)
   const [resumeUploading, setResumeUploading] = useState(false)
@@ -672,17 +662,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
   const isTalent = role === 'Talent'
   const isRecruiter = role === 'Recruiter'
 
-  // The sector vocabulary for the Job preferences picker (talent only).
-  useEffect(() => {
-    if (auth.status !== 'authenticated' || !isTalent) return
-    const tokens = getStoredAuthTokens()
-    if (!tokens) return
-    fetchSectors(tokens.accessToken)
-      .then((list) => setSectors(list))
-      .catch(() => {
-        /* Picker stays empty — the profile still saves; sectors re-fetch next visit. */
-      })
-  }, [auth.status, isTalent])
 
   const validationSchema =
     role === 'Talent'
@@ -776,7 +755,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
             desiredRoles: p.talent?.desiredRoles ?? [],
             skills: p.talent?.skills ?? [],
             desiredJobTypes: p.talent?.desiredJobTypes ?? [],
-            preferredSectorIds: p.talent?.preferredSectorIds ?? [],
             workMode: p.talent?.workMode ?? '',
             availability: p.talent?.availability ?? '',
             resumeUrl: p.talent?.resumeUrl ?? '',
@@ -853,7 +831,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
         desiredRoles: values.desiredRoles,
         skills: values.skills,
         desiredJobTypes: values.desiredJobTypes,
-        preferredSectorIds: values.preferredSectorIds,
         workMode: values.workMode || null,
         availability: values.availability || null,
         resumeUrl: values.resumeUrl.trim(),
@@ -977,13 +954,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
     formik.setFieldValue('desiredJobTypes', next)
   }
 
-  const toggleSector = (id: string) => {
-    const next = formik.values.preferredSectorIds.includes(id)
-      ? formik.values.preferredSectorIds.filter((s) => s !== id)
-      : [...formik.values.preferredSectorIds, id]
-    formik.setFieldValue('preferredSectorIds', next)
-  }
-
   const toggleVisibility = (key: string) => {
     formik.setFieldValue(
       'profileVisibility',
@@ -1100,7 +1070,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
     formik.values.skills.length > 0 ? 'skills' : '',
     formik.values.desiredRoles.length > 0 ? 'roles' : '',
     formik.values.desiredJobTypes.length > 0 ? 'jobTypes' : '',
-    formik.values.preferredSectorIds.length > 0 ? 'sectors' : '',
   ].filter(Boolean).length
 
   const educationFilled = [
@@ -1622,7 +1591,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                 title="Skills & roles"
                 description="What you can do and what you're looking for."
                 icon="psychology"
-                completion={{ filled: skillsFilled, total: 4 }}
+                completion={{ filled: skillsFilled, total: 3 }}
               >
                 <div className="md:col-span-2">
                   <div className="flex items-center justify-between gap-2 mb-2">
@@ -1712,35 +1681,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                       )
                     })}
                   </div>
-                </Field>
-                <Field full label="Preferred sectors *">
-                  {sectors.length === 0 ? (
-                    <p className="font-label-sm text-label-sm text-on-surface-variant">
-                      No sectors available yet.
-                    </p>
-                  ) : (
-                    <div className="mt-1.5 flex flex-wrap gap-2">
-                      {sectors.map((sector) => {
-                        const checked = formik.values.preferredSectorIds.includes(sector.id)
-                        return (
-                          <button
-                            key={sector.id}
-                            type="button"
-                            aria-pressed={checked}
-                            onClick={() => toggleSector(sector.id)}
-                            className={cn(
-                              'rounded-full px-3.5 py-1.5 font-label-sm text-label-sm font-medium transition-colors',
-                              checked
-                                ? 'bg-primary text-on-primary'
-                                : 'border border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low',
-                            )}
-                          >
-                            {sector.name}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
                 </Field>
               </AccordionSection>
 
