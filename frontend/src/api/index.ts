@@ -14,6 +14,7 @@ export {
   fetchRecruiterJobStats,
   fetchAllRecruiterApplications,
   fetchJobApplications,
+  runApplicationsMatching,
   updateApplicationStatus,
 } from './applications.ts'
 export { fetchProfile, setPassword, updateProfile } from './profile.ts'
@@ -27,6 +28,7 @@ export {
   rejectJob,
   restoreJob,
   setJobSector,
+  runForYouMatching,
   submitJob,
   updateJob,
 } from './jobs.ts'
