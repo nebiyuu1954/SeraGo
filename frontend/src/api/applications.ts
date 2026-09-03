@@ -3,6 +3,7 @@ import { API_ENDPOINTS } from './endpoints.ts'
 import type {
   ApplicationListData,
   ApplicationResponse,
+  ApplicationsMatchResult,
   ApplyRequest,
   RecruiterJobStats,
   UpdateApplicationStatusRequest,
@@ -98,6 +99,21 @@ export function updateApplicationStatus(
   return request(API_ENDPOINTS.applications.status(id), {
     method: 'PATCH',
     body: payload,
+    headers: auth(accessToken),
+  })
+}
+
+/**
+ * POST /api/applications/job/{jobId}/match — score the job's applicants now
+ * ("Run AI matching") from their apply-time profile snapshots. The AI service
+ * scores and stores each; re-fetch the list to show the percentages.
+ */
+export function runApplicationsMatching(
+  jobId: string,
+  accessToken: string,
+): Promise<ApplicationsMatchResult> {
+  return request(API_ENDPOINTS.applications.matchJob(jobId), {
+    method: 'POST',
     headers: auth(accessToken),
   })
 }
