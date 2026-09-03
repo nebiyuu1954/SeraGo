@@ -32,8 +32,7 @@ public static class SeraGoTokenEndpoint
     private static async Task<IResult> HandleAsync(
         [FromBody] TokenRequest req,
         SignInManager<ApplicationUser> signInManager,
-        UserManager<ApplicationUser> userManager,
-        MatchingClient matchingClient)
+        UserManager<ApplicationUser> userManager)
     {
         // Matches Aufy: sign-in is routed to the JWT handler that writes the
         // { AccessToken, ExpiresIn } body and sets the Aufy.RefreshToken cookie.
@@ -43,13 +42,6 @@ public static class SeraGoTokenEndpoint
 
         if (result.Succeeded)
         {
-            // Notify AI matching engine about talent login (fire-and-forget)
-            var loginUser = await userManager.FindByEmailAsync(req.Email);
-            if (loginUser is not null && loginUser.UserType == Core.Domain.Enums.UserType.Talent)
-            {
-                await matchingClient.NotifyTalentLoginAsync(loginUser.Id);
-            }
-
             // The handler already wrote the token response body.
             return TypedResults.Empty;
         }
