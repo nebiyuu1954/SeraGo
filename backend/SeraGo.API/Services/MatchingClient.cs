@@ -37,6 +37,19 @@ public class MatchingClient
     }
 
     /// <summary>
+    /// Posts a JSON body with an explicit Content-Length (via StringContent).
+    /// PostAsJsonAsync/JsonContent sends `Transfer-Encoding: chunked` instead,
+    /// which Django's dev-server WSGI handler does not decode — it would see
+    /// an empty body and reject the call with 400.
+    /// </summary>
+    private Task<HttpResponseMessage> SendJsonAsync(string path, object payload, CancellationToken ct)
+    {
+        var json = JsonSerializer.Serialize(payload, JsonOpts);
+        var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+        return _http.PostAsync(path, content, ct);
+    }
+
+    /// <summary>
     /// Fire-and-forget: notify the AI service that a job was published.
     /// Scores the job against eligible talents in the background.
     /// </summary>
@@ -70,7 +83,7 @@ public class MatchingClient
                 eligibleTalents = eligibleTalents.Select(t => t.ToDict()).ToList(),
             };
 
-            await _http.PostAsJsonAsync("api/matching/webhook/job-published", payload, JsonOpts, ct);
+            await SendJsonAsync("api/matching/webhook/job-published", payload, ct);
             _logger.LogInformation("Notified AI service: job {JobId} published, {Count} eligible talents", jobId, eligibleTalents.Count);
         }
         catch (Exception ex)
@@ -80,25 +93,72 @@ public class MatchingClient
     }
 
     /// <summary>
-    /// Fire-and-forget: notify the AI service that a talent logged in.
-    /// Triggers background scoring for un-scored jobs.
+    /// Fetch the stored 0-100 match scores for one talent against a list of
+    /// jobs (used to annotate the talent's "For You" feed). Best-effort — on
+    /// any failure an empty map is returned so job listings still render.
     /// </summary>
-    public async Task NotifyTalentLoginAsync(string userId, CancellationToken ct = default)
+    public async Task<Dictionary<Guid, JobScore>> GetForYouJobScoresAsync(
+        string userId, IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default)
     {
         try
         {
-            var payload = new { userId };
-            await _http.PostAsJsonAsync("api/matching/webhook/talent-login", payload, JsonOpts, ct);
-            _logger.LogInformation("Notified AI service: talent {UserId} logged in", userId[..8]);
+            if (jobIds.Count == 0) return new Dictionary<Guid, JobScore>();
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(3));
+
+            var payload = new { userId, jobIds = jobIds.Select(j => j.ToString()).ToList() };
+            var response = await SendJsonAsync("api/matching/scores/batch", payload, timeoutCts.Token);
+            response.EnsureSuccessStatusCode();
+            var result = await response.Content.ReadFromJsonAsync<ScoreBatchResponse>(JsonOpts, timeoutCts.Token);
+            if (result?.Scores is null) return new Dictionary<Guid, JobScore>();
+
+            return result.Scores
+                .Where(kv => Guid.TryParse(kv.Key, out _))
+                .ToDictionary(kv => Guid.Parse(kv.Key), kv => kv.Value);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to notify AI service about talent login {UserId}", userId[..8]);
+            _logger.LogWarning(ex, "Failed to fetch For You scores for {Count} jobs", jobIds.Count);
+            return new Dictionary<Guid, JobScore>();
         }
     }
 
     /// <summary>
-    /// Fire-and-forget: store an application for deferred scoring.
+    /// Fetch the stored 0-100 scores for a list of applications (used by the
+    /// recruiter applications pages). Best-effort.
+    /// </summary>
+    public async Task<Dictionary<Guid, ApplicationScoreDto>> GetApplicationScoresAsync(
+        IReadOnlyCollection<Guid> applicationIds, CancellationToken ct = default)
+    {
+        try
+        {
+            if (applicationIds.Count == 0) return new Dictionary<Guid, ApplicationScoreDto>();
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(3));
+
+            var payload = new { applicationIds = applicationIds.Select(id => id.ToString()).ToList() };
+            var response = await SendJsonAsync("api/matching/application-scores/batch", payload, timeoutCts.Token);
+            response.EnsureSuccessStatusCode();
+            var result = await response.Content.ReadFromJsonAsync<ApplicationScoreBatchResponse>(JsonOpts, timeoutCts.Token);
+            if (result?.Scores is null) return new Dictionary<Guid, ApplicationScoreDto>();
+
+            return result.Scores
+                .Where(kv => Guid.TryParse(kv.Key, out _))
+                .ToDictionary(kv => Guid.Parse(kv.Key), kv => kv.Value);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to fetch application scores for {Count} applications", applicationIds.Count);
+            return new Dictionary<Guid, ApplicationScoreDto>();
+        }
+    }
+
+    /// <summary>
+    /// Fire-and-forget: notify the AI service that an application was created.
+    /// The AI service scores the application (talent snapshot vs job) and
+    /// stores the 0-100 score for the recruiter applications page.
     /// </summary>
     public async Task NotifyApplicationCreatedAsync(
         Guid applicationId, string talentUserId, Guid jobId,
@@ -114,7 +174,7 @@ public class MatchingClient
                 job = jobData,
             };
 
-            await _http.PostAsJsonAsync("api/matching/webhook/application", payload, JsonOpts, ct);
+            await SendJsonAsync("api/matching/webhook/application", payload, ct);
             _logger.LogInformation("Notified AI service: application {ApplicationId} created", applicationId);
         }
         catch (Exception ex)
@@ -124,59 +184,117 @@ public class MatchingClient
     }
 
     /// <summary>
-    /// Fire-and-forget: notify the AI service that a talent updated their profile.
-    /// Invalidates stale scores if scoring-relevant fields changed.
+    /// Synchronous: score one talent against a list of jobs right now — the
+    /// For You page's "Run AI matching" button. The AI service computes and
+    /// stores a 0-100 score per job and returns how many were scored.
     /// </summary>
-    public async Task NotifyTalentUpdatedAsync(
-        string userId,
-        Dictionary<string, object?> currentProfile,
-        Dictionary<string, object?>? previousProfile = null,
+    public async Task<ForYouRefreshResult> ScoreForYouJobsAsync(
+        Dictionary<string, object?> talentProfile,
+        List<Dictionary<string, object?>> jobs,
         CancellationToken ct = default)
     {
         try
         {
-            var payload = new
-            {
-                talentProfile = currentProfile,
-                previousProfile,
-            };
+            if (jobs.Count == 0) return new ForYouRefreshResult(true, "ok", 0, 0, null);
 
-            await _http.PostAsJsonAsync("api/matching/webhook/talent-updated", payload, JsonOpts, ct);
-            _logger.LogInformation("Notified AI service: talent {UserId} profile updated", userId[..8]);
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            // Scoring each job (embedding + components) takes a few seconds for
+            // a full feed, so this is deliberately more generous than the reads.
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(90));
+
+            var payload = new { talent = talentProfile, jobs };
+            var response = await SendJsonAsync("api/matching/refresh-for-you", payload, timeoutCts.Token);
+            response.EnsureSuccessStatusCode();
+            var result = await response.Content.ReadFromJsonAsync<ForYouRefreshResponse>(JsonOpts, timeoutCts.Token);
+            return new ForYouRefreshResult(
+                true,
+                result?.Status ?? "ok",
+                result?.Scored ?? 0,
+                result?.Cached ?? 0,
+                result?.Reason);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to notify AI service about talent profile update {UserId}", userId[..8]);
+            _logger.LogWarning(ex, "Failed to refresh For You scores for {Count} jobs", jobs.Count);
+            return new ForYouRefreshResult(false, "unavailable", 0, 0, null);
         }
     }
 
     /// <summary>
-    /// Classify a job title into a canonical sector.
-    /// Returns (sectorId, sectorName) or null if unclassifiable.
+    /// Synchronous: score a batch of stored applications now — the recruiter's
+    /// "Run AI matching" button on the applications page. Each entry carries
+    /// the application's apply-time profile snapshot + the job; the AI service
+    /// scores and stores each one, returning how many were scored/reused/failed.
     /// </summary>
-    public async Task<(Guid? sectorId, string? sectorName)?> ClassifySectorAsync(
-        string title, string? rawSector = null, string? description = null,
+    public async Task<RescoreApplicationsResult> RescoreApplicationsAsync(
+        List<Dictionary<string, object?>> applications,
         CancellationToken ct = default)
     {
         try
         {
-            var payload = new { title, rawSector, description };
-            var response = await _http.PostAsJsonAsync("api/matching/classify-sector", payload, JsonOpts, ct);
+            if (applications.Count == 0)
+                return new RescoreApplicationsResult(true, "ok", 0, 0, 0, null);
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(90));
+
+            var payload = new { applications };
+            var response = await SendJsonAsync("api/matching/applications/rescore", payload, timeoutCts.Token);
             response.EnsureSuccessStatusCode();
-
-            var result = await response.Content.ReadFromJsonAsync<ClassifySectorResponse>(JsonOpts, ct);
-            if (result?.SectorId is null) return null;
-
-            return (Guid.Parse(result.SectorId), result.SectorName);
+            var result = await response.Content.ReadFromJsonAsync<RescoreApplicationsResponse>(JsonOpts, timeoutCts.Token);
+            return new RescoreApplicationsResult(
+                true,
+                result?.Status ?? "ok",
+                result?.Scored ?? 0,
+                result?.Cached ?? 0,
+                result?.Failed?.Count ?? 0,
+                null);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to classify sector for title: {Title}", title);
-            return null;
+            _logger.LogWarning(ex, "Failed to rescore {Count} applications", applications.Count);
+            return new RescoreApplicationsResult(false, "unavailable", 0, 0, 0, null);
         }
     }
 
     // ── DTOs ────────────────────────────────────────────────────────────
+
+    /// <summary>Result of a refresh run: freshly-scored and cache-reused counts.</summary>
+    public sealed record ForYouRefreshResult(bool Succeeded, string Status, int Scored, int Cached, string? Reason);
+
+    /// <summary>Result of an application rescore run.</summary>
+    public sealed record RescoreApplicationsResult(
+        bool Succeeded, string Status, int Scored, int Cached, int Failed, string? Reason);
+
+    private sealed class RescoreApplicationsResponse
+    {
+        [JsonPropertyName("status")]
+        public string? Status { get; set; }
+
+        [JsonPropertyName("scored")]
+        public int? Scored { get; set; }
+
+        [JsonPropertyName("cached")]
+        public int? Cached { get; set; }
+
+        [JsonPropertyName("failed")]
+        public List<object>? Failed { get; set; }
+    }
+
+    private sealed class ForYouRefreshResponse
+    {
+        [JsonPropertyName("status")]
+        public string? Status { get; set; }
+
+        [JsonPropertyName("reason")]
+        public string? Reason { get; set; }
+
+        [JsonPropertyName("scored")]
+        public int? Scored { get; set; }
+
+        [JsonPropertyName("cached")]
+        public int? Cached { get; set; }
+    }
 
     public class TalentProfileForMatching
     {
@@ -195,6 +313,9 @@ public class MatchingClient
         public string? WorkExperience { get; set; }
         public string? EducationHistory { get; set; }
 
+        /// <summary>The talent's "For You" sector ids (UserSettings.forYou.sectorIds).</summary>
+        public List<string> PreferredSectorIds { get; set; } = [];
+
         public Dictionary<string, object?> ToDict() => new()
         {
             ["userId"] = UserId,
@@ -211,15 +332,48 @@ public class MatchingClient
             ["preferredLocations"] = PreferredLocations,
             ["workExperience"] = WorkExperience,
             ["educationHistory"] = EducationHistory,
+            ["preferredSectorIds"] = PreferredSectorIds,
         };
     }
 
-    private class ClassifySectorResponse
+    /// <summary>A stored talent-job match score (0-100).</summary>
+    public sealed class JobScore
     {
-        [JsonPropertyName("sectorId")]
-        public string? SectorId { get; set; }
+        [JsonPropertyName("score")]
+        public double? Score { get; set; }
 
-        [JsonPropertyName("sectorName")]
-        public string? SectorName { get; set; }
+        [JsonPropertyName("matched")]
+        public List<string>? Matched { get; set; }
+
+        [JsonPropertyName("missing")]
+        public List<string>? Missing { get; set; }
+    }
+
+    /// <summary>A stored application score (0-100).</summary>
+    public sealed class ApplicationScoreDto
+    {
+        [JsonPropertyName("status")]
+        public string? Status { get; set; }
+
+        [JsonPropertyName("score")]
+        public double? Score { get; set; }
+
+        [JsonPropertyName("matched")]
+        public List<string>? Matched { get; set; }
+
+        [JsonPropertyName("missing")]
+        public List<string>? Missing { get; set; }
+    }
+
+    private sealed class ScoreBatchResponse
+    {
+        [JsonPropertyName("scores")]
+        public Dictionary<string, JobScore>? Scores { get; set; }
+    }
+
+    private sealed class ApplicationScoreBatchResponse
+    {
+        [JsonPropertyName("scores")]
+        public Dictionary<string, ApplicationScoreDto>? Scores { get; set; }
     }
 }
