@@ -5,6 +5,7 @@ import { useRequireRole, useSettingsQuery, useUnsavedChanges } from '../../../ho
 import type { RequiredRole } from '../../../hooks'
 import type { UserSettings } from '../../../types'
 import AccountSettings from './sections/AccountSettings.tsx'
+import ForYouSettings from './sections/ForYouSettings.tsx'
 import NotificationSettings from './sections/NotificationSettings.tsx'
 import SecuritySettings from './sections/SecuritySettings.tsx'
 import AIFeaturesSettings from './sections/AIFeaturesSettings.tsx'
@@ -117,6 +118,13 @@ export default function SettingsForm({ role }: SettingsFormProps) {
           value={draft.account}
           onChange={(account) => updateDraft({ account })}
         />
+
+        {role === 'Talent' && (
+          <ForYouSettings
+            value={draft.forYou}
+            onChange={(forYou) => updateDraft({ forYou })}
+          />
+        )}
 
         <NotificationSettings
           role={role}
