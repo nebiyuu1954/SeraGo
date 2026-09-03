@@ -3,12 +3,12 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { getApiErrorMessage, getStoredAuthTokens } from '../../../api'
 import {
   useJobsQuery,
-  useProfileQuery,
   useSectorsQuery,
   useJobLocationsQuery,
   useSavedJobsQuery,
   useMyApplicationsQuery,
 } from '../../../hooks/query.ts'
+import { useSettingsQuery } from '../../../hooks'
 import { prefetchJob } from '../../../hooks/useJobDetailQuery.ts'
 import { useRequireRole } from '../../../hooks'
 import type { JobResponse, JobType } from '../../../types'
@@ -32,7 +32,7 @@ import { initialsOf } from '../../../lib/initials.ts'
 
 import { sourceLogo } from '../../../lib/sourceLogos.ts'
 import { parseSkills } from '../../../lib/sourceCapabilities.ts'
-import { saveJob, unsaveJob } from '../../../api'
+import { saveJob, unsaveJob, runForYouMatching } from '../../../api'
 
 function jobTypeLabel(job: JobResponse): string {
   return JOB_TYPE_LABELS[job.jobType as JobType] ?? 'Other'
@@ -67,7 +67,9 @@ export default function JobsPage() {
   const [closingWithin, setClosingWithin] = useState('')
   const [salaryMin, setSalaryMin] = useState('')
   const [salaryMax, setSalaryMax] = useState('')
-  const [sort, setSort] = useState('newest')
+  // The For You feed defaults to "Best match" (falls back to newest until
+  // the AI service has stored scores).
+  const [sort, setSort] = useState(view === 'all' ? 'newest' : 'match')
   const [pageSize, setPageSize] = useState(10)
   // The right-hand filter panel is a collapsible sidebar, expanded by default.
   const [filtersOpen, setFiltersOpen] = useState(true)
@@ -86,13 +88,21 @@ export default function JobsPage() {
 
   // --- SWR-cached data (shared across all mounted instances) ---
 
-  const { profile } = useProfileQuery(auth.status === 'authenticated')
-  const prefSectorIds = profile?.talent?.preferredSectorIds ?? []
+  // The "For you" sectors live in settings (they power the feed + job alerts).
+  const { settings } = useSettingsQuery()
+  const prefSectorIds = settings.forYou?.sectorIds ?? []
 
   const { sectors } = useSectorsQuery(auth.status === 'authenticated')
   const { locations } = useJobLocationsQuery(auth.status === 'authenticated')
 
   const [page, setPage] = useState(1)
+
+  // "Best match" ranks the feed by AI match score — the For You view's
+  // default sort (falls back to newest until scores exist).
+  const sortOptions =
+    view === 'forYou'
+      ? [{ value: 'match', label: 'Best match' }, ...SORT_OPTIONS]
+      : SORT_OPTIONS
 
   // Debounced search input → applied query.
   useEffect(() => {
@@ -205,6 +215,47 @@ export default function JobsPage() {
     setPage(1)
   }
 
+  // --- "Run AI matching" (For You view) ---
+  // Calls the AI service to score the caller's feed jobs against their
+  // profile right now, then re-fetches so each card shows its match %.
+  const [matching, setMatching] = useState(false)
+
+  const handleRunMatching = async () => {
+    if (matching) return
+    const tokens = getStoredAuthTokens()
+    if (!tokens?.accessToken) return
+    setMatching(true)
+    try {
+      const result = await runForYouMatching(tokens.accessToken)
+      const upToDate = result.scored === 0 && (result.cached ?? 0) > 0
+      if (result.scored > 0 || upToDate) {
+        showToast(
+          result.scored > 0
+            ? `AI matched ${result.scored} job${result.scored === 1 ? '' : 's'} to your profile`
+            : (result.message ?? 'Your matches are already up to date.'),
+        )
+        // Rank the feed best-match-first: the list endpoint annotates each
+        // job with its now-stored score and orders by it (highest first).
+        if (sort === 'match') {
+          await refreshJobs()
+        } else {
+          setSort('match')
+          setPage(1)
+        }
+      } else {
+        showToast(
+          result.message ??
+            'No scores were computed — make sure the AI service is running.',
+          'error',
+        )
+      }
+    } catch (err) {
+      showToast(getApiErrorMessage(err), 'error')
+    } finally {
+      setMatching(false)
+    }
+  }
+
   if (auth.status !== 'authenticated') {
     return (
       <div className="flex min-h-[50svh] items-center justify-center">
@@ -234,7 +285,7 @@ export default function JobsPage() {
           </h1>
           <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
             {view === 'forYou'
-              ? 'Jobs matched to your preferred sectors — nothing you\'d scroll past.'
+              ? 'Jobs in the sectors you follow — nothing you\'d scroll past.'
               : 'Browse every open position on the platform — search, filter, and apply.'}
           </p>
         </div>
@@ -278,13 +329,13 @@ export default function JobsPage() {
         </div>
         {view === 'forYou' && prefSectorIds.length > 0 && (
           <p className="font-label-sm text-label-sm text-on-surface-variant">
-            Filtered to your {prefSectorIds.length} preferred sector
+            Showing jobs from {prefSectorIds.length} For You sector
             {prefSectorIds.length === 1 ? '' : 's'} —{' '}
             <Link
-              to="/dashboard/talent/profile"
+              to="/dashboard/talent/settings"
               className="text-primary transition-colors hover:text-surface-tint"
             >
-              adjust preferences
+              manage sectors
             </Link>
           </p>
         )}
@@ -345,7 +396,7 @@ export default function JobsPage() {
               aria-label="Sort jobs"
               className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-label-md text-label-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             >
-              {SORT_OPTIONS.map((option) => (
+              {sortOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -372,13 +423,31 @@ export default function JobsPage() {
         {/* Left: result count + cards + pagination */}
         <div className="min-w-0 flex-1">
           {!isLoading && !error && pagination && (
-            <p className="font-label-md text-label-md text-on-surface-variant">
-              {pagination.totalCount === 0
-                ? 'No jobs found'
-                : `${pagination.totalCount} ${
-                    pagination.totalCount === 1 ? 'job' : 'jobs'
-                  } ${view === 'forYou' ? 'matched to your preferences' : 'available'}`}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="font-label-md text-label-md text-on-surface-variant">
+                {pagination.totalCount === 0
+                  ? 'No jobs found'
+                  : `${pagination.totalCount} ${
+                      pagination.totalCount === 1 ? 'job' : 'jobs'
+                    } ${view === 'forYou' ? 'matched to your preferences' : 'available'}`}
+              </p>
+              {view === 'forYou' && pagination.totalCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleRunMatching}
+                  disabled={matching}
+                  title="Score every job in your feed against your profile and preferences with AI"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary-container/20 px-4 py-1.5 font-label-md text-label-md font-medium text-primary transition-colors hover:bg-primary-container/40 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <span
+                    className={`material-symbols-outlined text-base ${matching ? 'animate-spin' : ''}`}
+                  >
+                    {matching ? 'progress_activity' : 'auto_awesome'}
+                  </span>
+                  {matching ? 'Matching jobs…' : 'Run AI matching'}
+                </button>
+              )}
+            </div>
           )}
 
           {view === 'forYou' && prefSectorIds.length === 0 ? (
@@ -819,6 +888,13 @@ function JobCard({
               </p>
             ))}
         </div>
+        {job.matchScore != null && (
+          <MatchScoreChip
+            score={job.matchScore}
+            matched={job.matchedSkills?.length ?? 0}
+            missing={job.missingSkills?.length ?? 0}
+          />
+        )}
       </div>
 
       {/* Meta grid + actions */}
@@ -879,6 +955,37 @@ function JobCard({
         </div>
       </div>
     </article>
+  )
+}
+
+/* -------------------------------------------------------- Match chip */
+
+/**
+ * "72% match" pill shown on the For You feed when the AI service scored the
+ * job against the viewer's profile + For You preferences.
+ */
+function MatchScoreChip({ score, matched = 0, missing = 0 }: { score: number; matched?: number; missing?: number }) {
+  const tone =
+    score >= 75
+      ? 'bg-success/10 text-success'
+      : score >= 50
+        ? 'bg-amber-100 text-amber-800'
+        : 'bg-surface-container-low text-on-surface-variant'
+  const detail = [
+    'Match score based on your profile and For You preferences.',
+    matched > 0 ? `${matched} matched` : '',
+    missing > 0 ? `${missing} missing` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    <span
+      title={detail}
+      className={`ml-auto inline-flex shrink-0 items-center gap-1 self-start rounded-full px-3 py-1 font-label-sm text-label-sm font-semibold ${tone}`}
+    >
+      <span className="material-symbols-outlined text-sm">auto_awesome</span>
+      {score}% match
+    </span>
   )
 }
 
@@ -945,17 +1052,17 @@ function EmptyState({
       </h2>
       <p className="mt-1 max-w-sm font-body-md text-body-md text-on-surface-variant">
         {forYou
-          ? 'Try widening your preferred sectors, or browse everything.'
+          ? 'Try adding a For You sector in settings, or browse everything.'
           : hasFilters
             ? 'Try adjusting your search or filters.'
             : 'There are no open positions right now — check back soon.'}
       </p>
       {forYou ? (
         <Link
-          to="/dashboard/talent/profile"
+          to="/dashboard/talent/settings"
           className="mt-6 rounded-lg bg-primary px-6 py-3 font-label-md text-label-md font-medium text-on-primary transition-opacity hover:opacity-90"
         >
-          Adjust preferences
+          Open settings
         </Link>
       ) : hasFilters ? (
         <button
@@ -978,18 +1085,18 @@ function PreferencesPrompt({ onBrowseAll }: { onBrowseAll: () => void }) {
         <span className="material-symbols-outlined text-3xl">auto_awesome</span>
       </span>
       <h2 className="mt-4 font-headline-md text-headline-md font-semibold text-on-surface">
-        Tailor your feed to what you do
+        Shape the jobs you see
       </h2>
       <p className="mt-1 max-w-md font-body-md text-body-md text-on-surface-variant">
-        Tell us the sectors you work in and SeraGo will only show you jobs that
-        matter — no more scrolling past roles you'd never apply for.
+        Pick up to 2 sectors in settings and the For You feed will only show
+        jobs in those sectors — no more scrolling past roles you'd never apply for.
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-3">
         <Link
-          to="/dashboard/talent/profile"
+          to="/dashboard/talent/settings"
           className="rounded-lg bg-primary px-6 py-3 font-label-md text-label-md font-medium text-on-primary transition-opacity hover:opacity-90"
         >
-          Set my preferences
+          Choose my sectors
         </Link>
         <button
           type="button"
