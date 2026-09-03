@@ -1,6 +1,7 @@
 import { request } from './client.ts'
 import { API_ENDPOINTS } from './endpoints.ts'
 import type {
+  ForYouMatchResult,
   JobListData,
   JobListParams,
   JobResponse,
@@ -108,6 +109,18 @@ export function deleteJob(
   const qs = hard ? '?hard=true' : ''
   return request<void>(`${jobPath(id)}${qs}`, {
     method: 'DELETE',
+    headers: auth(accessToken),
+  })
+}
+
+/**
+ * POST /api/jobs/for-you/match — run AI matching on the caller's For You
+ * feed now. The AI service scores each job against the talent's profile and
+ * stores the results; re-fetch the feed to display them.
+ */
+export function runForYouMatching(accessToken: string): Promise<ForYouMatchResult> {
+  return request<ForYouMatchResult>(API_ENDPOINTS.jobs.forYouMatch, {
+    method: 'POST',
     headers: auth(accessToken),
   })
 }
