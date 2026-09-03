@@ -136,8 +136,6 @@ export interface TalentProfileResponse {
   desiredJobTypes: string[]
   workMode: string | null
   availability: string | null
-  /** Canonical sector ids the talent wants in their feed. */
-  preferredSectorIds: string[]
   resumeUrl: string
   linkedInUrl: string
   githubUrl: string
@@ -224,8 +222,6 @@ export interface TalentProfileUpdate {
   workMode?: string | null
   /** Immediate | WithinTwoWeeks | WithinOneMonth | MoreThanOneMonth — null/blank unsets. */
   availability?: string | null
-  /** Canonical sector ids for the "For you" feed. */
-  preferredSectorIds?: string[]
   resumeUrl?: string
   linkedInUrl?: string
   githubUrl?: string
@@ -362,6 +358,12 @@ export interface JobResponse {
   jobTypeText: string | null
   createdAt: string
   updatedAt: string
+  /** AI match score 0-100 for this talent's "For You" feed — null when not computed. */
+  matchScore: number | null
+  /** Profile keywords/skills that matched the job posting. */
+  matchedSkills: string[] | null
+  /** Job requirements the talent's profile doesn't cover. */
+  missingSkills: string[] | null
 }
 
 /** A canonical job sector — the vocabulary of GET /api/sectors. */
@@ -390,6 +392,28 @@ export interface PaginationResponse {
 export interface JobListData {
   items: JobResponse[]
   pagination: PaginationResponse
+}
+
+/** The `data` payload of POST /api/jobs/for-you/match ("Run AI matching"). */
+export interface ForYouMatchResult {
+  /** Jobs whose score was freshly computed this run. */
+  scored: number
+  /** Jobs whose stored score was already current and simply reused. */
+  cached?: number
+  total: number
+  message?: string | null
+}
+
+/** The `data` payload of POST /api/applications/job/{jobId}/match ("Run AI matching"). */
+export interface ApplicationsMatchResult {
+  /** Applications freshly scored this run. */
+  scored: number
+  /** Applications whose stored score was already current and reused. */
+  cached?: number
+  /** Applications that couldn't be scored (e.g. no shared profile data). */
+  failed?: number
+  total: number
+  message?: string | null
 }
 
 /** Query parameters of GET /api/jobs. */
@@ -550,6 +574,12 @@ export interface ApplicationResponse {
   jobDeadline: string | null
   /** Company logo image URL, or null. */
   companyLogoUrl: string | null
+  /** AI match score 0-100 — null when the AI service hasn't scored it yet. */
+  matchScore: number | null
+  /** Profile keywords/skills that matched the job posting. */
+  matchedSkills: string[] | null
+  /** Job requirements the talent's profile doesn't cover. */
+  missingSkills: string[] | null
 }
 
 /** Application status — lowerCamel enum name. */
