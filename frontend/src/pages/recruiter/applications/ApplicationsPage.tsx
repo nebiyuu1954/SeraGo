@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   getApiErrorMessage,
   getStoredAuthTokens,
+  runApplicationsMatching,
   updateApplicationStatus,
 } from '../../../api'
 import {
@@ -19,6 +20,7 @@ import type {
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import RichTextDisplay from '../../../components/ui/RichTextDisplay'
 import ResumeLink from '../../../components/ui/ResumeLink.tsx'
+import MatchScoreChip from '../../../components/ui/MatchScoreChip'
 import { useToast } from '../../../components/dashboard/Toast.tsx'
 import { statusBadge, getChipClasses } from '../../../lib/statusBadge'
 
@@ -306,6 +308,7 @@ function ApplicationsList({ jobId, onBack }: { jobId: string; onBack: () => void
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [detailApp, setDetailApp] = useState<ApplicationResponse | null>(null)
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid')
+  const [matching, setMatching] = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(null)
 
   useEffect(() => {
@@ -321,6 +324,37 @@ function ApplicationsList({ jobId, onBack }: { jobId: string; onBack: () => void
   }
 
   const { applications, pagination, isLoading, error, refresh } = useRecruiterAllApplicationsQuery(true, page, pageSize, filterOpts)
+
+  const handleRunMatching = async () => {
+    if (matching || !jobId) return
+    const tokens = getStoredAuthTokens()
+    if (!tokens?.accessToken) return
+    setMatching(true)
+    try {
+      const result = await runApplicationsMatching(jobId, tokens.accessToken)
+      const upToDate = result.scored === 0 && (result.cached ?? 0) > 0
+      if (result.scored > 0 || upToDate) {
+        showToast(
+          result.scored > 0
+            ? `AI matched ${result.scored} applicant${result.scored === 1 ? '' : 's'} to this job`
+            : (result.message ?? 'Matches are already up to date.'),
+        )
+        // Re-fetch — the list endpoint annotates each application with its
+        // now-stored match score.
+        refresh()
+      } else {
+        showToast(
+          result.message ??
+            'No scores were computed — make sure the AI service is running.',
+          'error',
+        )
+      }
+    } catch (err) {
+      showToast(getApiErrorMessage(err), 'error')
+    } finally {
+      setMatching(false)
+    }
+  }
 
   const handleOpenDetails = async (app: ApplicationResponse) => {
     if (app.status === 'pending') {
@@ -389,6 +423,21 @@ function ApplicationsList({ jobId, onBack }: { jobId: string; onBack: () => void
           <div className="flex-1" />
 
           <div className="flex items-center gap-2">
+            {/* Run AI matching — left of the view toggle */}
+            <button
+              type="button"
+              onClick={handleRunMatching}
+              disabled={matching || applications.length === 0}
+              title="Score every applicant against this job with AI, from their apply-time profile snapshot"
+              className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary-container/20 px-3.5 py-1.5 font-label-md text-label-md font-medium text-primary transition-colors hover:bg-primary-container/40 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span
+                className={`material-symbols-outlined text-base ${matching ? 'animate-spin' : ''}`}
+              >
+                {matching ? 'progress_activity' : 'auto_awesome'}
+              </span>
+              {matching ? 'Matching…' : 'Run AI matching'}
+            </button>
             {/* List / Grid toggle */}
             <div className="flex rounded-lg border border-outline-variant bg-surface-container-lowest p-0.5">
               <button
@@ -443,6 +492,7 @@ function ApplicationsList({ jobId, onBack }: { jobId: string; onBack: () => void
                   <th className="px-6 py-4 font-label-md text-label-md font-semibold text-on-surface-variant">Applicant</th>
                   <th className="px-6 py-4 font-label-md text-label-md font-semibold text-on-surface-variant">Headline</th>
                   <th className="px-6 py-4 font-label-md text-label-md font-semibold text-on-surface-variant">Status</th>
+                  <th className="px-6 py-4 font-label-md text-label-md font-semibold text-on-surface-variant">Match</th>
                   <th className="px-6 py-4 font-label-md text-label-md font-semibold text-on-surface-variant">Applied</th>
                   <th className="px-6 py-4 text-right font-label-md text-label-md font-semibold text-on-surface-variant">Actions</th>
                 </tr>
@@ -513,9 +563,7 @@ function ApplicationsList({ jobId, onBack }: { jobId: string; onBack: () => void
 
 // ─────────────────────── Shared Components ────────────────────────
 
-function ApplicationRow({ application, onStatusChange, onViewDetails }: { application: ApplicationResponse; onStatusChange: () => void; onViewDetails: (app: ApplicationResponse) => void }) {
-  const { showToast } = useToast()
-  const [updating, setUpdating] = useState(false)
+function ApplicationRow({ application, onViewDetails }: { application: ApplicationResponse; onStatusChange: () => void; onViewDetails: (app: ApplicationResponse) => void }) {
   const badge = statusBadge(application.status)
 
   return (
@@ -539,13 +587,24 @@ function ApplicationRow({ application, onStatusChange, onViewDetails }: { applic
       <td className="px-6 py-4">
         <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-label-sm text-label-sm font-medium ${badge.className}`}>{badge.label}</span>
       </td>
+      <td className="px-6 py-4">
+        {application.matchScore != null ? (
+          <MatchScoreChip
+            score={application.matchScore}
+            matched={application.matchedSkills?.length ?? 0}
+            missing={application.missingSkills?.length ?? 0}
+          />
+        ) : (
+          <span className="font-label-sm text-label-sm text-on-surface-variant/60">—</span>
+        )}
+      </td>
       <td className="px-6 py-4 font-body-md text-on-surface-variant">{formatDate(application.appliedAt)}</td>
       <td className="px-6 py-4">
         <div className="flex items-center justify-end gap-1">
           <Link to={`/dashboard/recruiter/applications/${application.id}/talent`} className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-primary-container/50 hover:text-primary" title="View talent profile">
             <span className="material-symbols-outlined text-lg">person</span>
           </Link>
-          <button type="button" disabled={updating} onClick={() => onViewDetails(application)} className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-blue-50 hover:text-blue-700" title="View details">
+          <button type="button" onClick={() => onViewDetails(application)} className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-blue-50 hover:text-blue-700" title="View details">
             <span className="material-symbols-outlined text-lg">visibility</span>
           </button>
           {application.resumeUrl && (
@@ -622,8 +681,17 @@ function ApplicationCard({ application, onStatusChange, onViewDetails }: { appli
       <div className="flex-1 flex flex-row group-hover:bg-primary-fixed/5 transition-colors">
         {/* Content Area */}
         <div className="flex-1 flex flex-col p-3.5 pr-2">
-          {/* Status badge */}
-          <span className={`self-start px-2 py-0.5 font-label-sm text-label-sm rounded uppercase tracking-wider ${badge.className}`}>{badge.label}</span>
+          {/* Status badge + AI match score */}
+          <div className="flex items-center gap-2 self-start">
+            <span className={`px-2 py-0.5 font-label-sm text-label-sm rounded uppercase tracking-wider ${badge.className}`}>{badge.label}</span>
+            {application.matchScore != null && (
+              <MatchScoreChip
+                score={application.matchScore}
+                matched={application.matchedSkills?.length ?? 0}
+                missing={application.missingSkills?.length ?? 0}
+              />
+            )}
+          </div>
 
           {/* Latest job */}
           {latestJob && (
