@@ -8,6 +8,7 @@ export interface SettingsResponse {
 export interface UserSettings {
   version: number
   account: AccountSettings
+  forYou: ForYouSettings
   notifications: NotificationSettings
   security: SecuritySettings
   ai: AISettings
@@ -17,6 +18,15 @@ export interface UserSettings {
 export interface AccountSettings {
   /** BCP 47 language tag, e.g. "en", "am". Default: "en". */
   language: string
+}
+
+/** "For you" job feed preferences (talent only). */
+export interface ForYouSettings {
+  /**
+   * Canonical sector ids (max 2) the talent wants in their For You feed.
+   * Also drives new-job alerts. Empty = the feed shows the setup prompt.
+   */
+  sectorIds: string[]
 }
 
 /** Per-channel toggles for a single notification type. */
@@ -84,6 +94,9 @@ export const DEFAULT_SETTINGS: UserSettings = {
   version: 1,
   account: {
     language: 'en',
+  },
+  forYou: {
+    sectorIds: [],
   },
   notifications: {
     // Talent
