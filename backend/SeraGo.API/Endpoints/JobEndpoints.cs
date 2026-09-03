@@ -44,6 +44,9 @@ public static class JobEndpoints
 {
     private const int MaxPageSize = 50;
 
+    /// <summary>Largest For You feed that "Best match" ranking will sort in memory.</summary>
+    private const int MaxMatchSortJobs = 500;
+
     public static IEndpointRouteBuilder MapJobEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/jobs").WithTags("Jobs");
@@ -53,6 +56,8 @@ public static class JobEndpoints
         group.MapGet("/{id:guid}", GetJobAsync).RequireRateLimiting("jobs_read").WithOpenApi();
 
         group.MapPost("/", CreateJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();
+        // Talent-initiated: score the caller's For You feed now ("Run AI matching").
+        group.MapPost("/for-you/match", MatchForYouNowAsync).RequireRateLimiting("jobs_write").WithOpenApi();
         group.MapPut("/{id:guid}", UpdateJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();
         group.MapDelete("/{id:guid}", DeleteJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();
 
@@ -217,13 +222,20 @@ public static class JobEndpoints
         // ReporterJobs
         string? JobTypeText,
         // Analytics
-        int ViewCount);
+        int ViewCount,
+        // AI match score (For You feed annotation) — null when not computed.
+        int? MatchScore,
+        List<string>? MatchedSkills,
+        List<string>? MissingSkills);
 
     public sealed record PaginationResponse(
         int Page, int PageSize, int TotalCount, int TotalPages, bool HasNextPage);
 
     /// <summary>The envelope's data for GET /api/jobs.</summary>
     public sealed record JobListData(List<JobResponse> Items, PaginationResponse Pagination);
+
+    /// <summary>The envelope's data for POST /api/jobs/for-you/match.</summary>
+    public sealed record ForYouMatchResponse(int Scored, int Cached, int Total, string? Message);
 
     // ------------------------------------------------------------- Handlers
 
@@ -233,7 +245,8 @@ public static class JobEndpoints
         [AsParameters] JobListQuery query,
         ClaimsPrincipal claims,
         UserManager<ApplicationUser> userManager,
-        ApplicationDbContext db)
+        ApplicationDbContext db,
+        MatchingClient matchingClient)
     {
         var user = await userManager.GetUserAsync(claims);
         if (user is null)
@@ -345,13 +358,13 @@ public static class JobEndpoints
             }
         }
 
-        // Personalized feed — only the caller's preferred sectors.
+        // Personalized feed — only the caller's "For you" sectors (settings).
         if (query.ForMe == true)
         {
-            var profile = await db.TalentProfiles.AsNoTracking()
-                .FirstOrDefaultAsync(p => p.UserId == user.Id);
-            var prefs = profile?.PreferredSectorIds ?? [];
-            // No preferences → nothing matches (the frontend shows the setup prompt).
+            var settings = await db.UserSettings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.UserId == user.Id);
+            var prefs = UserSettingsReader.GetForYouSectorIds(settings?.Settings);
+            // No sectors chosen → nothing matches (the frontend shows the setup prompt).
             q = prefs.Count > 0
                 ? q.Where(j => j.SectorId != null && prefs.Contains(j.SectorId.Value))
                 : q.Where(j => false);
@@ -427,28 +440,236 @@ public static class JobEndpoints
         var totalCount = await q.CountAsync();
 
         // Sorting (whitelist — unknown values fall back to newest).
-        q = (query.Sort ?? "newest").ToLowerInvariant() switch
-        {
-            "oldest" => q.OrderBy(j => j.PublishedAt ?? j.CreatedAt),
-            "title_asc" => q.OrderBy(j => j.Title),
-            "title_desc" => q.OrderByDescending(j => j.Title),
-            "deadline" => q.OrderBy(j => j.Deadline ?? DateTimeOffset.MaxValue),
-            _ => q.OrderByDescending(j => j.PublishedAt ?? j.CreatedAt),
-        };
+        var sortKey = (query.Sort ?? "newest").ToLowerInvariant();
 
         // Cap the page so (page - 1) * pageSize can never overflow int.
         var page = Math.Clamp(query.Page ?? 1, 1, 100_000);
         var pageSize = Math.Clamp(query.PageSize ?? 10, 1, MaxPageSize);
-        var items = await q
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync();
 
         var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
 
+        var isTalentForYou = query.ForMe == true
+            && user.UserType == Core.Domain.Enums.UserType.Talent;
+        List<JobResponse> responses;
+
+        // "Best match" (For You only): rank the whole feed by the stored AI
+        // score — highest first, unscored jobs sinking below scored ones in
+        // newest-first order. Scores live in the AI service, so the ranked id
+        // list is fetched and scored up front, then paged in memory. Feeds
+        // larger than MaxMatchSortJobs fall back to the newest sort below.
+        if (isTalentForYou && sortKey == "match" && totalCount <= MaxMatchSortJobs)
+        {
+            var rankedIds = await q
+                .OrderByDescending(j => j.PublishedAt ?? j.CreatedAt)
+                .Select(j => j.Id)
+                .ToListAsync();
+
+            // The AI batch endpoint caps one call at 200 ids — chunk larger feeds.
+            var scores = new Dictionary<Guid, MatchingClient.JobScore>();
+            foreach (var chunk in rankedIds.Chunk(200))
+            {
+                var part = await matchingClient.GetForYouJobScoresAsync(user.Id, chunk);
+                foreach (var kv in part)
+                {
+                    scores[kv.Key] = kv.Value;
+                }
+            }
+
+            // Highest score first; ties (incl. everything unscored) keep the
+            // newest-first feed order.
+            var feedOrder = rankedIds.Select((id, i) => (Id: id, Index: i)).ToList();
+            var pageIds = feedOrder
+                .OrderByDescending(x =>
+                    scores.TryGetValue(x.Id, out var s) && s.Score is not null
+                        ? s.Score!.Value
+                        : double.MinValue)
+                .ThenBy(x => x.Index)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(x => x.Id)
+                .ToList();
+
+            responses = [];
+            if (pageIds.Count > 0)
+            {
+                var pageJobs = await db.Jobs.AsNoTracking()
+                    .Include(j => j.PostedBy)
+                    .Where(j => pageIds.Contains(j.Id))
+                    .ToListAsync();
+                var byId = pageJobs.ToDictionary(j => j.Id);
+                responses = pageIds
+                    .Where(byId.ContainsKey)
+                    .Select(id =>
+                    {
+                        var r = ToResponse(byId[id], user.Id);
+                        return scores.TryGetValue(id, out var s) && s.Score is not null
+                            ? r with
+                            {
+                                MatchScore = (int?)Math.Round(s.Score.Value),
+                                MatchedSkills = s.Matched,
+                                MissingSkills = s.Missing,
+                            }
+                            : r;
+                    })
+                    .ToList();
+            }
+        }
+        else
+        {
+            // Normal SQL-side sort ("match" is the only AI-ranked sort).
+            q = sortKey switch
+            {
+                "oldest" => q.OrderBy(j => j.PublishedAt ?? j.CreatedAt),
+                "title_asc" => q.OrderBy(j => j.Title),
+                "title_desc" => q.OrderByDescending(j => j.Title),
+                "deadline" => q.OrderBy(j => j.Deadline ?? DateTimeOffset.MaxValue),
+                _ => q.OrderByDescending(j => j.PublishedAt ?? j.CreatedAt),
+            };
+            var items = await q
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+            responses = items.Select(j => ToResponse(j, user.Id)).ToList();
+
+            // Feature 1: annotate the "For You" feed with the stored AI match
+            // scores (0-100) so the feed can show/rank by match.
+            if (isTalentForYou && responses.Count > 0)
+            {
+                var scores = await matchingClient.GetForYouJobScoresAsync(
+                    user.Id, responses.Select(r => r.Id).ToList());
+                if (scores.Count > 0)
+                {
+                    responses = responses.Select(r =>
+                        scores.TryGetValue(r.Id, out var s) && s.Score is not null
+                            ? r with
+                            {
+                                MatchScore = (int?)Math.Round(s.Score.Value),
+                                MatchedSkills = s.Matched,
+                                MissingSkills = s.Missing,
+                            }
+                            : r).ToList();
+                }
+            }
+        }
+
         return Results.Ok(new JobListData(
-            items.Select(j => ToResponse(j, user.Id)).ToList(),
+            responses,
             new PaginationResponse(page, pageSize, totalCount, totalPages, page < totalPages)));
+    }
+
+    /// <summary>
+    /// POST /api/jobs/for-you/match — the "Run AI matching" button on the
+    /// talent's For You page. Scores the caller's feed jobs (published jobs
+    /// in their For You sectors) against their profile right now via the AI
+    /// service, which stores each 0-100 score. The frontend then re-fetches
+    /// the feed so cards show the match percentages.
+    /// </summary>
+    [Authorize(Roles = Roles.Talent)]
+    private static async Task<IResult> MatchForYouNowAsync(
+        ClaimsPrincipal claims,
+        UserManager<ApplicationUser> userManager,
+        ApplicationDbContext db,
+        MatchingClient matchingClient)
+    {
+        var user = await userManager.GetUserAsync(claims);
+        if (user is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var settings = await db.UserSettings.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.UserId == user.Id);
+        var prefs = UserSettingsReader.GetForYouSectorIds(settings?.Settings);
+        if (prefs.Count == 0)
+        {
+            return Results.Problem(
+                "Choose your For You sectors in Settings first — without them there is nothing to match against.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var profile = await db.TalentProfiles.AsNoTracking()
+            .FirstOrDefaultAsync(tp => tp.UserId == user.Id);
+        if (profile is null)
+        {
+            return Results.Problem(
+                "Complete your profile first — the AI needs your headline, skills and experience to match you.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        // The same published/active/in-window scope as the For You feed,
+        // newest first, capped so one refresh stays fast.
+        var now = DateTimeOffset.UtcNow;
+        var jobs = await db.Jobs.AsNoTracking()
+            .Where(j => j.Status == JobStatus.Published && j.IsActive
+                && (j.Deadline == null || j.Deadline > now.AddDays(-JobLifecycle.GraceDays))
+                && j.SectorId != null && prefs.Contains(j.SectorId.Value))
+            .OrderByDescending(j => j.PublishedAt ?? j.CreatedAt)
+            .Take(200)
+            .ToListAsync();
+
+        if (jobs.Count == 0)
+        {
+            return Results.Ok(new ForYouMatchResponse(0, 0, 0, "No jobs to match right now."));
+        }
+
+        var talentPayload = new Dictionary<string, object?>
+        {
+            ["userId"] = user.Id,
+            ["headline"] = profile.Headline,
+            ["about"] = profile.About,
+            ["skills"] = profile.Skills,
+            ["experienceLevel"] = profile.ExperienceLevel?.ToString(),
+            ["yearsOfExperience"] = profile.YearsOfExperience,
+            ["desiredRoles"] = profile.DesiredRoles,
+            ["desiredJobTypes"] = profile.DesiredJobTypes?.Select(t => t.ToString()).ToList() ?? [],
+            ["currentIndustry"] = profile.CurrentIndustry,
+            ["currentProfession"] = profile.CurrentProfession,
+            ["workMode"] = profile.WorkMode?.ToString(),
+            ["preferredLocations"] = string.IsNullOrEmpty(profile.PreferredLocations)
+                ? []
+                : (System.Text.Json.JsonSerializer.Deserialize<List<string>>(profile.PreferredLocations) ?? []),
+            ["workExperience"] = profile.WorkExperience,
+            ["educationHistory"] = profile.EducationHistory,
+            ["preferredSectorIds"] = prefs.Select(id => id.ToString()).ToList(),
+        };
+
+        var jobPayloads = jobs.Select(j => new Dictionary<string, object?>
+        {
+            ["jobId"] = j.Id.ToString(),
+            ["title"] = j.Title,
+            ["description"] = j.Description,
+            ["company"] = j.Company,
+            ["location"] = j.Location,
+            ["sectorId"] = j.SectorId?.ToString(),
+            ["sectorName"] = j.SectorName,
+            ["experienceLevel"] = j.ExperienceLevel,
+            ["jobType"] = j.JobType.ToString(),
+            ["workMode"] = j.WorkMode.ToString(),
+            ["skills"] = j.Skills,
+            ["experienceMinYears"] = j.ExperienceMinYears,
+            ["experienceMaxYears"] = j.ExperienceMaxYears,
+        }).ToList();
+
+        var result = await matchingClient.ScoreForYouJobsAsync(talentPayload, jobPayloads);
+
+        if (!result.Succeeded)
+        {
+            return Results.Ok(new ForYouMatchResponse(0, 0, jobs.Count,
+                "The AI matching service is not reachable right now — try again in a moment."));
+        }
+        if (result.Status == "skipped")
+        {
+            return Results.Ok(new ForYouMatchResponse(0, 0, jobs.Count,
+                result.Reason ?? "Could not compute matches — complete your profile and save your For You sectors."));
+        }
+        // Nothing changed since the last run — every score was reused as-is.
+        if (result.Scored == 0 && result.Cached > 0)
+        {
+            return Results.Ok(new ForYouMatchResponse(0, result.Cached, jobs.Count,
+                "Your matches are already up to date."));
+        }
+
+        return Results.Ok(new ForYouMatchResponse(result.Scored, result.Cached, jobs.Count, null));
     }
 
     /// <summary>
@@ -1003,12 +1224,22 @@ public static class JobEndpoints
         await NotifyMatchingTalentsAsync(db, notificationService, job);
 
         // ── AI Matching: score this job against eligible talents ──
+        // Only talents whose "For You" settings cover this job (any For You
+        // sector when the job has none) AND who have a profile are eligible —
+        // without For You settings or a profile the match cannot be computed.
+        var forYouByUser = await LoadForYouEligibleTalentsAsync(db, job);
+        var eligibleUserIds = forYouByUser.Keys.ToList();
+
         var eligibleTalents = await db.TalentProfiles
-            .Include(tp => tp.User)
-            .Where(tp => tp.User != null && tp.User.UserType == Core.Domain.Enums.UserType.Talent)
+            .Where(tp => eligibleUserIds.Contains(tp.UserId))
             .ToListAsync();
 
-        var eligibleTalentModels = eligibleTalents.Select(tp => new MatchingClient.TalentProfileForMatching
+        var eligibleTalentModels = eligibleTalents.Select(tp =>
+        {
+            var forYouSectorIds = forYouByUser.TryGetValue(tp.UserId, out var ids)
+                ? ids.Select(id => id.ToString()).ToList()
+                : [];
+            return new MatchingClient.TalentProfileForMatching
             {
                 UserId = tp.UserId,
                 Headline = tp.Headline,
@@ -1024,8 +1255,9 @@ public static class JobEndpoints
                 PreferredLocations = string.IsNullOrEmpty(tp.PreferredLocations) ? [] : (System.Text.Json.JsonSerializer.Deserialize<List<string>>(tp.PreferredLocations) ?? []),
                 WorkExperience = tp.WorkExperience,
                 EducationHistory = tp.EducationHistory,
-            })
-            .ToList();
+                PreferredSectorIds = forYouSectorIds,
+            };
+        }).ToList();
 
         await matchingClient.NotifyJobPublishedAsync(
             jobId: job.Id,
@@ -1205,7 +1437,10 @@ public static class JobEndpoints
         job.PostedText,
         job.DeadlineText,
         job.JobTypeText,
-        job.ViewCount);
+        job.ViewCount,
+        null,   // MatchScore — annotated after listing where applicable
+        null,   // MatchedSkills
+        null);  // MissingSkills
 
     /// <summary>"FullTime" → "fullTime" — enum values follow the JSON camelCase keys.</summary>
     private static string EnumCamel(string enumName) =>
@@ -1271,6 +1506,45 @@ public static class JobEndpoints
             statusCode: StatusCodes.Status400BadRequest);
 
     /// <summary>
+    /// Loads the talents whose "For You" settings make them eligible for AI
+    /// matching against a newly published job: active talents that follow the
+    /// job's sector in their For You settings (or follow any For You sector
+    /// when the job has no sector). Returns userId → their For You sector ids.
+    /// </summary>
+    private static async Task<Dictionary<string, List<Guid>>> LoadForYouEligibleTalentsAsync(
+        ApplicationDbContext db, Job job)
+    {
+        var activeTalentIds = await db.Users
+            .Where(u => u.UserType == Core.Domain.Enums.UserType.Talent && u.IsActive)
+            .Select(u => u.Id)
+            .ToListAsync();
+
+        var settingsByUser = await db.UserSettings.AsNoTracking()
+            .Where(s => activeTalentIds.Contains(s.UserId))
+            .Select(s => new { s.UserId, s.Settings })
+            .ToListAsync();
+
+        var forYouByUser = new Dictionary<string, List<Guid>>();
+        foreach (var setting in settingsByUser)
+        {
+            var sectorIds = UserSettingsReader.GetForYouSectorIds(setting.Settings);
+            if (sectorIds.Count > 0)
+            {
+                forYouByUser[setting.UserId] = sectorIds;
+            }
+        }
+
+        if (job.SectorId is not null)
+        {
+            forYouByUser = forYouByUser
+                .Where(kv => kv.Value.Contains(job.SectorId.Value))
+                .ToDictionary(kv => kv.Key, kv => kv.Value);
+        }
+
+        return forYouByUser.Take(500).ToDictionary(kv => kv.Key, kv => kv.Value);
+    }
+
+    /// <summary>
     /// Notify all talents whose sector preference matches the new job.
     /// In production, the Django AI service handles this via the batch endpoint.
     /// This is the fallback for SeraGo-posted jobs.
@@ -1282,25 +1556,34 @@ public static class JobEndpoints
     {
         try
         {
-            // Find talents who have this job's sector in their preferences
-            IQueryable<string> matchingUserIds;
+            // Active talents + their settings (the "For you" sectors live there now).
+            var activeTalentIds = await db.Users
+                .Where(u => u.UserType == Core.Domain.Enums.UserType.Talent && u.IsActive)
+                .Select(u => u.Id)
+                .ToListAsync();
 
+            var settingsByUser = await db.UserSettings.AsNoTracking()
+                .Where(s => activeTalentIds.Contains(s.UserId))
+                .Select(s => new { s.UserId, s.Settings })
+                .ToListAsync();
+
+            var settingsMap = settingsByUser.ToDictionary(x => x.UserId, x => x.Settings);
+
+            List<string> userIds;
             if (job.SectorId is not null)
             {
-                // Match talents whose preferred sectors include this job's sector
-                matchingUserIds = db.TalentProfiles
-                    .Where(tp => tp.PreferredSectorIds.Contains(job.SectorId.Value))
-                    .Select(tp => tp.UserId);
+                // Talents whose "For you" sectors include this job's sector
+                userIds = activeTalentIds
+                    .Where(id => UserSettingsReader.GetForYouSectorIds(
+                        settingsMap.GetValueOrDefault(id)).Contains(job.SectorId.Value))
+                    .Take(500) // cap at 500
+                    .ToList();
             }
             else
             {
                 // No sector info — notify all active talents
-                matchingUserIds = db.Users
-                    .Where(u => u.UserType == Core.Domain.Enums.UserType.Talent && u.IsActive)
-                    .Select(u => u.Id);
+                userIds = activeTalentIds.Take(500).ToList();
             }
-
-            var userIds = await matchingUserIds.Take(500).ToListAsync(); // cap at 500
 
             if (userIds.Count == 0) return;
 
