@@ -42,7 +42,7 @@ public static class ProfileEndpoints
     public sealed record TalentProfileResponse(
         string Headline, string About, string? ExperienceLevel, int? YearsOfExperience,
         List<string> DesiredRoles, List<string> Skills, List<string> DesiredJobTypes,
-        string? WorkMode, string? Availability, List<Guid> PreferredSectorIds,
+        string? WorkMode, string? Availability,
         string ResumeUrl, string LinkedInUrl, string GitHubUrl, string PortfolioUrl,
         // New identity / personal fields
         string MiddleName, string? PhoneNumber, string? DateOfBirth, string Address,
@@ -94,9 +94,6 @@ public static class ProfileEndpoints
         public List<string>? DesiredRoles { get; set; }
         public List<string>? Skills { get; set; }
         public List<string>? DesiredJobTypes { get; set; }
-
-        /// <summary>Canonical sector ids the talent wants in their feed.</summary>
-        public List<Guid>? PreferredSectorIds { get; set; }
         public string? WorkMode { get; set; }
         public string? Availability { get; set; }
         public string? ResumeUrl { get; set; }
@@ -168,36 +165,12 @@ public static class ProfileEndpoints
         UpdateProfileRequest request,
         ClaimsPrincipal claims,
         UserManager<ApplicationUser> userManager,
-        ApplicationDbContext db,
-        MatchingClient matchingClient)
+        ApplicationDbContext db)
     {
         var user = await userManager.GetUserAsync(claims);
         if (user is null)
         {
             return Results.Unauthorized();
-        }
-
-        // Snapshot the talent profile before update (for staleness comparison)
-        Dictionary<string, object?>? previousProfile = null;
-        if (user.UserType == UserType.Talent)
-        {
-            var existing = await db.TalentProfiles.FirstOrDefaultAsync(p => p.UserId == user.Id);
-            if (existing is not null)
-            {
-                previousProfile = new Dictionary<string, object?>
-                {
-                    ["city"] = user.City,
-                    ["country"] = user.Country,
-                    ["experienceLevel"] = existing.ExperienceLevel.ToString(),
-                    ["yearsOfExperience"] = existing.YearsOfExperience,
-                    ["currentIndustry"] = existing.CurrentIndustry,
-                    ["currentProfession"] = existing.CurrentProfession,
-                    ["workMode"] = existing.WorkMode.ToString(),
-                    ["skills"] = existing.Skills,
-                    ["workExperience"] = existing.WorkExperience,
-                    ["educationHistory"] = existing.EducationHistory,
-                };
-            }
         }
 
         // Common fields (null = leave unchanged for strings shared with the user row).
@@ -250,24 +223,6 @@ public static class ProfileEndpoints
                     {
                         return Results.Problem(jobTypeError, statusCode: StatusCodes.Status400BadRequest);
                     }
-                }
-                if (request.Talent.PreferredSectorIds is not null)
-                {
-                    var ids = request.Talent.PreferredSectorIds.Distinct().ToList();
-                    if (ids.Count > 0)
-                    {
-                        var existing = await db.Sectors
-                            .Where(s => ids.Contains(s.Id))
-                            .Select(s => s.Id)
-                            .ToListAsync();
-                        if (existing.Count != ids.Count)
-                        {
-                            return Results.Problem(
-                                "One or more preferredSectorIds don't exist.",
-                                statusCode: StatusCodes.Status400BadRequest);
-                        }
-                    }
-                    profile.PreferredSectorIds = ids;
                 }
                 if (request.Talent.WorkMode is not null) profile.WorkMode = workMode;
                 if (request.Talent.Availability is not null) profile.Availability = availability;
@@ -361,29 +316,6 @@ public static class ProfileEndpoints
 
         await db.SaveChangesAsync();
 
-        // ── AI Matching: notify about talent profile update ──
-        if (user.UserType == UserType.Talent)
-        {
-            var updatedProfile = await db.TalentProfiles.FirstOrDefaultAsync(p => p.UserId == user.Id);
-            if (updatedProfile is not null)
-            {
-                var currentProfile = new Dictionary<string, object?>
-                {
-                    ["city"] = user.City,
-                    ["country"] = user.Country,
-                    ["experienceLevel"] = updatedProfile.ExperienceLevel.ToString(),
-                    ["yearsOfExperience"] = updatedProfile.YearsOfExperience,
-                    ["currentIndustry"] = updatedProfile.CurrentIndustry,
-                    ["currentProfession"] = updatedProfile.CurrentProfession,
-                    ["workMode"] = updatedProfile.WorkMode.ToString(),
-                    ["skills"] = updatedProfile.Skills,
-                    ["workExperience"] = updatedProfile.WorkExperience,
-                    ["educationHistory"] = updatedProfile.EducationHistory,
-                };
-                await matchingClient.NotifyTalentUpdatedAsync(user.Id, currentProfile, previousProfile);
-            }
-        }
-
         return Results.Ok(await BuildResponseAsync(user, db));
     }
 
@@ -420,7 +352,6 @@ public static class ProfileEndpoints
                     profile.DesiredRoles, profile.Skills,
                     profile.DesiredJobTypes.Select(j => j.ToString()).ToList(),
                     profile.WorkMode?.ToString(), profile.Availability?.ToString(),
-                    profile.PreferredSectorIds,
                     profile.ResumeUrl, profile.LinkedInUrl, profile.GitHubUrl, profile.PortfolioUrl,
                     // New fields
                     user.MiddleName,
@@ -472,9 +403,8 @@ public static class ProfileEndpoints
         if (profile.DesiredJobTypes.Count == 0) missing.Add("desiredJobTypes");
         if (profile.WorkMode is null) missing.Add("workMode");
         if (profile.Availability is null) missing.Add("availability");
-        if (profile.PreferredSectorIds.Count == 0) missing.Add("preferredSectors");
 
-        const int total = 10;
+        const int total = 9;
         return Completion(missing, total);
     }
 
