@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -37,6 +38,8 @@ public static class ApplicationEndpoints
         group.MapGet("/stats", GetRecruiterJobStatsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
         group.MapGet("/all", ListAllRecruiterApplicationsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
         group.MapGet("/job/{jobId:guid}", ListJobApplicationsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
+        // Recruiter-initiated: score the job's applicants now ("Run AI matching").
+        group.MapPost("/job/{jobId:guid}/match", MatchApplicationsAsync).RequireRateLimiting("jobs_write").WithOpenApi();
         group.MapGet("/{id:guid}", GetApplicationAsync).RequireRateLimiting("jobs_read").WithOpenApi();
         group.MapPatch("/{id:guid}/status", UpdateStatusAsync).RequireRateLimiting("jobs_write").WithOpenApi();
 
@@ -76,7 +79,11 @@ public static class ApplicationEndpoints
         string? ProfileSnapshot,
         string? JobSalary,
         string? JobDeadline,
-        string? CompanyLogoUrl);
+        string? CompanyLogoUrl,
+        // AI match score (0-100) — populated when the AI service scored it.
+        int? MatchScore,
+        List<string>? MatchedSkills,
+        List<string>? MissingSkills);
 
     public sealed record ApplicationListData(
         List<ApplicationResponse> Items,
@@ -85,6 +92,10 @@ public static class ApplicationEndpoints
         int PageSize,
         int TotalPages,
         bool HasNextPage);
+
+    /// <summary>The envelope's data for POST /api/applications/job/{jobId}/match.</summary>
+    public sealed record ApplicationsMatchResponse(
+        int Scored, int Cached, int Failed, int Total, string? Message);
 
     public sealed record RecruiterJobStats(
         Guid JobId,
@@ -248,6 +259,30 @@ public static class ApplicationEndpoints
             ToResponse(application, user, job));
     }
 
+    /// <summary>
+    /// Annotate application responses with the stored AI match score (0-100).
+    /// Best-effort — when the AI service is unreachable or hasn't scored an
+    /// application yet, the responses are returned unchanged.
+    /// </summary>
+    private static async Task<List<ApplicationResponse>> AnnotateApplicationScoresAsync(
+        List<ApplicationResponse> responses, MatchingClient matchingClient, CancellationToken ct)
+    {
+        if (responses.Count == 0) return responses;
+
+        var scores = await matchingClient.GetApplicationScoresAsync(
+            responses.Select(r => r.Id).ToList(), ct);
+        if (scores.Count == 0) return responses;
+
+        return responses.Select(r => scores.TryGetValue(r.Id, out var s) && s.Score is not null
+            ? r with
+            {
+                MatchScore = (int?)Math.Round(s.Score.Value),
+                MatchedSkills = s.Matched,
+                MissingSkills = s.Missing,
+            }
+            : r).ToList();
+    }
+
     /// <summary>GET /api/applications — the talent's own applications.</summary>
     [Authorize(Roles = Roles.Talent)]
     private static async Task<IResult> ListMyApplicationsAsync(
@@ -382,6 +417,7 @@ public static class ApplicationEndpoints
         ClaimsPrincipal claims,
         UserManager<ApplicationUser> userManager,
         ApplicationDbContext db,
+        MatchingClient matchingClient,
         [AsParameters] ApplicationListQuery query,
         CancellationToken ct)
     {
@@ -443,7 +479,9 @@ public static class ApplicationEndpoints
 
         var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
 
-        var response = items.Select(a => ToResponse(a, a.User!, a.Job!)).ToList();
+        var response = await AnnotateApplicationScoresAsync(
+            items.Select(a => ToResponse(a, a.User!, a.Job!)).ToList(),
+            matchingClient, ct);
 
         return Results.Ok(new ApplicationListData(
             response, totalCount, page, pageSize, totalPages, page < totalPages));
@@ -456,6 +494,7 @@ public static class ApplicationEndpoints
         ClaimsPrincipal claims,
         UserManager<ApplicationUser> userManager,
         ApplicationDbContext db,
+        MatchingClient matchingClient,
         [AsParameters] PaginationQuery pagination,
         CancellationToken ct)
     {
@@ -499,11 +538,13 @@ public static class ApplicationEndpoints
 
         var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
 
-        var response = items.Select(a =>
-        {
-            var applicant = a.User!;
-            return ToResponse(a, applicant, a.Job!);
-        }).ToList();
+        var response = await AnnotateApplicationScoresAsync(
+            items.Select(a =>
+            {
+                var applicant = a.User!;
+                return ToResponse(a, applicant, a.Job!);
+            }).ToList(),
+            matchingClient, ct);
 
         return Results.Ok(new ApplicationListData(
             response, totalCount, page, pageSize, totalPages, page < totalPages));
@@ -516,6 +557,7 @@ public static class ApplicationEndpoints
         ClaimsPrincipal claims,
         UserManager<ApplicationUser> userManager,
         ApplicationDbContext db,
+        MatchingClient matchingClient,
         CancellationToken ct)
     {
         var user = await userManager.GetUserAsync(claims);
@@ -547,7 +589,11 @@ public static class ApplicationEndpoints
             return Results.NotFound();
         }
 
-        return Results.Ok(ToResponse(application, application.User!, application.Job!));
+        var response = await AnnotateApplicationScoresAsync(
+            [ToResponse(application, application.User!, application.Job!)],
+            matchingClient, ct);
+
+        return Results.Ok(response[0]);
     }
 
     /// <summary>PATCH /api/applications/{id}/status — recruiter updates application status.</summary>
@@ -641,6 +687,218 @@ public static class ApplicationEndpoints
     /// When false (resume-only), only mandatory fields are included: name, email,
     /// city, country, experience level, years of experience, and highest education level.
     /// </summary>
+    /// <summary>
+    /// POST /api/applications/job/{jobId}/match — the recruiter's "Run AI
+    /// matching" button on the job's applicants. Scores every application of
+    /// the job (from each applicant's apply-time profile snapshot) right now
+    /// via the AI service; the frontend then re-fetches the list, whose items
+    /// are annotated with the stored scores.
+    /// </summary>
+    [Authorize(Roles = Roles.Recruiter + "," + Roles.Admin)]
+    private static async Task<IResult> MatchApplicationsAsync(
+        Guid jobId,
+        ClaimsPrincipal claims,
+        UserManager<ApplicationUser> userManager,
+        ApplicationDbContext db,
+        MatchingClient matchingClient,
+        CancellationToken ct)
+    {
+        var user = await userManager.GetUserAsync(claims);
+        if (user is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var isAdmin = await userManager.IsInRoleAsync(user, Roles.Admin);
+        var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        if (job is null)
+        {
+            return Results.NotFound();
+        }
+        if (!isAdmin && job.PostedByUserId != user.Id)
+        {
+            // Don't leak other recruiters' jobs/applicants.
+            return Results.NotFound();
+        }
+
+        var applications = await db.JobApplications.AsNoTracking()
+            .Where(a => a.JobId == jobId)
+            .OrderByDescending(a => a.AppliedAt)
+            .Take(200)
+            .ToListAsync(ct);
+
+        if (applications.Count == 0)
+        {
+            return Results.Ok(new ApplicationsMatchResponse(0, 0, 0, 0,
+                "No one has applied to this job yet."));
+        }
+
+        var entries = applications.Select(a => BuildApplicationMatchEntry(a, job)).ToList();
+        var result = await matchingClient.RescoreApplicationsAsync(entries, ct);
+
+        if (!result.Succeeded)
+        {
+            return Results.Ok(new ApplicationsMatchResponse(0, 0, 0, entries.Count,
+                "The AI matching service is not reachable right now — try again in a moment."));
+        }
+        if (result.Scored == 0 && result.Cached == 0)
+        {
+            return Results.Ok(new ApplicationsMatchResponse(0, 0, result.Failed, entries.Count,
+                "None could be matched — applicants who didn't share enough of their profile when applying can't be scored."));
+        }
+        if (result.Scored == 0 && result.Cached > 0)
+        {
+            return Results.Ok(new ApplicationsMatchResponse(0, result.Cached, result.Failed, entries.Count,
+                "Matches are already up to date."));
+        }
+
+        return Results.Ok(new ApplicationsMatchResponse(
+            result.Scored, result.Cached, result.Failed, entries.Count, null));
+    }
+
+    /// <summary>
+    /// Builds one AI rescore payload entry from an application's apply-time
+    /// profile snapshot (<see cref="JobApplication.ProfileSnapshot"/>). The
+    /// snapshot is the source of truth — what the talent shared when they
+    /// applied — even if they later changed their profile. Applications
+    /// without enough shared data simply produce an entry the AI reports as
+    /// unscorable.
+    /// </summary>
+    private static Dictionary<string, object?> BuildApplicationMatchEntry(
+        JobApplication app, Job job)
+    {
+        JsonElement root;
+        if (!string.IsNullOrWhiteSpace(app.ProfileSnapshot))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(app.ProfileSnapshot);
+                root = doc.RootElement.Clone();
+            }
+            catch
+            {
+                root = default;
+            }
+        }
+        else
+        {
+            root = default;
+        }
+
+        string Str(string key)
+        {
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty(key, out var e)
+                || e.ValueKind != JsonValueKind.String)
+            {
+                return string.Empty;
+            }
+            return e.GetString() ?? string.Empty;
+        }
+
+        var talent = new Dictionary<string, object?>
+        {
+            ["userId"] = app.UserId,
+            ["headline"] = null,
+            ["about"] = NullIfBlank(Str("about")),
+            ["skills"] = ReadStringList(root, "skills"),
+            ["experienceLevel"] = NullIfBlank(Str("experienceLevel")),
+            ["yearsOfExperience"] = ReadNullableInt(root, "yearsOfExperience"),
+            ["currentIndustry"] = NullIfBlank(Str("currentIndustry")),
+            ["currentProfession"] = NullIfBlank(Str("currentProfession")),
+            ["workMode"] = NullIfBlank(Str("workMode")),
+            ["desiredRoles"] = ReadStringList(root, "desiredRoles"),
+            ["desiredJobTypes"] = new List<string>(),
+            ["preferredLocations"] = ReadStringList(root, "preferredLocations"),
+            ["workExperience"] = NullIfBlank(Str("workExperience")),
+            ["educationHistory"] = NullIfBlank(Str("educationHistory")),
+            ["preferredSectorIds"] = new List<string>(),
+        };
+
+        return new Dictionary<string, object?>
+        {
+            ["applicationId"] = app.Id.ToString(),
+            ["talentProfile"] = talent,
+            ["job"] = BuildJobMatchingPayload(job),
+        };
+    }
+
+    private static List<string> ReadStringList(JsonElement root, string key)
+    {
+        var result = new List<string>();
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty(key, out var e))
+        {
+            return result;
+        }
+
+        void AddStrings(JsonElement arr)
+        {
+            foreach (var item in arr.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String
+                    && !string.IsNullOrWhiteSpace(item.GetString()))
+                {
+                    result.Add(item.GetString()!);
+                }
+            }
+        }
+
+        if (e.ValueKind == JsonValueKind.Array)
+        {
+            AddStrings(e);
+        }
+        else if (e.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(e.GetString()))
+        {
+            // Some snapshot lists (e.g. preferredLocations) are stored as a
+            // JSON string — unwrap them.
+            try
+            {
+                using var nested = JsonDocument.Parse(e.GetString()!);
+                if (nested.RootElement.ValueKind == JsonValueKind.Array)
+                {
+                    AddStrings(nested.RootElement);
+                }
+            }
+            catch
+            {
+                // Not valid JSON — ignore.
+            }
+        }
+
+        return result;
+    }
+
+    private static int? ReadNullableInt(JsonElement root, string key)
+    {
+        if (root.ValueKind == JsonValueKind.Object
+            && root.TryGetProperty(key, out var e)
+            && e.ValueKind == JsonValueKind.Number
+            && e.TryGetInt32(out var value))
+        {
+            return value;
+        }
+        return null;
+    }
+
+    /// <summary>The job fields the AI service scores against (same shape as
+    /// the webhook payloads).</summary>
+    private static Dictionary<string, object?> BuildJobMatchingPayload(Job job) => new()
+    {
+        ["jobId"] = job.Id.ToString(),
+        ["title"] = job.Title,
+        ["description"] = job.Description,
+        ["company"] = job.Company,
+        ["location"] = job.Location,
+        ["sectorId"] = job.SectorId?.ToString(),
+        ["sectorName"] = job.SectorName,
+        ["experienceLevel"] = job.ExperienceLevel,
+        ["jobType"] = job.JobType.ToString(),
+        ["workMode"] = job.WorkMode.ToString(),
+        ["skills"] = job.Skills,
+        ["experienceMinYears"] = job.ExperienceMinYears,
+        ["experienceMaxYears"] = job.ExperienceMaxYears,
+    };
+
     private static string BuildProfileSnapshot(ApplicationUser user, TalentProfile? profile, bool shareProfile)
     {
         var snapshot = new Dictionary<string, object?>();
@@ -789,7 +1047,10 @@ public static class ApplicationEndpoints
         a.ProfileSnapshot,
         NullIfBlank(job.Salary),
         FormatDate(job.Deadline),
-        isCompanyPrivate ? null : companyLogo);
+        isCompanyPrivate ? null : companyLogo,
+        null,   // MatchScore — annotated after listing where applicable
+        null,   // MatchedSkills
+        null);  // MissingSkills
     }
 
     private static string EnumCamel(string enumName) =>
