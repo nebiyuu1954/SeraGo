@@ -105,6 +105,7 @@ else
 // sync at the UTC times in SYNC_SCHEDULE (default 09:15/20:45, right after
 // the scraper's GitHub Actions runs at 09:00/20:30 UTC).
 builder.Services.AddSingleton(new SyncOptions());
+builder.Services.AddSingleton(new AdminApiOptions());
 builder.Services.AddSingleton<ScrapedJobSyncService>();
 builder.Services.AddSingleton<JobLifecycleCleanupService>(); // weekly deadline+7 cleanup
 builder.Services.AddHostedService<SyncScheduler>();
@@ -179,6 +180,11 @@ app.UseRateLimiter(); // throttling for endpoints that opt in via RequireRateLim
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Defense-in-depth: 404 any /api/admin/* request when the flag is off.
+// Catches future endpoints registered outside the gate by convention failure.
+var adminApiForMiddleware = app.Services.GetRequiredService<AdminApiOptions>();
+app.UseMiddleware<AdminApiGateMiddleware>(adminApiForMiddleware.Enabled);
+
 app.MapAufyEndpoints();      // /api/auth/* and /api/account/* (login, signup, refresh, me, ...)
 app.MapProfileEndpoints();   // GET/PUT /api/account/profile — the user's own profile
 app.MapAccountEndpoints();   // POST /api/account/deactivate, DELETE /api/account
@@ -194,9 +200,16 @@ app.MapSeraGoEmailConfirmEndpoint();             // GET /api/account/email/confi
 app.MapJobEndpoints();   // /api/jobs — browse, search, post (draft flow), moderate
 app.MapSavedJobEndpoints(); // /api/saved-jobs — save/unsave/list with lifecycle status
 app.MapApplicationEndpoints(); // /api/applications — talent apply, recruiter manage
-app.MapSectorEndpoints(); // /api/sectors + admin sector management + scraped-job sync
-app.MapStatsEndpoints();  // /api/admin/stats — top sectors + websites per period (scraper DB)
-app.MapAdminUserEndpoints(); // /api/admin/users — admin user management
+app.MapSectorEndpoints(); // /api/sectors (public list only — admin routes gated below)
+
+// Admin endpoints — behind the kill switch. When ADMIN_API_ENABLED is off,
+// none of these route groups are registered AND the gate middleware 404s
+// any stray /api/admin/* path as defense in depth.
+var adminApi = app.Services.GetRequiredService<AdminApiOptions>();
+if (adminApi.Enabled)
+{
+    app.MapAdminEndpoints(); // sectors-admin, jobs-moderation, users, stats
+}
 app.MapFileUploadEndpoints(); // /api/upload — presigned URLs for file uploads
 app.MapSettingsEndpoints();   // GET/PUT/PATCH /api/account/settings — user settings
 app.MapNotificationEndpoints(); // /api/notifications — bell icon, unread count, mark read
