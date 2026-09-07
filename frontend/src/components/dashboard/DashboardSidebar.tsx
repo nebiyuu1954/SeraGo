@@ -11,6 +11,8 @@ interface DashboardSidebarProps {
   userCompany?: string
   userAvatarUrl?: string
   onSignOut: () => void
+  /** Optional badge overrides keyed by nav item label (e.g. { Jobs: 5 }). */
+  badges?: Record<string, number>
 }
 
 /**
@@ -28,6 +30,7 @@ export default function DashboardSidebar({
   userCompany,
   userAvatarUrl,
   onSignOut,
+  badges,
 }: DashboardSidebarProps) {
   const { sidebarOpen, toggleSidebar, drawerOpen, setDrawerOpen } = useSidebar()
 
@@ -37,7 +40,7 @@ export default function DashboardSidebar({
       <aside
         className={cn(
           'hidden flex-shrink-0 flex-col overflow-hidden border-r border-surface-variant bg-surface-container-lowest transition-[width] duration-300 ease-in-out md:flex',
-          sidebarOpen ? 'w-64' : 'w-20',
+          sidebarOpen ? 'w-60' : 'w-20',
         )}
       >
         <SidebarBody
@@ -48,6 +51,7 @@ export default function DashboardSidebar({
           onSignOut={onSignOut}
           collapsed={!sidebarOpen}
           onToggle={toggleSidebar}
+          badges={badges}
         />
       </aside>
 
@@ -67,6 +71,7 @@ export default function DashboardSidebar({
             userAvatarUrl={userAvatarUrl}
             onSignOut={onSignOut}
             collapsed={false}
+            badges={badges}
           />
           </aside>
         </>
@@ -83,6 +88,7 @@ function SidebarBody({
   onSignOut,
   collapsed,
   onToggle,
+  badges,
 }: {
   role: RequiredRole
   userName: string
@@ -91,6 +97,7 @@ function SidebarBody({
   onSignOut: () => void
   collapsed: boolean
   onToggle?: () => void
+  badges?: Record<string, number>
 }) {
   const location = useLocation()
   // Longest prefix match wins — nested pages highlight their own item, not
@@ -111,17 +118,30 @@ function SidebarBody({
       <nav className="flex-1 space-y-1.5 px-4 py-6">
         {ROLE_NAV[role].map((item) => {
           const isActive = item.to === activeTo
+          const badgeCount = badges?.[item.label] ?? item.badge
           const content = (
             <>
-              <span
-                className={cn(
-                  'material-symbols-outlined',
-                  isActive && 'fill',
+              <span className="relative">
+                <span
+                  className={cn(
+                    'material-symbols-outlined',
+                    isActive && 'fill',
+                  )}
+                >
+                  {item.icon}
+                </span>
+                {badgeCount !== undefined && badgeCount > 0 && !collapsed && (
+                  <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 font-label-xs text-[10px] font-bold text-on-error">
+                    {badgeCount}
+                  </span>
                 )}
-              >
-                {item.icon}
               </span>
               {!collapsed && item.label}
+              {!collapsed && badgeCount !== undefined && badgeCount > 0 && (
+                <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-error px-1 font-label-xs text-[10px] font-bold text-on-error">
+                  {badgeCount}
+                </span>
+              )}
             </>
           )
           return item.to ? (
