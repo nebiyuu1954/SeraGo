@@ -13,6 +13,7 @@ public static class NotificationType
     // Job events
     public const string JobAlert = "job_alert";
     public const string SavedSearchMatch = "saved_search_match";
+    public const string JobPendingReview = "job_pending_review";
 
     // Payment events
     public const string PaymentSuccess = "payment_success";
