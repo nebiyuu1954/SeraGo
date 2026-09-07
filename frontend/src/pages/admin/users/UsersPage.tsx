@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
+  fetchAdminStatsOverview,
   fetchAdminUsers,
   getApiErrorMessage,
   getStoredAuthTokens,
@@ -7,7 +9,7 @@ import {
   updateUserStatus,
 } from '../../../api'
 import { useRequireRole } from '../../../hooks'
-import type { AdminUserResponse } from '../../../types'
+import type { AdminStatsOverviewResponse, AdminUserResponse } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import { cn } from '../../../lib/cn.ts'
 
@@ -20,11 +22,12 @@ const ROLE_COLORS: Record<string, string> = {
 
 export default function UsersPage() {
   const auth = useRequireRole('Admin')
+  const navigate = useNavigate()
   const [users, setUsers] = useState<AdminUserResponse[]>([])
+  const [stats, setStats] = useState<AdminStatsOverviewResponse['users'] | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
-  const [totalCount, setTotalCount] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
   const [hasNext, setHasNext] = useState(false)
   const [search, setSearch] = useState('')
@@ -38,14 +41,18 @@ export default function UsersPage() {
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchAdminUsers(
-        { q: search || undefined, role: roleFilter || undefined, isActive: activeFilter, page, pageSize },
-        tokens.accessToken,
-      )
-      setUsers(data.items)
-      setTotalCount(data.totalCount)
-      setTotalPages(data.totalPages)
-      setHasNext(data.hasNextPage)
+      const [usersData, statsData] = await Promise.allSettled([
+        fetchAdminUsers({ q: search || undefined, role: roleFilter || undefined, isActive: activeFilter, page, pageSize }, tokens.accessToken),
+        fetchAdminStatsOverview(tokens.accessToken),
+      ])
+      if (usersData.status === 'fulfilled') {
+        setUsers(usersData.value.items)
+        setTotalPages(usersData.value.totalPages)
+        setHasNext(usersData.value.hasNextPage)
+      }
+      if (statsData.status === 'fulfilled') {
+        setStats(statsData.value.users)
+      }
     } catch (err) {
       setError(getApiErrorMessage(err))
     } finally {
@@ -89,11 +96,26 @@ export default function UsersPage() {
     <DashboardShell role="Admin" authUser={auth.user}>
       <h1 className="font-headline-lg text-headline-lg font-bold tracking-tight text-primary">Users</h1>
       <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
-        Manage all {totalCount} registered users.
+        Manage all registered users.
       </p>
 
+      {/* ──── Stat cards ──── */}
+      {stats && (
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <StatCard icon="group" label="Total users" value={stats.total} accent="text-on-surface" />
+          <StatCard icon="play_arrow" label="Active today" value={stats.activeToday} accent="text-primary" />
+          <StatCard icon="date_range" label="Active this week" value={stats.activeThisWeek} accent="text-accent" />
+          <StatCard icon="calendar_month" label="Active this month" value={stats.activeThisMonth} accent="text-accent" />
+          <StatCard icon="person" label="Talent" value={stats.byRole.talent} accent="text-blue-600" />
+          <StatCard icon="business_center" label="Recruiter" value={stats.byRole.recruiter} accent="text-green-600" />
+          <StatCard icon="admin_panel_settings" label="Admin" value={stats.byRole.admin} accent="text-purple-600" />
+          <StatCard icon="today" label="New today" value={stats.newToday} accent="text-accent" />
+          <StatCard icon="date_range" label="New this week" value={stats.newThisWeek} accent="text-primary" />
+        </div>
+      )}
+
       {/* Filters */}
-      <div className="mt-6 flex flex-col gap-3 rounded-xl border border-surface-variant bg-surface-container-lowest p-4 shadow-sm sm:flex-row sm:items-center">
+      <div className="mt-5 flex flex-col gap-3 rounded-xl border border-surface-variant bg-surface-container-lowest p-4 shadow-sm sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-lg text-on-surface-variant">search</span>
           <input
@@ -114,10 +136,7 @@ export default function UsersPage() {
         </select>
         <select
           value={activeFilter === undefined ? '' : String(activeFilter)}
-          onChange={(e) => {
-            setActiveFilter(e.target.value === '' ? undefined : e.target.value === 'true')
-            setPage(1)
-          }}
+          onChange={(e) => { setActiveFilter(e.target.value === '' ? undefined : e.target.value === 'true'); setPage(1) }}
           className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-label-md text-label-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         >
           <option value="">All statuses</option>
@@ -140,7 +159,7 @@ export default function UsersPage() {
       ) : users.length === 0 ? (
         <div className="mt-10 text-center font-body-md text-body-md text-on-surface-variant">No users found.</div>
       ) : (
-        <div className="mt-6 overflow-hidden rounded-xl border border-surface-variant bg-surface-container-lowest shadow-sm">
+        <div className="mt-5 overflow-hidden rounded-xl border border-surface-variant bg-surface-container-lowest shadow-sm">
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-variant bg-surface-container-low">
@@ -153,7 +172,7 @@ export default function UsersPage() {
             </thead>
             <tbody className="divide-y divide-surface-variant">
               {users.map((user) => (
-                <tr key={user.id} className="transition-colors hover:bg-surface-container-low/50">
+                <tr key={user.id} className="cursor-pointer transition-colors hover:bg-surface-container-low/50" onClick={() => navigate(`/dashboard/admin/users/${user.id}`)}>
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
                       {user.avatarUrl ? (
@@ -174,7 +193,7 @@ export default function UsersPage() {
                   <td className="px-5 py-4">
                     <select
                       value={user.userType}
-                      onChange={(e) => handleRoleChange(user, e.target.value)}
+                      onChange={(e) => { e.stopPropagation(); handleRoleChange(user, e.target.value) }}
                       className={cn(
                         'rounded-full px-3 py-1 font-label-sm text-label-sm font-medium border-0 focus:ring-1 focus:ring-primary',
                         ROLE_COLORS[user.userType] ?? 'bg-gray-100 text-gray-800',
@@ -197,7 +216,7 @@ export default function UsersPage() {
                   <td className="px-5 py-4 text-right">
                     <button
                       type="button"
-                      onClick={() => handleToggleActive(user)}
+                      onClick={(e) => { e.stopPropagation(); handleToggleActive(user) }}
                       className={cn(
                         'rounded-lg px-3 py-1.5 font-label-sm text-label-sm font-medium transition-colors',
                         user.isActive
@@ -218,27 +237,35 @@ export default function UsersPage() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="mt-6 flex items-center justify-center gap-2">
-          <button
-            type="button"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant text-on-surface-variant transition-colors hover:bg-surface-container-low disabled:pointer-events-none disabled:opacity-40"
-          >
+          <button type="button" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant text-on-surface-variant transition-colors hover:bg-surface-container-low disabled:pointer-events-none disabled:opacity-40">
             <span className="material-symbols-outlined text-lg">chevron_left</span>
           </button>
           <span className="font-label-md text-label-md text-on-surface-variant">
             Page {page} of {totalPages}
           </span>
-          <button
-            type="button"
-            disabled={!hasNext}
-            onClick={() => setPage((p) => p + 1)}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant text-on-surface-variant transition-colors hover:bg-surface-container-low disabled:pointer-events-none disabled:opacity-40"
-          >
+          <button type="button" disabled={!hasNext} onClick={() => setPage((p) => p + 1)}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant text-on-surface-variant transition-colors hover:bg-surface-container-low disabled:pointer-events-none disabled:opacity-40">
             <span className="material-symbols-outlined text-lg">chevron_right</span>
           </button>
         </div>
       )}
     </DashboardShell>
+  )
+}
+
+function StatCard({ icon, label, value, accent }: {
+  icon: string; label: string; value: number; accent: string
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-surface-variant bg-surface-container-lowest p-4 shadow-sm">
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-container/30">
+        <span className="material-symbols-outlined text-xl text-primary">{icon}</span>
+      </div>
+      <div>
+        <p className={cn('font-headline-md text-headline-md font-bold', accent)}>{value.toLocaleString()}</p>
+        <p className="font-label-xs text-label-xs text-on-surface-variant">{label}</p>
+      </div>
+    </div>
   )
 }
