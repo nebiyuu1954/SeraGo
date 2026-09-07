@@ -1,7 +1,7 @@
 export { useSavedJobs } from './useSavedJobs.ts'
 export { useLocalStorage } from './useLocalStorage.ts'
 export { useMediaQuery } from './useMediaQuery.ts'
-export { useAuthUser, useRequireRole } from './useAuthUser.ts'
+export { useAuthUser, useRequireRole, useRequireRoleAny } from './useAuthUser.ts'
 export type { AuthUserState, RequiredRole } from './useAuthUser.ts'
 export { useSignOut } from './useSignOut.ts'
 export { useProfileQuery } from './useProfileQuery.ts'
