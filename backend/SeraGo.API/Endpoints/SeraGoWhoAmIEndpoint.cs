@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using SeraGo.Core.Domain.Entities;
+using SeraGo.API.Services;
 
 namespace SeraGo.API.Endpoints;
 
@@ -12,8 +13,8 @@ namespace SeraGo.API.Endpoints;
 ///
 /// This endpoint mirrors the same response shape (camelCase
 /// { username, email, roles }) and adds <c>emailConfirmed</c>, loaded from the
-/// user row. Registered by removing Aufy's endpoint from DI and mapping this
-/// one in Program.cs.
+/// user row, plus <c>adminApiEnabled</c> so the frontend can hide admin UI
+/// when the kill switch is off.
 /// </summary>
 public static class SeraGoWhoAmIEndpoint
 {
@@ -27,7 +28,8 @@ public static class SeraGoWhoAmIEndpoint
 
     private static async Task<IResult> HandleAsync(
         ClaimsPrincipal claims,
-        UserManager<ApplicationUser> userManager)
+        UserManager<ApplicationUser> userManager,
+        AdminApiOptions adminApi)
     {
         var user = await userManager.GetUserAsync(claims);
         if (user is null)
@@ -41,6 +43,7 @@ public static class SeraGoWhoAmIEndpoint
             email = user.Email,
             roles = (await userManager.GetRolesAsync(user)).ToArray(),
             emailConfirmed = user.EmailConfirmed,
+            adminApiEnabled = adminApi.Enabled,
         });
     }
 }
