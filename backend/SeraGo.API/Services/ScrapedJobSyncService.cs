@@ -49,12 +49,12 @@ public sealed class ScrapedJobSyncService
     /// Runs one full sync. Returns the result, or null when the scraper
     /// database is not configured (callers decide how to surface that).
     /// </summary>
-    public async Task<SyncResult?> RunAsync(CancellationToken ct = default)
+    public async Task<SyncResult?> RunAsync(string triggeredBy = "manual", CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct);
         try
         {
-            return await RunCoreAsync(ct);
+            return await RunCoreAsync(triggeredBy, ct);
         }
         finally
         {
@@ -62,7 +62,7 @@ public sealed class ScrapedJobSyncService
         }
     }
 
-    private async Task<SyncResult?> RunCoreAsync(CancellationToken ct)
+    private async Task<SyncResult?> RunCoreAsync(string triggeredBy, CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -430,6 +430,24 @@ public sealed class ScrapedJobSyncService
             }
             await db.SaveChangesAsync(ct);
         }
+
+        // Persist the run result so the admin dashboard and scraper page
+        // can show "last sync" and run history without re-querying the scraper DB.
+        db.SyncRuns.Add(new SyncRun
+        {
+            Id = 0, // auto-increment
+            RanAt = DateTime.UtcNow,
+            Inserted = inserted,
+            Updated = updated,
+            Unchanged = unchanged,
+            Uncategorized = uncategorized,
+            Deactivated = deactivated,
+            UnknownSectors = unknownSectors.Count > 0
+                ? System.Text.Json.JsonSerializer.Serialize(unknownSectors.ToList())
+                : null,
+            TriggeredBy = triggeredBy,
+        });
+        await db.SaveChangesAsync(ct);
 
         return new SyncResult(
             inserted, updated, unchanged, uncategorized,
