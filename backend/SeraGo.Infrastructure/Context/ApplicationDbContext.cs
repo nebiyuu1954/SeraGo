@@ -23,6 +23,7 @@ public class ApplicationDbContext : AufyDbContext<ApplicationUser>
     public DbSet<Sector> Sectors => Set<Sector>();
     public DbSet<SectorAlias> SectorAliases => Set<SectorAlias>();
     public DbSet<SyncState> SyncState => Set<SyncState>();
+    public DbSet<SyncRun> SyncRuns => Set<SyncRun>();
     public DbSet<JobApplication> JobApplications => Set<JobApplication>();
     public DbSet<JobView> JobViews => Set<JobView>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
@@ -154,6 +155,13 @@ public class ApplicationDbContext : AufyDbContext<ApplicationUser>
         modelBuilder.Entity<SyncState>(entity =>
         {
             entity.HasKey(s => s.Id);
+        });
+
+        // Sync run history — one row per sync execution, ordered by time.
+        modelBuilder.Entity<SyncRun>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.HasIndex(r => r.RanAt).IsDescending();
         });
 
         // Job view tracking — one row per (JobId, UserId) for unique view counting.
