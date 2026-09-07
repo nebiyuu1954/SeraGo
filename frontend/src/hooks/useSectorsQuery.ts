@@ -19,7 +19,10 @@ export function useSectorsQuery(enabled = true) {
     key,
     () => fetchSectors(tokens!.accessToken),
     {
-      // Sectors barely change — fetch on first mount, cache after that.
+      // Sectors barely change — once fetched, remounts and focus never
+      // auto-refetch; the poll refreshes at most every 5 minutes while a
+      // page stays open.
+      revalidateIfStale: false,
       revalidateOnFocus: false,
       refreshInterval: 300_000,
       dedupingInterval: 60_000,
