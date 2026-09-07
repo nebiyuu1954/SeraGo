@@ -1,5 +1,60 @@
 @import 'tailwindcss';
 
+/* ────────────────────────────────────────────────────────────────────
+   UI density for the signed-in app + account screens.
+
+   The dashboard chrome and type were designed for large desktop
+   canvases; on smaller windows they read oversized. Below 1440px the
+   whole signed-in UI (navbar, sidebar, content) and the standalone
+   account screens (login/signup/etc.) are scaled to 0.72 — the density
+   that sits naturally on a 1366×768 laptop at 100% browser zoom.
+   Screens 1440px+ keep the full-size desktop design.
+
+   Note: 0.72 here (not 0.77) because the shared type tokens must stay
+   at their original sizes so the marketing/landing page is untouched;
+   the slightly stronger zoom reproduces the same rendered look that
+   0.77 gave with smaller tokens. Fine-tune per-window by overriding
+   --ui-scale (e.g. DevTools → <html> → `--ui-scale: 0.7`).
+   ──────────────────────────────────────────────────────────────────── */
+:root {
+  --ui-scale: 1;
+}
+
+@media (max-width: 1439px) {
+  :root {
+    --ui-scale: 0.72;
+  }
+}
+
+/* Applied by Layout.tsx on /dashboard routes and by AuthShell on the
+   standalone account screens. Landing/marketing pages never use it. */
+.ui-scale {
+  zoom: var(--ui-scale);
+}
+
+/* Element zoom scales viewport-percentage heights along with everything
+   else, so `100svh` no longer reaches the window's bottom edge (at 0.72
+   the page ends ~28% early — the "empty bottom third" on short pages
+   like log in). These divide the viewport height by the scale so
+   full-height pages always fill the window. When --ui-scale is 1 they
+   resolve to the same values as the plain min-h-svh they replace. */
+.ui-scale-fill {
+  min-height: calc(100svh / var(--ui-scale));
+}
+
+.ui-scale-fill-below-nav {
+  min-height: calc(100svh / var(--ui-scale) - 4rem);
+}
+
+/* Toasts portal to the page root (main.tsx), OUTSIDE the zoomed .ui-scale
+   subtrees, so without this they render at full size next to 0.72-scale UI.
+   Scaling the toaster region with the same knob keeps toasts proportionally
+   identical to the surface they appear on (they only fire inside the
+   signed-in app, where the scale is active). */
+[data-sonner-toaster] {
+  zoom: var(--ui-scale);
+}
+
 /* Class-based dark mode, toggled by ThemeProvider on the <html> element. */
 @custom-variant dark (&:where(.dark, .dark *));
 
