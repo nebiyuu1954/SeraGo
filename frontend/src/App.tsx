@@ -22,7 +22,12 @@ import RecruiterTalentPreviewPage from './pages/recruiter/applications/TalentPre
 import AdminDashboardPage from './pages/admin/dashboard/AdminDashboardPage.tsx'
 import AdminSectorsPage from './pages/admin/sectors/SectorsPage.tsx'
 import AdminUsersPage from './pages/admin/users/UsersPage.tsx'
+import AdminUserDetailPage from './pages/admin/users/AdminUserDetailPage.tsx'
 import AdminJobsPage from './pages/admin/jobs/AdminJobsPage.tsx'
+import AdminJobDetailPage from './pages/admin/jobs/AdminJobDetailPage.tsx'
+import AdminJobsViewsPage from './pages/admin/jobs/AdminJobsViewsPage.tsx'
+import AdminScraperPage from './pages/admin/scraper/AdminScraperPage.tsx'
+import AdminScraperWeekDetailPage from './pages/admin/scraper/AdminScraperWeekDetailPage.tsx'
 import RecruiterProfilePage from './pages/recruiter/profile/ProfilePage.tsx'
 import RecruiterProfilePreviewPage from './pages/recruiter/profile/RecruiterProfilePreviewPage.tsx'
 import TalentProfilePage from './pages/talent/profile/ProfilePage.tsx'
@@ -60,7 +65,14 @@ function App() {
         />
         <Route path="dashboard/admin" element={<AdminDashboardPage />} />
         <Route path="dashboard/admin/jobs" element={<AdminJobsPage />} />
+        <Route path="dashboard/admin/jobs/:jobId" element={<AdminJobDetailPage />} />
+        <Route path="dashboard/admin/jobs/:jobId/preview" element={<JobDetailPage />} />
+        <Route path="dashboard/admin/jobs/:jobId/edit" element={<JobFormPage />} />
+        <Route path="dashboard/admin/jobs/views" element={<AdminJobsViewsPage />} />
+        <Route path="dashboard/admin/scraper" element={<AdminScraperPage />} />
+        <Route path="dashboard/admin/scraper/weeks/:periodStart" element={<AdminScraperWeekDetailPage />} />
         <Route path="dashboard/admin/users" element={<AdminUsersPage />} />
+        <Route path="dashboard/admin/users/:userId" element={<AdminUserDetailPage />} />
         <Route path="dashboard/admin/sectors" element={<AdminSectorsPage />} />
         <Route
           path="dashboard/recruiter/profile"
