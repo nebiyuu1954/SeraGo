@@ -1,5 +1,5 @@
-import { Link, useParams } from 'react-router-dom'
-import { useState } from 'react'
+import { Link, useLocation, useParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import {
   applyToJob,
   getApiErrorMessage,
@@ -7,7 +7,7 @@ import {
   updateProfile,
 } from '../../../api'
 import { useJobDetailQuery, useMyApplicationsQuery, useProfileQuery, useSavedJobsQuery } from '../../../hooks/query.ts'
-import { useRequireRole } from '../../../hooks'
+import { useRequireRoleAny } from '../../../hooks'
 import type { JobResponse, JobType } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import SaveJobButton from '../../../components/dashboard/SaveJobButton.tsx'
@@ -278,19 +278,36 @@ function PreviewToggle({
  */
 export default function JobDetailPage() {
   const { jobId } = useParams<{ jobId: string }>()
-  const auth = useRequireRole('Talent')
+  // Admins may open any job to preview exactly what talents see — via the
+  // /dashboard/admin/jobs/:jobId/preview route (or location.state.fromAdmin).
+  const location = useLocation() as { state?: { fromAdmin?: boolean } }
+  const isPreview = location.pathname.startsWith('/dashboard/admin/')
+    || location.state?.fromAdmin === true
+  const auth = useRequireRoleAny(['Talent', 'Admin'])
 
   const { job, isLoading, error, refresh: refreshJob } = useJobDetailQuery(
     jobId,
     auth.status === 'authenticated',
   )
-  const { savedIds, refresh: refreshSaved } = useSavedJobsQuery()
+
+  // The detail query is cache-first (revalidateOnMount: false) — it only
+  // fetches when the jobs list has primed the cache via hover-prefetch.
+  // Arriving directly (admin preview from the jobs table, hard refresh,
+  // shared link) means nothing is cached, so trigger the first fetch
+  // manually or the page renders blank.
+  useEffect(() => {
+    if (auth.status === 'authenticated' && !job && !isLoading && !error) {
+      refreshJob()
+    }
+  }, [auth.status, job, isLoading, error, refreshJob])
+
+  const { savedIds, refresh: refreshSaved } = useSavedJobsQuery(!isPreview)
   const brandLogo = job ? sourceLogo(job.sourceName) : null
   const { showToast } = useToast()
 
   // Application tracking — only for Serago jobs.
   const { applications, refresh: refreshApplications } = useMyApplicationsQuery(
-    auth.status === 'authenticated',
+    auth.status === 'authenticated' && !isPreview,
   )
   const [showApplyForm, setShowApplyForm] = useState(false)
   const [applyMode, setApplyMode] = useState<'coverletter' | 'profile'>('coverletter')
@@ -303,7 +320,7 @@ export default function JobDetailPage() {
 
   // Profile for the "use my profile" option.
   const { profile, refresh: refreshProfile } = useProfileQuery(
-    auth.status === 'authenticated',
+    auth.status === 'authenticated' && !isPreview,
   )
 
   // Local copy of visibility toggles for the preview dialog.
@@ -435,14 +452,30 @@ export default function JobDetailPage() {
   }
 
   return (
-    <DashboardShell role="Talent" authUser={auth.user}>
-      <Link
-        to="/dashboard/talent"
-        className="inline-flex items-center gap-1.5 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
-      >
-        <span className="material-symbols-outlined text-lg">arrow_back</span>
-        Back to all jobs
-      </Link>
+    <DashboardShell role={isPreview ? 'Admin' : 'Talent'} authUser={auth.user}>
+      {isPreview ? (
+        <div className="flex items-center gap-3">
+          <Link
+            to="/dashboard/admin/jobs"
+            className="inline-flex items-center gap-1.5 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
+          >
+            <span className="material-symbols-outlined text-lg">arrow_back</span>
+            Back to jobs
+          </Link>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-container/60 px-3 py-1 font-label-sm text-label-sm font-medium text-primary">
+            <span className="material-symbols-outlined text-base">preview</span>
+            Previewing as talent
+          </span>
+        </div>
+      ) : (
+        <Link
+          to="/dashboard/talent"
+          className="inline-flex items-center gap-1.5 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
+        >
+          <span className="material-symbols-outlined text-lg">arrow_back</span>
+          Back to all jobs
+        </Link>
+      )}
 
       {isLoading && (
         <div className="mt-10 flex items-center justify-center">
@@ -540,7 +573,13 @@ export default function JobDetailPage() {
               </div>
 
               <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:w-44 lg:flex-col">
-                {isSerago ? (
+                {isPreview ? (
+                  // Admin preview: no apply/save actions — read-only view.
+                  <span className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-outline-variant px-6 py-3 font-label-md text-label-md text-on-surface-variant">
+                    <span className="material-symbols-outlined text-lg">visibility</span>
+                    Read-only preview
+                  </span>
+                ) : isSerago ? (
                   // Serago job: apply directly on the platform.
                   hasApplied || applySuccess ? (
                     <span className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-primary-container/20 px-6 py-3 font-label-md text-label-md font-medium text-primary">
@@ -578,11 +617,13 @@ export default function JobDetailPage() {
                     Apply
                   </span>
                 )}
-                <SaveJobButton
-                  saved={savedIds.has(job.id)}
-                  onToggle={handleToggleSave}
-                  className="w-full"
-                />
+                {!isPreview && (
+                  <SaveJobButton
+                    saved={savedIds.has(job.id)}
+                    onToggle={handleToggleSave}
+                    className="w-full"
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -590,7 +631,7 @@ export default function JobDetailPage() {
           {/* Body: description (main) + key facts (sticky sidebar) */}
           <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
             {/* Facts first on mobile; right column on desktop */}
-            <aside className="space-y-6 lg:order-2 lg:sticky lg:top-6">
+            <aside className="space-y-6 lg:order-2 lg:sticky lg:top-20">
               <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm">
                 <h2 className="font-headline-md text-headline-md font-bold text-on-surface">
                   Job overview
