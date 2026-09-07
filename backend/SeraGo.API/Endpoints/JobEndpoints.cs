@@ -47,6 +47,7 @@ public static class JobEndpoints
     /// <summary>Largest For You feed that "Best match" ranking will sort in memory.</summary>
     private const int MaxMatchSortJobs = 500;
 
+    /// <summary>Public + recruiter job routes — always registered.</summary>
     public static IEndpointRouteBuilder MapJobEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/jobs").WithTags("Jobs");
@@ -62,6 +63,15 @@ public static class JobEndpoints
         group.MapDelete("/{id:guid}", DeleteJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();
 
         group.MapPatch("/{id:guid}/submit", SubmitJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();
+
+        return app;
+    }
+
+    /// <summary>Admin job moderation — only registered when ADMIN_API_ENABLED is on.</summary>
+    public static IEndpointRouteBuilder MapAdminJobEndpoints(this IEndpointRouteBuilder app)
+    {
+        var group = app.MapGroup("/api/jobs").WithTags("Jobs (admin)");
+
         group.MapPatch("/{id:guid}/approve", ApproveJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();
         group.MapPatch("/{id:guid}/reject", RejectJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();
         group.MapPatch("/{id:guid}/restore", RestoreJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();
@@ -105,6 +115,7 @@ public static class JobEndpoints
         public string? Status { get; set; }        // status filter — admin (or with Mine)
         public bool? IncludeInactive { get; set; } // include hidden jobs — admin only
         public bool? Uncategorized { get; set; }   // jobs without a sector — admin only
+        public string? PostedBy { get; set; }      // admin-only: filter by poster user id
 
         // Pagination
         public int? Page { get; set; }          // default 1
@@ -246,7 +257,8 @@ public static class JobEndpoints
         ClaimsPrincipal claims,
         UserManager<ApplicationUser> userManager,
         ApplicationDbContext db,
-        MatchingClient matchingClient)
+        MatchingClient matchingClient,
+        HttpContext http)
     {
         var user = await userManager.GetUserAsync(claims);
         if (user is null)
@@ -255,6 +267,16 @@ public static class JobEndpoints
         }
 
         var isAdmin = await userManager.IsInRoleAsync(user, Roles.Admin);
+
+        // Only the plain public browse view is HTTP-cacheable: the response
+        // is identical for every caller. Admin/owner scopes and the
+        // personalized "For You" feed differ per caller, so they stay
+        // uncached (frontend SWR handles their freshness instead).
+        var publicBrowse = query.Mine != true
+            && string.IsNullOrWhiteSpace(query.Status)
+            && query.IncludeInactive != true
+            && query.Uncategorized != true
+            && query.ForMe != true;
 
         var q = db.Jobs.AsNoTracking()
             .Include(j => j.PostedBy)
@@ -297,7 +319,7 @@ public static class JobEndpoints
                     "Only admins may include inactive jobs.",
                     statusCode: StatusCodes.Status403Forbidden);
             }
-            // Admins see everything.
+            // Admins see everything — no status / lifecycle restriction.
         }
         else if (query.Uncategorized == true)
         {
@@ -319,6 +341,21 @@ public static class JobEndpoints
             q = q.Where(j => j.Status == JobStatus.Published && j.IsActive
                 && (j.Deadline == null
                     || j.Deadline > DateTimeOffset.UtcNow.AddDays(-JobLifecycle.GraceDays)));
+        }
+
+        // Admin-only: filter by poster user id (for user detail page).
+        if (!string.IsNullOrWhiteSpace(query.PostedBy))
+        {
+            if (!isAdmin)
+            {
+                return Results.Problem(
+                    "Only admins may filter by poster.",
+                    statusCode: StatusCodes.Status403Forbidden);
+            }
+            if (Guid.TryParse(query.PostedBy, out var posterId))
+            {
+                q = q.Where(j => j.PostedByUserId == posterId.ToString());
+            }
         }
 
         // Search (case-insensitive substring on the human fields).
@@ -375,11 +412,14 @@ public static class JobEndpoints
             q = q.Where(j => j.SectorId == query.SectorId);
         }
 
-        // Talent-browse filters.
+        // Source filter — case-insensitive so "Afriwork", "afriwork" etc.
+        // all match the same canonical display name stored in the DB.
         if (!string.IsNullOrWhiteSpace(query.Source))
         {
             var sources = query.Source.Split(',',
-                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(s => s.ToLowerInvariant())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
             q = q.Where(j => j.SourceName != null && sources.Contains(j.SourceName));
         }
 
@@ -523,6 +563,17 @@ public static class JobEndpoints
                 "title_asc" => q.OrderBy(j => j.Title),
                 "title_desc" => q.OrderByDescending(j => j.Title),
                 "deadline" => q.OrderBy(j => j.Deadline ?? DateTimeOffset.MaxValue),
+                "views_desc" => q.OrderByDescending(j => j.ViewCount)
+                    .ThenByDescending(j => j.PublishedAt ?? j.CreatedAt),
+                "views_asc" => q.OrderBy(j => j.ViewCount)
+                    .ThenByDescending(j => j.PublishedAt ?? j.CreatedAt),
+                "updated_desc" => q.OrderByDescending(j => j.UpdatedAt),
+                "applications_desc" => q.OrderByDescending(
+                    j => db.JobApplications.Count(a => a.JobId == j.Id))
+                    .ThenByDescending(j => j.PublishedAt ?? j.CreatedAt),
+                "applications_asc" => q.OrderBy(
+                    j => db.JobApplications.Count(a => a.JobId == j.Id))
+                    .ThenByDescending(j => j.PublishedAt ?? j.CreatedAt),
                 _ => q.OrderByDescending(j => j.PublishedAt ?? j.CreatedAt),
             };
             var items = await q
@@ -552,9 +603,24 @@ public static class JobEndpoints
             }
         }
 
-        return Results.Ok(new JobListData(
+        var data = new JobListData(
             responses,
-            new PaginationResponse(page, pageSize, totalCount, totalPages, page < totalPages)));
+            new PaginationResponse(page, pageSize, totalCount, totalPages, page < totalPages));
+
+        if (publicBrowse)
+        {
+            // Browser-cacheable for 5 minutes: re-asking within the window
+            // costs nothing; after it, a matching If-None-Match answers 304
+            // with an empty body instead of re-sending the whole feed.
+            var etag = HttpCache.ComputeEtag(data);
+            HttpCache.Apply(http.Response, etag, TimeSpan.FromMinutes(5));
+            if (HttpCache.IsNotModified(http.Request, etag))
+            {
+                return HttpCache.NotModified();
+            }
+        }
+
+        return Results.Ok(data);
     }
 
     /// <summary>
@@ -688,7 +754,8 @@ public static class JobEndpoints
     ///   - sorted alphabetically (case-insensitive).
     /// </summary>
     [Authorize]
-    private static async Task<IResult> ListLocationsAsync(ApplicationDbContext db, CancellationToken ct)
+    private static async Task<IResult> ListLocationsAsync(
+        ApplicationDbContext db, CancellationToken ct, HttpContext http)
     {
         var now = DateTimeOffset.UtcNow;
         var groups = await db.Jobs.AsNoTracking()
@@ -727,10 +794,20 @@ public static class JobEndpoints
             }
         }
 
-        return Results.Ok(best.Values
+        var locations = best.Values
             .OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase)
             .Select(v => v.Name)
-            .ToList());
+            .ToList();
+
+        // Same content for every caller — browser-cacheable (see HttpCache).
+        var etag = HttpCache.ComputeEtag(locations);
+        HttpCache.Apply(http.Response, etag, TimeSpan.FromMinutes(5));
+        if (HttpCache.IsNotModified(http.Request, etag))
+        {
+            return HttpCache.NotModified();
+        }
+
+        return Results.Ok(locations);
     }
 
     /// <summary>Placeholders that aren't real locations — never offered in the dropdown.</summary>
@@ -951,6 +1028,30 @@ public static class JobEndpoints
             await NotifyMatchingTalentsAsync(db, notificationService, job);
         }
 
+        // If job was submitted for review, notify all admins
+        if (status == JobStatus.PendingApproval)
+        {
+            try
+            {
+                var adminIds = await db.Users
+                    .Where(u => u.UserType == Core.Domain.Enums.UserType.Admin && u.IsActive)
+                    .Select(u => u.Id)
+                    .ToListAsync();
+                foreach (var adminId in adminIds)
+                {
+                    await notificationService.CreateAsync(new NotificationService.CreateNotificationRequest(
+                        UserId: adminId,
+                        Type: NotificationType.JobPendingReview,
+                        Title: "Job needs review",
+                            Body: $"{user.FirstName} {user.LastName} submitted '{job.Title}' for approval.",
+                        Data: System.Text.Json.JsonSerializer.Serialize(new { job_id = job.Id, title = job.Title }),
+                        SkipEmail: true,
+                        SkipTelegram: true));
+                }
+            }
+            catch { /* non-critical */ }
+        }
+
         return Results.Created($"/api/jobs/{job.Id}", ToResponse(job, user.Id));
     }
 
@@ -1137,7 +1238,8 @@ public static class JobEndpoints
         Guid id,
         ClaimsPrincipal claims,
         UserManager<ApplicationUser> userManager,
-        ApplicationDbContext db)
+        ApplicationDbContext db,
+        NotificationService notificationService)
     {
         var user = await userManager.GetUserAsync(claims);
         if (user is null)
@@ -1178,6 +1280,33 @@ public static class JobEndpoints
         job.UpdatedAt = now;
 
         await db.SaveChangesAsync();
+
+        // Notify all admins that a job needs review
+        try
+        {
+            var adminIds = await db.Users
+                .Where(u => u.UserType == Core.Domain.Enums.UserType.Admin && u.IsActive)
+                .Select(u => u.Id)
+                .ToListAsync();
+
+            foreach (var adminId in adminIds)
+            {
+                await notificationService.CreateAsync(new NotificationService.CreateNotificationRequest(
+                    UserId: adminId,
+                    Type: NotificationType.JobPendingReview,
+                    Title: "Job needs review",
+                    Body: $"{user.FirstName} {user.LastName} submitted '{job.Title}' for approval.",
+                    Data: System.Text.Json.JsonSerializer.Serialize(new { job_id = job.Id, title = job.Title }),
+                    SkipEmail: true,
+                    SkipTelegram: true));
+            }
+        }
+        catch (Exception ex)
+        {
+            // Non-critical — don't fail the submit if notification fails
+            // Logger not available in static handler; swallow silently
+        }
+
         return Results.Ok(ToResponse(job, user.Id));
     }
 
