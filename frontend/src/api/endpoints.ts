@@ -77,8 +77,15 @@ export const API_ENDPOINTS = {
     list: '/admin/users',
     detail: (id: string) => `/admin/users/${id}`,
   },
+  adminJobs: {
+    /** GET /api/admin/jobs/views — admin paginated list of jobs by view count. */
+    views: '/admin/jobs/views',
+    /** GET /api/admin/jobs/views/stats — aggregate view analytics (admin). */
+    viewsStats: '/admin/jobs/views/stats',
+  },
   adminStats: {
     top: '/admin/stats/top',
+    overview: '/admin/stats/overview',
   },
   notifications: {
     /** GET /api/notifications — paginated notification list. */
@@ -89,6 +96,12 @@ export const API_ENDPOINTS = {
     read: '/notifications/read',
     /** PATCH /api/notifications/read-all — mark all as read. */
     readAll: '/notifications/read-all',
+  },
+  scraper: {
+    /** GET /api/admin/scraper/week-stats — list of scraper weeks. */
+    weekStats: '/admin/scraper/week-stats',
+    /** GET /api/admin/scraper/week/{periodStart} — full scraper week detail. */
+    weekDetail: (periodStart: string) => `/admin/scraper/week/${periodStart}`,
   },
 } as const
 
