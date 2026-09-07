@@ -6,8 +6,9 @@ import { getStoredAuthTokens } from '../api'
 /**
  * SWR-backed distinct locations list.
  *
- * The set of locations changes slowly (new jobs = new locations), so a
- * 2-minute poll + focus revalidation keeps it fresh without waste.
+ * The set of locations changes slowly (new jobs = new locations), so
+ * fetched lists are never auto-refetched on remount/focus; the open-page
+ * poll refreshes at most every 5 minutes.
  */
 export function useJobLocationsQuery(enabled = true) {
   const tokens = getStoredAuthTokens()
@@ -17,9 +18,11 @@ export function useJobLocationsQuery(enabled = true) {
     key,
     () => fetchJobLocations(tokens!.accessToken),
     {
-      // Fetch on first mount (needed for location filter on login).
-      revalidateOnFocus: true,
-      refreshInterval: 120_000,
+      // Same 5-minute policy as the job feed: no auto-refetch on remount or
+      // focus; open pages refresh at most every 5 minutes.
+      revalidateIfStale: false,
+      revalidateOnFocus: false,
+      refreshInterval: 300_000,
       dedupingInterval: 30_000,
     },
   )
