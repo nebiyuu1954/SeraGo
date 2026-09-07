@@ -467,7 +467,7 @@ export default function JobsPage() {
               />
             </div>
           ) : (
-            <div className="mt-5 grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
               {jobs.map((job) => (
                 <JobCard
                   key={job.id}
@@ -544,7 +544,7 @@ export default function JobsPage() {
         </div>
 
         {/* Right: collapsible filter panel — expanded by default */}
-        <aside className="w-full shrink-0 lg:sticky lg:top-6 lg:w-72">
+        <aside className="w-full shrink-0 lg:sticky lg:top-20 lg:w-64">
           <div className="rounded-xl border border-surface-variant bg-surface-container-lowest shadow-sm">
             <button
               type="button"
@@ -837,8 +837,8 @@ function JobCard({
       onMouseEnter={() => prefetchJob(job.id)}
     >
       {/* Header: company mark + title (mirrors the landing page cards) */}
-      <div className="flex flex-grow flex-row items-center gap-4 border-b border-surface-variant/50 p-6">
-        <div className="flex h-12 w-28 shrink-0 items-center justify-center overflow-hidden rounded bg-surface-container-low px-2">
+      <div className="flex flex-grow flex-row items-center gap-4 border-b border-surface-variant/50 p-5">
+        <div className="flex h-11 w-24 shrink-0 items-center justify-center overflow-hidden rounded bg-surface-container-low px-2">
           {brandLogo ? (
             <img
               className="max-h-8 w-auto max-w-full object-contain"
@@ -898,7 +898,7 @@ function JobCard({
       </div>
 
       {/* Meta grid + actions */}
-      <div className="flex flex-col gap-5 bg-surface/30 p-6">
+      <div className="flex flex-col gap-4 bg-surface/30 p-5">
         <div className="grid grid-cols-2 gap-3 font-label-md text-label-md text-on-surface-variant">
           {meta.map((item) => (
             <div key={item.icon} className="flex items-center gap-2">
@@ -999,14 +999,14 @@ function SkeletonGrid({ count }: { count: number }) {
           key={i}
           className="overflow-hidden rounded-lg border border-surface-variant bg-surface-container-lowest"
         >
-          <div className="flex flex-row items-center gap-4 border-b border-surface-variant/50 p-6">
-            <div className="h-12 w-28 shrink-0 animate-pulse rounded bg-surface-container-low" />
+          <div className="flex flex-row items-center gap-4 border-b border-surface-variant/50 p-5">
+            <div className="h-11 w-24 shrink-0 animate-pulse rounded bg-surface-container-low" />
             <div className="flex-1 space-y-2">
               <div className="h-4 w-3/4 animate-pulse rounded bg-surface-container" />
               <div className="h-3 w-1/3 animate-pulse rounded bg-surface-container-low" />
             </div>
           </div>
-          <div className="space-y-4 bg-surface/30 p-6">
+          <div className="space-y-4 bg-surface/30 p-5">
             <div className="grid grid-cols-2 gap-3">
               {Array.from({ length: 4 }).map((_, j) => (
                 <div
