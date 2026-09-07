@@ -111,6 +111,8 @@ builder.Services.AddSingleton<JobLifecycleCleanupService>(); // weekly deadline+
 builder.Services.AddHostedService<SyncScheduler>();
 
 builder.Services.AddScoped<ISectorNormalizer, SectorNormalizer>(); // sector standardization
+builder.Services.AddSingleton<GroqClient>();                       // Groq AI client (Bearer auth from env)
+builder.Services.AddScoped<JobClassificationService>();          // AI job classification
 builder.Services.AddSingleton<R2StorageService>(); // Cloudflare R2 file storage
 builder.Services.Configure<IdentityOptions>(options =>
 {
