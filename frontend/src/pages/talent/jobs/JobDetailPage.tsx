@@ -280,9 +280,9 @@ export default function JobDetailPage() {
   const { jobId } = useParams<{ jobId: string }>()
   // Admins may open any job to preview exactly what talents see — via the
   // /dashboard/admin/jobs/:jobId/preview route (or location.state.fromAdmin).
-  const location = useLocation() as { state?: { fromAdmin?: boolean } }
+  const location = useLocation()
   const isPreview = location.pathname.startsWith('/dashboard/admin/')
-    || location.state?.fromAdmin === true
+    || (location.state as { fromAdmin?: boolean })?.fromAdmin === true
   const auth = useRequireRoleAny(['Talent', 'Admin'])
 
   const { job, isLoading, error, refresh: refreshJob } = useJobDetailQuery(
