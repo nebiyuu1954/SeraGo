@@ -106,6 +106,8 @@ export interface WhoAmIResponse {
   roles: string[]
   /** False until the account email is confirmed — blocks dashboard access. */
   emailConfirmed: boolean
+  /** When false, admin API is disabled — sidebar hides admin items, admin routes show disabled screen. */
+  adminApiEnabled: boolean
 }
 
 /** Response of GET /api/account/profile — mirrors ProfileEndpoints.ProfileResponse. */
@@ -293,6 +295,8 @@ export interface JobResponse {
   jobType: JobType | string
   /** lowerCamel enum name — "onsite" | "remote" | "hybrid" (only Afriwork carries it). */
   workMode: string
+  /** Number of times this job has been viewed. */
+  viewCount: number
   url: string
   salary: string
   salaryMin: number | null
@@ -437,6 +441,8 @@ export interface JobListParams {
   sectorId?: string
   /** true → jobs without a sector (admin review) — admins only. */
   uncategorized?: boolean
+  /** Admin-only: filter by poster user id (for user detail page). */
+  postedBy?: string
   /** Comma-separated source display names, e.g. "Afriwork,EthioJobs". */
   source?: string
   /** Exact experience-level match, e.g. "Junior" / "Senior". */
@@ -634,6 +640,159 @@ export interface StatsTopResponse {
   topWebsites: WebsiteStat[]
 }
 
+/** The `data` payload of GET /api/admin/jobs/views. */
+/** The `data` payload of GET /api/admin/scraper/week-stats. */
+export interface ScraperWeekStatsList {
+  weeks: ScraperWeekSummary[]
+  total: number
+}
+
+/** One week summary in the scraper week-stats list. */
+export interface ScraperWeekSummary {
+  periodStart: string
+  periodEnd: string
+  daysWithRuns: number
+  runCount: number
+  apiHits: number
+  itemsFound: number
+  itemsInserted: number
+  itemsUpdated: number
+  itemsSkipped: number
+  statusSummary: string
+  worstDay: string | null
+}
+
+/** The `data` payload of GET /api/admin/scraper/week/{periodStart}. */
+export interface ScraperWeekDetail {
+  periodStart: string
+  periodEnd: string
+  periodLabel: string
+  daysWithRuns: number
+  totalRunCount: number
+  totalApiHits: number
+  totalItemsFound: number
+  totalItemsInserted: number
+  totalItemsUpdated: number
+  totalItemsSkipped: number
+  statusSummary: string
+  days: ScraperDay[]
+  sources: ScraperWeekSource[]
+  topErrors: ScraperErrorSummary[]
+  archiveNote: string | null
+}
+
+/** One day in a scraper week detail. */
+export interface ScraperDay {
+  day: string
+  status: string
+  runCount: number
+  apiHits: number
+  itemsFound: number
+  itemsInserted: number
+  itemsUpdated: number
+  itemsSkipped: number
+  websitesCount: number
+  websites: ScraperDayWebsite[]
+  runs: ScraperRunSummary[]
+}
+
+/** One per-site bucket in a scraper day. */
+export interface ScraperDayWebsite {
+  source: string
+  name: string
+  table: string
+  logId: string
+  status: string
+  runCount: number
+  apiHits: number
+  itemsFound: number
+  itemsInserted: number
+  itemsUpdated: number
+  itemsSkipped: number
+}
+
+/** One scrape-run summary in a scraper day. */
+export interface ScraperRunSummary {
+  run: number
+  time: string
+  hits: number
+  found: number
+  inserted: number
+  updated: number
+  skipped: number
+  status: string
+  message: string | null
+  errors: string | null
+}
+
+/** One per-source breakdown in a scraper week. */
+export interface ScraperWeekSource {
+  source: string
+  name: string
+  daysActive: number
+  runCount: number
+  apiHits: number
+  itemsFound: number
+  itemsInserted: number
+  itemsUpdated: number
+  itemsSkipped: number
+  statusSummary: string
+}
+
+/** One error summary in a scraper week. */
+export interface ScraperErrorSummary {
+  message: string
+  count: number
+}
+
+export interface JobViewsData {
+  items: JobViewItem[]
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPages: number
+  hasNextPage: boolean
+}
+
+/** One job in the admin job-views list. */
+export interface JobViewItem {
+  id: string
+  title: string
+  company: string
+  location: string | null
+  sourceName: string | null
+  viewCount: number
+  status: string
+  createdAt: string
+  publishedAt: string | null
+  deadline: string | null
+  sectorName: string | null
+  salary: string | null
+}
+
+/** The `data` payload of GET /api/admin/jobs/views/stats — aggregate view analytics. */
+export interface JobViewsStatsResponse {
+  totalViews: number
+  viewsToday: number
+  viewsThisWeek: number
+  viewsThisMonth: number
+  viewsThisYear: number
+  bySource: { name: string; value: number }[]
+  bySector: { name: string; value: number }[]
+  perDay: { date: string; views: number }[]
+  perMonth: { name: string; value: number }[]
+  topJobs: {
+    id: string
+    title: string
+    company: string
+    sourceName: string | null
+    sectorName: string | null
+    viewCount: number
+    status: string
+  }[]
+}
+
+
 // ---------------------------------------------------------------- Admin
 
 export interface AdminUserResponse {
@@ -666,4 +825,81 @@ export interface AdminStatsTopResponse {
   end: string
   topSectors: { name: string; count: number }[]
   topWebsites: { slug: string; name: string; itemsFound: number; itemsInserted: number; runCount: number; apiHits: number }[]
+}
+
+// ---------------------------------------------------------------- Admin Stats Overview
+
+export interface AdminStatsOverviewResponse {
+  users: {
+    total: number
+    activeToday: number
+    activeThisWeek: number
+    activeThisMonth: number
+    newToday: number
+    newThisWeek: number
+    newThisMonth: number
+    byRole: { talent: number; recruiter: number; admin: number }
+  }
+  scraper: {
+    day: string | null
+    status: string
+    totalRunCount: number
+    totalApiHits: number
+    totalItemsFound: number
+    totalItemsInserted: number
+    totalItemsUpdated: number
+    totalItemsSkipped: number
+    sitesScraped: number
+    sites: Array<{
+      source: string
+      name: string
+      status: string
+      runCount: number
+      apiHits: number
+      itemsFound: number
+      itemsInserted: number
+      itemsUpdated: number
+      itemsSkipped: number
+    }>
+  }
+  jobs: {
+    total: number
+    published: number
+    pendingApproval: number
+    drafts: number
+    rejected: number
+    totalViews: number
+    seragoJobs: number
+    viewsToday: number
+    viewsThisWeek: number
+    viewsThisMonth: number
+    viewsThisYear: number
+    pendingJobs: Array<{
+      id: string
+      title: string
+      company: string
+      sourceName: string | null
+      sectorName: string | null
+      postedByName: string
+      createdAt: string
+    }>
+  }
+  applications: {
+    total: number
+    pending: number
+    reviewed: number
+    shortlisted: number
+    interview: number
+    hired: number
+    rejected: number
+  }
+  lastSync: {
+    ranAt: string | null
+    inserted: number
+    updated: number
+    unchanged: number
+    uncategorized: number
+    deactivated: number
+    schedulerEnabled: boolean
+  }
 }
