@@ -9,6 +9,7 @@ export type AuthUserState =
   | { status: 'authenticated'; user: WhoAmIResponse }
 
 export type RequiredRole = 'Talent' | 'Recruiter' | 'Admin'
+export type RequiredRoleSet = RequiredRole[]
 
 /**
  * Reads the persisted token pair and resolves the current user via
@@ -69,6 +70,32 @@ export function useRequireRole(role: RequiredRole): AuthUserState {
       navigate('/dashboard', { replace: true })
     }
   }, [auth, role, navigate])
+
+  return auth
+}
+
+/**
+ * Role guard that accepts any of the given roles. Redirects:
+ * - signed-out users → /login
+ * - signed-in users with an unconfirmed email → /confirm-email
+ * - signed-in users without any of the allowed roles → /dashboard
+ */
+export function useRequireRoleAny(allowedRoles: RequiredRoleSet): AuthUserState {
+  const auth = useAuthUser()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (auth.status === 'unauthenticated') {
+      navigate('/login', { replace: true })
+    } else if (auth.status === 'authenticated' && !auth.user.emailConfirmed) {
+      navigate('/confirm-email?required=1', { replace: true })
+    } else if (
+      auth.status === 'authenticated' &&
+      !allowedRoles.some((r) => auth.user.roles.includes(r))
+    ) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [auth, allowedRoles, navigate])
 
   return auth
 }
