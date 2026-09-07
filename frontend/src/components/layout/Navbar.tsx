@@ -161,7 +161,7 @@ function PublicNavbar() {
 function LoadingNavbar() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-surface-variant bg-surface-container-lowest">
-      <div className="mx-auto flex h-20 max-w-container-max items-center justify-between px-margin-mobile md:px-margin-desktop">
+      <div className="mx-auto flex h-16 max-w-container-max items-center justify-between px-margin-mobile md:px-margin-desktop">
         <Link
           to="/"
           className="font-headline-md text-headline-md font-bold tracking-tight text-primary"
@@ -197,7 +197,7 @@ function RoleNavbar({
     <header className="sticky top-0 z-50 w-full border-b border-surface-variant bg-surface-container-lowest">
       {/* Slim bar — logo flush left, avatar (desktop) + menu toggle flush right.
           No nav links: the dashboard sidebar owns all navigation. */}
-      <div className="flex h-20 w-full items-center justify-between gap-4 px-margin-mobile md:px-margin-desktop">
+      <div className="flex h-16 w-full items-center justify-between gap-4 px-4 md:px-8">
         <Link
           to={roleHome(role)}
           className="shrink-0 font-headline-md text-headline-md font-bold tracking-tight text-primary"
