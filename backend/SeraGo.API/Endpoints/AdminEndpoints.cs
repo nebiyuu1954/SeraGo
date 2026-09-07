@@ -19,6 +19,7 @@ public static class AdminEndpoints
         app.MapAdminJobStatsEndpoints();          // /api/admin/jobs/views
         app.MapAdminJobViewsStatsEndpoint();      // /api/admin/jobs/views/stats
         app.MapAdminScraperEndpoints();          // /api/admin/scraper/week-stats + /week/{date}
+        app.MapAdminJobClassificationEndpoints(); // /api/admin/jobs/classify (AI sector classification)
         // Future admin groups go here:
         // app.MapAdminApplicationEndpoints();
         // app.MapAdminScraperEndpoints();
