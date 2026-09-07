@@ -6,6 +6,10 @@ import type {
   JobListParams,
   JobResponse,
   JobWriteRequest,
+  JobViewsData,
+  JobViewsStatsResponse,
+  ScraperWeekStatsList,
+  ScraperWeekDetail,
 } from '../types'
 
 /** /api/jobs/{id} or /api/jobs/{id}/{action}. */
@@ -27,13 +31,14 @@ function toQuery(params: JobListParams): string {
   if (params.mine !== undefined) search.set('mine', String(params.mine))
   if (params.status) search.set('status', params.status)
   if (params.includeInactive !== undefined) {
-    search.set('includeInactive', String(params.includeInactive))
+    search.set('includeInactive', params.includeInactive ? 'true' : 'false')
   }
   if (params.forMe !== undefined) search.set('forMe', String(params.forMe))
   if (params.sectorId) search.set('sectorId', params.sectorId)
   if (params.uncategorized !== undefined) {
     search.set('uncategorized', String(params.uncategorized))
   }
+  if (params.postedBy) search.set('postedBy', params.postedBy)
   if (params.source) search.set('source', params.source)
   if (params.experienceLevel) search.set('experienceLevel', params.experienceLevel)
   if (params.workMode) search.set('workMode', params.workMode)
@@ -174,6 +179,51 @@ export function setJobSector(
   return request<JobResponse>(jobPath(id, 'sector'), {
     method: 'PATCH',
     body: { sectorId },
+    headers: auth(accessToken),
+  })
+}
+
+/** GET /api/admin/jobs/views — admin paginated list of jobs by view count. */
+export function fetchJobViews(
+  params: {
+    page?: number
+    pageSize?: number
+    source?: string
+    sort?: string
+  },
+  accessToken: string,
+): Promise<JobViewsData> {
+  const search = new URLSearchParams()
+  if (params.page !== undefined) search.set('page', String(params.page))
+  if (params.pageSize !== undefined) search.set('pageSize', String(params.pageSize))
+  if (params.source) search.set('source', params.source)
+  if (params.sort) search.set('sort', params.sort)
+  const qs = search.toString()
+  return request<JobViewsData>(API_ENDPOINTS.adminJobs.views + (qs ? `?${qs}` : ''), {
+    headers: auth(accessToken),
+  })
+}
+
+/** GET /api/admin/jobs/views/stats — aggregate view analytics (admin). */
+export function fetchJobViewsStats(accessToken: string): Promise<JobViewsStatsResponse> {
+  return request<JobViewsStatsResponse>(API_ENDPOINTS.adminJobs.viewsStats, {
+    headers: auth(accessToken),
+  })
+}
+
+/** GET /api/admin/scraper/week-stats — list of scraper weeks. */
+export function fetchScraperWeekStats(accessToken: string): Promise<ScraperWeekStatsList> {
+  return request<ScraperWeekStatsList>(API_ENDPOINTS.scraper.weekStats, {
+    headers: auth(accessToken),
+  })
+}
+
+/** GET /api/admin/scraper/week/{periodStart} — full scraper week detail. */
+export function fetchScraperWeekDetail(
+  periodStart: string,
+  accessToken: string,
+): Promise<ScraperWeekDetail> {
+  return request<ScraperWeekDetail>(API_ENDPOINTS.scraper.weekDetail(periodStart), {
     headers: auth(accessToken),
   })
 }
