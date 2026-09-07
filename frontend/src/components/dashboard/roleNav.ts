@@ -12,6 +12,8 @@ export interface RoleNavItem {
    * Shown only in the sidebar, never in the header — e.g. Settings.
    */
   sidebarOnly?: boolean
+  /** Optional badge count (e.g. pending approvals on Jobs). */
+  badge?: number
 }
 
 /** Signed-in header + sidebar navigation per role. */
@@ -34,6 +36,7 @@ export const ROLE_NAV: Record<RequiredRole, RoleNavItem[]> = {
     { label: 'Jobs', icon: 'work', to: '/dashboard/admin/jobs' },
     { label: 'Users', icon: 'group', to: '/dashboard/admin/users' },
     { label: 'Sectors', icon: 'category', to: '/dashboard/admin/sectors' },
+    { label: 'Scraper', icon: 'inventory_2', to: '/dashboard/admin/scraper' },
     { label: 'Profile', icon: 'person', to: '/dashboard/admin/profile' },
     { label: 'Settings', icon: 'settings', to: '/dashboard/admin/settings', sidebarOnly: true },
   ],
