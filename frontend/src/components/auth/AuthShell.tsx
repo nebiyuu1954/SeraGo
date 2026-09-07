@@ -25,7 +25,7 @@ export default function AuthShell({
   footer,
 }: AuthShellProps) {
   return (
-    <div className="flex min-h-svh bg-surface-container-lowest">
+    <div className="ui-scale ui-scale-fill flex bg-surface-container-lowest">
       {/* ── Left brand panel (desktop only) ─────────────────────────── */}
       <aside className="relative hidden w-1/2 overflow-hidden bg-primary lg:block">
         {/* Decorative gradient wash + dot grid */}
@@ -100,7 +100,7 @@ export default function AuthShell({
 
       {/* ── Form panel ──────────────────────────────────────────────── */}
       <main className="flex flex-1 flex-col justify-center px-4 py-10 sm:px-8 lg:w-1/2 lg:px-16 xl:px-24">
-        <div className="mx-auto w-full max-w-md">
+        <div className="mx-auto w-full max-w-[30rem]">
           {/* Mobile brand header */}
           <div className="mb-8 text-center lg:hidden">
             <Link
