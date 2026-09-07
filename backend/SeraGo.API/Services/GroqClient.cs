@@ -42,7 +42,7 @@ public sealed class GroqClient
 
         _defaultModel = config["GROQ_DEFAULT_MODEL"]
             ?? Environment.GetEnvironmentVariable("GROQ_DEFAULT_MODEL")
-            ?? "llama-3.1-8b-instant";
+            ?? "openai/gpt-oss-120b";
 
         var baseUrl = config["GROQ_BASE_URL"]
             ?? Environment.GetEnvironmentVariable("GROQ_BASE_URL")
@@ -50,8 +50,8 @@ public sealed class GroqClient
 
         var http = factory.CreateClient($"Groq-{Guid.NewGuid():N}");
         http.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
-        http.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
-        http.DefaultRequestHeaders.Add("Content-Type", "application/json");
+        http.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
         http.Timeout = TimeSpan.FromSeconds(60);
         _http = http;
     }
