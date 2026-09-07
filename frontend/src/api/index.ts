@@ -22,6 +22,10 @@ export {
   approveJob,
   createJob,
   deleteJob,
+  fetchScraperWeekStats,
+  fetchScraperWeekDetail,
+  fetchJobViews,
+  fetchJobViewsStats,
   fetchJob,
   fetchJobLocations,
   fetchJobs,
@@ -44,10 +48,14 @@ export {
 } from './sectors.ts'
 export { fetchTopStats } from './stats.ts'
 export {
+  fetchAdminUser,
   fetchAdminUsers,
   updateUserRole,
   updateUserStatus,
+  sendAdminPasswordReset,
+  anonymizeUser,
   fetchAdminStats,
+  fetchAdminStatsOverview,
 } from './admin.ts'
 export {
   AUTH_TOKENS_KEY,
