@@ -284,11 +284,21 @@ public static class ServicesExtensions
             services.AddScoped<TelegramBotService>();
         }
 
-        // ── Internal API authorization policy ──
-        // Used by the batch notification endpoint (Django → .NET webhook).
-        // Protected by a shared API key in the X-API-Key header.
+        // ── Authorization policies ──
+        // Roles come from ASP.NET Core Identity (added by Aufy via
+        // AddIdentityCore<TUser>().AddRoles<IdentityRole>() in SetupAufy).
+        // `[Authorize(Roles = "Admin")]` / `[Authorize(Roles = Roles.Admin)]`
+        // resolve to a policy named "Admin" / "Talent" / "Recruiter" at
+        // runtime, so those policy names must exist in the container.
         services.AddAuthorization(options =>
         {
+            foreach (var role in new[] { "Admin", "Talent", "Recruiter" })
+            {
+                options.AddPolicy(role, policy => policy.RequireRole(role));
+            }
+
+            // Internal API: shared secret (X-Api-Key header) for Django → .NET
+            // batch notifications. Not a user role.
             options.AddPolicy("InternalApi", policy =>
             {
                 policy.AddAuthenticationSchemes("ApiKey");
