@@ -24,11 +24,18 @@ namespace SeraGo.API.Endpoints;
 /// </summary>
 public static class SectorEndpoints
 {
+    /// <summary>Public sector list — always registered (any signed-in user).</summary>
     public static IEndpointRouteBuilder MapSectorEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/sectors").WithTags("Sectors");
         group.MapGet("/", ListSectorsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
 
+        return app;
+    }
+
+    /// <summary>Admin sector management + sync — only registered when ADMIN_API_ENABLED is on.</summary>
+    public static IEndpointRouteBuilder MapAdminSectorEndpoints(this IEndpointRouteBuilder app)
+    {
         var admin = app.MapGroup("/api/admin/sectors").WithTags("Sectors (admin)");
         admin.MapGet("/", ListAdminSectorsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
         admin.MapPost("/", CreateSectorAsync).RequireRateLimiting("jobs_write").WithOpenApi();
@@ -61,13 +68,23 @@ public static class SectorEndpoints
 
     /// <summary>GET /api/sectors — the pickers' vocabulary (active only).</summary>
     [Authorize]
-    private static async Task<IResult> ListSectorsAsync(ApplicationDbContext db)
+    private static async Task<IResult> ListSectorsAsync(ApplicationDbContext db, HttpContext http)
     {
         var sectors = await db.Sectors.AsNoTracking()
             .Where(s => s.IsActive)
             .OrderBy(s => s.Name)
             .Select(s => new SectorResponse(s.Id, s.Name, s.Slug, s.IsActive))
             .ToListAsync();
+
+        // Sectors barely change and read the same for every caller — keep the
+        // browser's copy fresh for an hour (see HttpCache).
+        var etag = HttpCache.ComputeEtag(sectors);
+        HttpCache.Apply(http.Response, etag, TimeSpan.FromHours(1));
+        if (HttpCache.IsNotModified(http.Request, etag))
+        {
+            return HttpCache.NotModified();
+        }
+
         return Results.Ok(sectors);
     }
 
@@ -233,7 +250,7 @@ public static class SectorEndpoints
         ScrapedJobSyncService syncService,
         CancellationToken ct)
     {
-        var result = await syncService.RunAsync(ct);
+        var result = await syncService.RunAsync("manual", ct);
         return result is null
             ? Results.Problem(
                 "Scraper database is not configured (set DB_HOST/DB_NAME/DB_USER/DB_PASSWORD "
