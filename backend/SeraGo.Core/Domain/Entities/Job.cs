@@ -203,6 +203,16 @@ public class Job
     /// <summary>Number of times talent have viewed this job's detail page.</summary>
     public int ViewCount { get; set; }
 
+    /// <summary>
+    /// Raw JSON from the AI job-classification service — the source of truth
+    /// for what the model decided and why. Null when the job has never been
+    /// classified. See <see cref="JobClassificationService"/>.
+    /// </summary>
+    public string? AiClassification { get; set; }
+
+    /// <summary>When the job was last classified by the AI service (null = never).</summary>
+    public DateTimeOffset? AiClassifiedAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }
