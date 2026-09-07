@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { fetchProfile, getStoredAuthTokens } from '../../api'
+import { fetchProfile, fetchAdminStatsOverview, getStoredAuthTokens } from '../../api'
 import { useSignOut } from '../../hooks'
 import type { RequiredRole } from '../../hooks'
 import type { ProfileResponse, WhoAmIResponse } from '../../types'
@@ -24,6 +24,7 @@ export default function DashboardShell({
 }: DashboardShellProps) {
   const { setDrawerOpen } = useSidebar()
   const [profile, setProfile] = useState<ProfileResponse | null>(null)
+  const [adminBadges, setAdminBadges] = useState<Record<string, number>>({})
   const signOut = useSignOut()
 
 
@@ -38,10 +39,20 @@ export default function DashboardShell({
       .catch(() => {
         // Profile unreadable — the whoami identity is used instead.
       })
+    // Admin: fetch pending-approvals count for the sidebar badge.
+    if (role === 'Admin') {
+      fetchAdminStatsOverview(tokens.accessToken)
+        .then((ov) => {
+          if (!cancelled && ov.jobs.pendingApproval > 0) {
+            setAdminBadges({ Jobs: ov.jobs.pendingApproval })
+          }
+        })
+        .catch(() => { /* non-critical */ })
+    }
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [role])
 
   const name =
     (profile && [profile.firstName, profile.lastName].filter(Boolean).join(' ')) ||
@@ -51,13 +62,14 @@ export default function DashboardShell({
   const company = profile?.recruiter?.companyName || undefined
 
   return (
-    <div className="flex min-h-[calc(100svh-5rem)] items-stretch">
+    <div className="ui-scale-fill-below-nav flex items-stretch">
       <DashboardSidebar
         role={role}
         userName={name}
         userCompany={company}
         userAvatarUrl={profile?.avatarUrl}
         onSignOut={signOut}
+        badges={adminBadges}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -78,7 +90,7 @@ export default function DashboardShell({
           </div>
         </div>
 
-        <main className="flex-1 px-margin-mobile py-8 md:px-10 lg:px-12">
+        <main className="flex-1 px-margin-mobile py-6 md:px-8 lg:px-10">
           {children}
         </main>
       </div>
