@@ -117,7 +117,7 @@ public sealed class SyncScheduler : BackgroundService
         var label = slot.ToString(@"hh\:mm");
         try
         {
-            var result = await _syncService.RunAsync(ct);
+            var result = await _syncService.RunAsync("scheduler", ct);
             if (result is null)
             {
                 _logger.LogWarning(
