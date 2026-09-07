@@ -1,12 +1,23 @@
 import { request } from './client.ts'
 import { API_ENDPOINTS } from './endpoints.ts'
-import type { AdminUserResponse, AdminUserListData, AdminStatsTopResponse } from '../types'
+import type { AdminUserResponse, AdminUserListData, AdminStatsTopResponse, AdminStatsOverviewResponse } from '../types'
 
 function auth(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` }
 }
 
 // ---- Users ----
+
+/** GET /api/admin/users/{id} — single user detail (admin). */
+export function fetchAdminUser(
+  userId: string,
+  accessToken: string,
+): Promise<AdminUserResponse> {
+  return request<AdminUserResponse>(
+    API_ENDPOINTS.adminUsers.detail(userId),
+    { headers: auth(accessToken) },
+  )
+}
 
 /** GET /api/admin/users — list all users (admin). */
 export function fetchAdminUsers(
@@ -50,6 +61,30 @@ export function updateUserStatus(
   )
 }
 
+// ---- User Operations ----
+
+/** POST /api/admin/users/{id}/send-reset-email — trigger password reset for target user. */
+export function sendAdminPasswordReset(
+  userId: string,
+  accessToken: string,
+): Promise<void> {
+  return request<void>(
+    `${API_ENDPOINTS.adminUsers.detail(userId)}/send-reset-email`,
+    { method: 'POST', headers: auth(accessToken) },
+  )
+}
+
+/** PATCH /api/admin/users/{id}/anonymize — deactivate + strip PII. */
+export function anonymizeUser(
+  userId: string,
+  accessToken: string,
+): Promise<AdminUserResponse> {
+  return request<AdminUserResponse>(
+    `${API_ENDPOINTS.adminUsers.detail(userId)}/anonymize`,
+    { method: 'PATCH', headers: auth(accessToken) },
+  )
+}
+
 // ---- Stats ----
 
 /** GET /api/admin/stats/top — scraper stats (admin). */
@@ -59,6 +94,16 @@ export function fetchAdminStats(
 ): Promise<AdminStatsTopResponse> {
   return request<AdminStatsTopResponse>(
     `${API_ENDPOINTS.adminStats.top}?period=${period}`,
+    { headers: auth(accessToken) },
+  )
+}
+
+/** GET /api/admin/stats/overview — rich dashboard KPIs (admin). */
+export function fetchAdminStatsOverview(
+  accessToken: string,
+): Promise<AdminStatsOverviewResponse> {
+  return request<AdminStatsOverviewResponse>(
+    API_ENDPOINTS.adminStats.overview,
     { headers: auth(accessToken) },
   )
 }
