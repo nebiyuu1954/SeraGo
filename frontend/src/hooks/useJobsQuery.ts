@@ -8,8 +8,11 @@ import type { JobListData, JobListParams } from '../types'
  * SWR-backed paginated job list.
  *
  * Caches by the full set of filter params so navigating away and back is
- * instant. Revalidates in the background on window focus and on a short
- * polling interval to keep the feed fresh.
+ * instant. Feed data refreshes on a 5-minute cadence only: remounts and tab
+ * focus never auto-refetch a cached feed, so bouncing between pages (e.g.
+ * saved ↔ talent) costs zero requests; the open-page poll keeps the feed at
+ * most 5 minutes old. First visits, key changes (new filters/sort/page),
+ * and explicit refresh() (e.g. after "Run AI matching") always fetch.
  *
  * @param params  The full query params (page, filters, sort, etc.)
  * @param enabled  Set to false to skip the fetch (e.g. while auth is loading)
@@ -24,10 +27,13 @@ export function useJobsQuery(params: JobListParams, enabled = true) {
     key,
     () => fetchJobs(params, tokens!.accessToken),
     {
-      // Fetch on mount/key change — first load needs network.
-      // Subsequent mounts serve from cache instantly.
-      revalidateOnFocus: true,
-      refreshInterval: 60_000,
+      // 5-minute freshness. This SWR version has no staleTime knob, so:
+      // revalidateIfStale: false stops remounts from auto-refetching cached
+      // data; revalidateOnFocus: false stops tab-focus refetches; the poll
+      // refreshes at most once per 5 minutes while a page stays open.
+      revalidateIfStale: false,
+      revalidateOnFocus: false,
+      refreshInterval: 300_000,
       keepPreviousData: true,
       shouldRetryOnError: false,
       dedupingInterval: 5_000,
