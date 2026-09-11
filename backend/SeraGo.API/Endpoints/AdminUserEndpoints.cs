@@ -9,8 +9,10 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using SeraGo.API.Email;
+using SeraGo.API.Services;
 using SeraGo.Core.Domain;
 using SeraGo.Core.Domain.Entities;
+using SeraGo.Core.Domain.Enums;
 using SeraGo.Infrastructure.Context;
 
 namespace SeraGo.API.Endpoints;
@@ -54,7 +56,42 @@ public static class AdminUserEndpoints
         string? AvatarUrl,
         string? City,
         string? Country,
-        string CreatedAt);
+        string CreatedAt,
+        // Only populated by the detail endpoint — the list endpoint leaves it
+        // null so it never runs per-row activity queries for 20+ users.
+        UserActivityResponse? Activity = null);
+
+    /// <summary>
+    /// Role-specific engagement summary for the admin user detail page.
+    ///
+    /// NOTE on "online": there is no login audit table, so the activity-day
+    /// counts are derived from the user's own recorded actions (job views and
+    /// job applications) — distinct UTC calendar days with at least one such
+    /// event. That is the same definition the admin overview uses for its
+    /// "active users" numbers.
+    /// </summary>
+    public sealed record UserActivityResponse(
+        string Role,
+        int ProfileCompletionPercent,
+        bool ProfileComplete,
+        List<string> MissingProfileFields,
+        int ActiveDaysThisWeek,
+        int ActiveDaysThisMonth,
+        string? LastActiveAt,
+        TalentActivity? Talent,
+        RecruiterActivity? Recruiter);
+
+    public sealed record TalentActivity(
+        int JobsViewed,
+        int ApplicationsSubmitted);
+
+    public sealed record RecruiterActivity(
+        int JobsPosted,
+        int JobsDraft,
+        int JobsPendingApproval,
+        int JobsPublished,
+        int ApplicationsReceived,
+        int UniqueApplicants);
 
     public sealed record UserListData(
         List<UserResponse> Items,
@@ -121,19 +158,24 @@ public static class AdminUserEndpoints
 
         var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
 
+        // Activity stays null here on purpose — it is only built for the detail
+        // endpoint, so listing 20 users costs one query, not twenty.
         return Results.Ok(new UserListData(
-            items.Select(ToResponse).ToList(),
+            items.Select(u => ToResponse(u)).ToList(),
             totalCount, page, pageSize, totalPages, page < totalPages));
     }
 
     [Authorize(Roles = Roles.Admin)]
     private static async Task<IResult> GetUserAsync(
         string id,
-        UserManager<ApplicationUser> userManager)
+        UserManager<ApplicationUser> userManager,
+        ApplicationDbContext db)
     {
         var user = await userManager.FindByIdAsync(id);
         if (user is null) return Results.NotFound();
-        return Results.Ok(ToResponse(user));
+
+        var activity = await BuildActivityAsync(user, db);
+        return Results.Ok(ToResponse(user, activity));
     }
 
     [Authorize(Roles = Roles.Admin)]
@@ -292,7 +334,122 @@ public static class AdminUserEndpoints
 
     // --------------------------------------------------------------- Helpers
 
-    private static UserResponse ToResponse(ApplicationUser u) => new(
+    /// <summary>
+    /// Builds the role-specific engagement summary shown on the admin user
+    /// detail page: profile completion, activity days, last time we saw them,
+    /// and either their job-hunting or their hiring numbers.
+    /// </summary>
+    private static async Task<UserActivityResponse> BuildActivityAsync(
+        ApplicationUser user, ApplicationDbContext db, CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var monthStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        // Monday 00:00 UTC of the current week.
+        var weekStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero)
+            .AddDays(-(((int)now.UtcDateTime.DayOfWeek + 6) % 7));
+
+        // The user's own recorded actions. We pull only this month's timestamps
+        // and bucket them in memory — the volume per user is small, and it keeps
+        // the date arithmetic identical across databases.
+        var viewTimes = await db.JobViews.AsNoTracking()
+            .Where(v => v.UserId == user.Id && v.ViewedAt >= monthStart)
+            .Select(v => v.ViewedAt)
+            .ToListAsync(ct);
+
+        var applicationTimes = await db.JobApplications.AsNoTracking()
+            .Where(a => a.UserId == user.Id && a.AppliedAt >= monthStart)
+            .Select(a => a.AppliedAt)
+            .ToListAsync(ct);
+
+        var events = viewTimes.Concat(applicationTimes).ToList();
+
+        var activeDaysThisMonth = events
+            .Select(t => t.UtcDateTime.Date)
+            .Distinct()
+            .Count();
+        var activeDaysThisWeek = events
+            .Where(t => t >= weekStart)
+            .Select(t => t.UtcDateTime.Date)
+            .Distinct()
+            .Count();
+
+        DateTimeOffset? lastActiveAt = events.Count > 0 ? events.Max() : null;
+
+        // Jobs viewed / applications submitted are lifetime totals, not windows.
+        var jobsViewed = await db.JobViews.AsNoTracking()
+            .CountAsync(v => v.UserId == user.Id, ct);
+        var applicationsSubmitted = await db.JobApplications.AsNoTracking()
+            .CountAsync(a => a.UserId == user.Id, ct);
+
+        // Profile completion — same scoring the user sees on their own profile.
+        var completion = await GetCompletionAsync(user, db, ct);
+
+        TalentActivity? talent = null;
+        RecruiterActivity? recruiter = null;
+
+        if (user.UserType == UserType.Talent)
+        {
+            talent = new TalentActivity(jobsViewed, applicationsSubmitted);
+        }
+        else if (user.UserType == UserType.Recruiter)
+        {
+            var jobStatuses = await db.Jobs.AsNoTracking()
+                .Where(j => j.PostedByUserId == user.Id)
+                .GroupBy(j => j.Status)
+                .Select(g => new { Status = g.Key, Count = g.Count() })
+                .ToListAsync(ct);
+
+            var applicationsReceived = await db.JobApplications.AsNoTracking()
+                .CountAsync(a => a.Job!.PostedByUserId == user.Id, ct);
+            var uniqueApplicants = await db.JobApplications.AsNoTracking()
+                .Where(a => a.Job!.PostedByUserId == user.Id)
+                .Select(a => a.UserId)
+                .Distinct()
+                .CountAsync(ct);
+
+            recruiter = new RecruiterActivity(
+                jobStatuses.Sum(s => s.Count),
+                jobStatuses.FirstOrDefault(s => s.Status == JobStatus.Draft)?.Count ?? 0,
+                jobStatuses.FirstOrDefault(s => s.Status == JobStatus.PendingApproval)?.Count ?? 0,
+                jobStatuses.FirstOrDefault(s => s.Status == JobStatus.Published)?.Count ?? 0,
+                applicationsReceived,
+                uniqueApplicants);
+        }
+
+        return new UserActivityResponse(
+            user.UserType.ToString(),
+            completion?.PercentComplete ?? 0,
+            completion?.IsComplete ?? false,
+            completion?.MissingFields ?? [],
+            activeDaysThisWeek,
+            activeDaysThisMonth,
+            lastActiveAt?.ToString("o"),
+            talent,
+            recruiter);
+    }
+
+    private static async Task<ProfileCompletionCalculator.Result?> GetCompletionAsync(
+        ApplicationUser user, ApplicationDbContext db, CancellationToken ct)
+    {
+        if (user.UserType == UserType.Talent)
+        {
+            var profile = await db.TalentProfiles.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.UserId == user.Id, ct);
+            return profile is null ? null : ProfileCompletionCalculator.ForTalent(profile);
+        }
+
+        if (user.UserType == UserType.Recruiter)
+        {
+            var profile = await db.RecruiterProfiles.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.UserId == user.Id, ct);
+            return profile is null ? null : ProfileCompletionCalculator.ForRecruiter(profile);
+        }
+
+        // Admin accounts have no role profile.
+        return null;
+    }
+
+    private static UserResponse ToResponse(ApplicationUser u, UserActivityResponse? activity = null) => new(
         u.Id,
         u.FirstName,
         u.MiddleName,
@@ -304,7 +461,8 @@ public static class AdminUserEndpoints
         string.IsNullOrWhiteSpace(u.AvatarUrl) ? null : u.AvatarUrl,
         string.IsNullOrWhiteSpace(u.City) ? null : u.City,
         string.IsNullOrWhiteSpace(u.Country) ? null : u.Country,
-        u.CreatedAt.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'"));
+        u.CreatedAt.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'"),
+        activity);
 
     private static string EscapeLike(string value) =>
         value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
