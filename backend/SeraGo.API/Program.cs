@@ -35,7 +35,7 @@ foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDi
     }
 }
 
-foreach (var envFile in new[] { ".env", ".env(SeraGo-Scraper)" })
+foreach (var envFile in new[] { ".env", ".env(SeraGo-Scraper)", ".env(SeraGo-AI)" })
 {
     foreach (var dir in envDirs)
     {
@@ -55,6 +55,7 @@ builder.Services.AddHttpClient(); // HttpClient factory for the EmailJS relay
 builder.Services.AddHttpClient<MatchingClient>(); // AI matching engine client
 builder.Services.AddSingleton<EmailThrottleService>(); // per-email throttle for email-sending flows
 builder.Services.AddRateLimiting(builder.Configuration); // API throttling (fixed-window per IP)
+builder.Services.AddMemoryCache(); // short-TTL cache for expensive aggregate stats
 
 builder.Services.AddInfrastructure(builder.Configuration); // PostgreSQL DbContext + AuthSeeder
 builder.Services.SetupAufy(builder.Configuration);         // Aufy: Identity + JWT + custom signup
@@ -104,6 +105,17 @@ else
 // the admin sync endpoint always works) turns on a scheduler that runs the
 // sync at the UTC times in SYNC_SCHEDULE (default 09:15/20:45, right after
 // the scraper's GitHub Actions runs at 09:00/20:30 UTC).
+// SeraGo-AI service database (its own Neon DB) — read-only source for the
+// admin AI-classification usage stats. Read from the gitignored
+// .env(SeraGo-AI) file (AI_DB_* vars) or a full AI_DB_CONNECTION string.
+builder.Services.AddSingleton(AiClassificationDbOptions.FromEnvironment());
+{
+    var aiDb = AiClassificationDbOptions.FromEnvironment();
+    Console.WriteLine(aiDb.IsConfigured
+        ? $"[env] SeraGo-AI DB configured: {aiDb.Host}/{aiDb.Database}"
+        : "[env] SeraGo-AI DB not configured — /api/admin/ai/classification/stats will report no data.");
+}
+
 builder.Services.AddSingleton(new SyncOptions());
 builder.Services.AddSingleton(new AdminApiOptions());
 builder.Services.AddSingleton<ScrapedJobSyncService>();
@@ -112,7 +124,23 @@ builder.Services.AddHostedService<SyncScheduler>();
 
 builder.Services.AddScoped<ISectorNormalizer, SectorNormalizer>(); // sector standardization
 builder.Services.AddSingleton<GroqClient>();                       // Groq AI client (Bearer auth from env)
-builder.Services.AddScoped<JobClassificationService>();          // AI job classification
+builder.Services.AddScoped<JobClassificationService>();          // AI job classification (legacy — keeps the Groq call available for other uses)
+
+// AI classification client — calls the decoupled SeraGo-AI classify API
+// (POST /api/ai/classify) instead of calling the LLM directly.
+builder.Services.Configure<AiClassificationOptions>(opt =>
+{
+    var cfg = AiClassificationOptionsSetup.FromEnvironment();
+    opt.BaseUrl = cfg.BaseUrl;
+    opt.ApiKey = cfg.ApiKey;
+    if (opt.BaseUrl == null)
+    {
+        opt.BaseUrl = Environment.GetEnvironmentVariable("SERAGO_AI_URL") ?? "http://localhost:8001";
+    }
+});
+builder.Services.AddHttpClient("SeraGoAiClassify"); // typed client base for the AI classify API
+builder.Services.AddScoped<AiClassificationClient>();
+builder.Services.AddScoped<AiClassificationSaveService>();
 builder.Services.AddSingleton<R2StorageService>(); // Cloudflare R2 file storage
 builder.Services.Configure<IdentityOptions>(options =>
 {
