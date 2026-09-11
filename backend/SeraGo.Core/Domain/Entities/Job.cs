@@ -204,14 +204,13 @@ public class Job
     public int ViewCount { get; set; }
 
     /// <summary>
-    /// Raw JSON from the AI job-classification service — the source of truth
-    /// for what the model decided and why. Null when the job has never been
-    /// classified. See <see cref="JobClassificationService"/>.
+    /// Id of the latest AI classification record for this job, pointing to the
+    /// Django AiClassificationLog row. Null when the job has never been classified
+    /// (or when the last classification was a fallback that didn't involve Groq).
+    /// The full trace — what was sent to Groq, what it returned, the parsed result —
+    /// lives in the AI service's ai_classification_log / ai_classification_raw tables.
     /// </summary>
-    public string? AiClassification { get; set; }
-
-    /// <summary>When the job was last classified by the AI service (null = never).</summary>
-    public DateTimeOffset? AiClassifiedAt { get; set; }
+    public Guid? ClassificationId { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
