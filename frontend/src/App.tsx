@@ -27,6 +27,7 @@ import AdminJobsPage from './pages/admin/jobs/AdminJobsPage.tsx'
 import AdminJobDetailPage from './pages/admin/jobs/AdminJobDetailPage.tsx'
 import AdminJobsViewsPage from './pages/admin/jobs/AdminJobsViewsPage.tsx'
 import AdminScraperPage from './pages/admin/scraper/AdminScraperPage.tsx'
+import AdminAiPage from './pages/admin/ai/AdminAiPage.tsx'
 import AdminScraperWeekDetailPage from './pages/admin/scraper/AdminScraperWeekDetailPage.tsx'
 import RecruiterProfilePage from './pages/recruiter/profile/ProfilePage.tsx'
 import RecruiterProfilePreviewPage from './pages/recruiter/profile/RecruiterProfilePreviewPage.tsx'
@@ -70,6 +71,7 @@ function App() {
         <Route path="dashboard/admin/jobs/:jobId/edit" element={<JobFormPage />} />
         <Route path="dashboard/admin/jobs/views" element={<AdminJobsViewsPage />} />
         <Route path="dashboard/admin/scraper" element={<AdminScraperPage />} />
+        <Route path="dashboard/admin/ai" element={<AdminAiPage />} />
         <Route path="dashboard/admin/scraper/weeks/:periodStart" element={<AdminScraperWeekDetailPage />} />
         <Route path="dashboard/admin/users" element={<AdminUsersPage />} />
         <Route path="dashboard/admin/users/:userId" element={<AdminUserDetailPage />} />
