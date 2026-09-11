@@ -26,6 +26,11 @@ namespace SeraGo.API.Services;
 /// items whose scraper updated_at is newer than the stored cursor (see
 /// <see cref="SyncState"/>) are pulled, so the cost scales with what
 /// changed, not with how much data exists.
+///
+/// Lifecycle: singleton. All scoped services (DbContext, AI client, save
+/// service) are resolved from a scope created per-run, so this singleton can
+/// safely be consumed by the hosted SyncScheduler without captive dependency
+/// issues.
 /// </summary>
 public sealed class ScrapedJobSyncService
 {
@@ -68,6 +73,8 @@ public sealed class ScrapedJobSyncService
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var options = scope.ServiceProvider.GetRequiredService<ScraperDbOptions>();
+        var aiClient = scope.ServiceProvider.GetRequiredService<AiClassificationClient>();
+        var saveService = scope.ServiceProvider.GetRequiredService<AiClassificationSaveService>();
 
         if (!options.IsConfigured)
         {
@@ -112,6 +119,12 @@ public sealed class ScrapedJobSyncService
         {
             jobsByKey[(existing.SourceName!, existing.ExternalId!)] = existing;
         }
+
+        // Jobs that were actually inserted or updated in this sync run. Only
+        // these get sent to the AI classification service — unchanged jobs
+        // (which include already-classified ones) are never re-sent, so a
+        // routine sync doesn't re-classify everything and burn LLM calls.
+        var touchedIds = new HashSet<Guid>(jobsByKey.Count);
 
         // Read from the NormalizedJob table — the source-agnostic contract.
         // No more 5-way LEFT JOIN across per-site models.
@@ -189,7 +202,7 @@ public sealed class ScrapedJobSyncService
             var skills = ReadJsonArray(reader, "skills");
 
             // Source-specific fields.
-            var sourceSectors = ReadJsonArray(reader, "afriwork_sectors");
+            var afriworkSectors = ReadJsonArray(reader, "afriwork_sectors");
             var compCents = ReadNullableInt(reader, "compensation_amount_cents");
             var compType = ReadString(reader, "compensation_type");
             var compCurrency = ReadString(reader, "compensation_currency");
@@ -201,6 +214,14 @@ public sealed class ScrapedJobSyncService
             var hahuLogo = ReadString(reader, "hahu_entity_logo");
             var hahuSector = ReadString(reader, "hahu_sector");
             var hahuSubSector = ReadString(reader, "hahu_sub_sector");
+
+            // SourceSectors = every raw listing sector label this job carries
+            // (universal sector_name + Afriwork sectors + HaHu sector/sub-sector),
+            // deduped. The AI classifier records these as SubSector aliases, so
+            // the vocabulary grows from real listing text instead of staying
+            // empty.
+            var sourceSectors = MergeSourceSectors(
+                rawSector, afriworkSectors, hahuSector, hahuSubSector);
             var hahuUpstream = ReadString(reader, "hahu_upstream");
             var areaName = ReadString(reader, "area_name");
             var hahuExp = ReadNullableInt(reader, "hahu_exp");
@@ -325,6 +346,7 @@ public sealed class ScrapedJobSyncService
                 job.Status = JobStatus.Published;
                 job.UpdatedAt = DateTimeOffset.UtcNow;
                 updated++;
+                touchedIds.Add(job.Id);
             }
             else
             {
@@ -383,6 +405,7 @@ public sealed class ScrapedJobSyncService
                 db.Jobs.Add(newJob);
                 jobsByKey[(sourceName, externalId)] = newJob;
                 inserted++;
+                touchedIds.Add(newJob.Id);
             }
 
             if ((inserted + updated + unchanged) % 100 == 0)
@@ -449,9 +472,102 @@ public sealed class ScrapedJobSyncService
         });
         await db.SaveChangesAsync(ct);
 
+        // Send the touched jobs to the AI classification service so scraped jobs
+        // get a sector immediately instead of waiting for an admin trigger.
+        // Best-effort: if the AI service is down the sync still succeeds, and the
+        // same jobs will be classified on the next sync run (SubSector dedups make
+        // re-sends safe). Only jobs inserted/updated in THIS run are sent —
+        // unchanged, already-classified jobs are not re-sent.
+        var touchedJobs = jobsByKey.Values.Where(j => touchedIds.Contains(j.Id)).ToList();
+        await ClassifyTouchedJobsAsync(db, touchedJobs, aiClient, saveService, ct);
+
         return new SyncResult(
             inserted, updated, unchanged, uncategorized,
             unknownSectors.ToList(), deactivated);
+    }
+
+    /// <summary>
+    /// Classify the jobs that were inserted or updated in this sync run via the
+    /// decoupled SeraGo-AI service. Only jobs that have a source name (scraped
+    /// jobs) are sent; the rest are left for the admin to review.
+    /// </summary>
+    private async Task ClassifyTouchedJobsAsync(
+        ApplicationDbContext db,
+        IEnumerable<Job> touchedJobs,
+        AiClassificationClient aiClient,
+        AiClassificationSaveService saveService,
+        CancellationToken ct)
+    {
+        var jobs = touchedJobs.Where(j => j.SourceName is not null).ToList();
+        if (jobs.Count == 0)
+        {
+            return;
+        }
+
+        // Build the request the AI service expects. We also send the job's
+        // current sector so the AI service can record the 'before' state in the
+        // classify log (original_sector_slug/name).
+        var requestJobs = new List<AiClassificationRequestJob>(jobs.Count);
+        foreach (var j in jobs)
+        {
+            var currentSlug = j.Sector?.Slug;
+            var currentName = j.Sector?.Name;
+            var extraOriginal = (currentSlug is not null || currentName is not null)
+                ? new Dictionary<string, string>(2)
+                { ["sectorSlug"] = currentSlug ?? "", [
+                    "sectorName"] = currentName ?? "" }
+                : null;
+
+            requestJobs.Add(new AiClassificationRequestJob(
+                JobId: j.Id.ToString(),
+                Title: j.Title,
+                SourceSectors: ParseSourceSectors(j.SourceSectors),
+                Description: j.Description,
+                ExtraOriginal: extraOriginal));
+        }
+
+        AiClassificationResult[] aiResults;
+        try
+        {
+            var list = await aiClient.ClassifyAsync(requestJobs, ct);
+            aiResults = list.ToArray();
+        }
+        catch (AiClassificationException ex)
+        {
+            _logger.LogWarning(ex,
+                "SeraGo-AI classify failed for {JobCount} scraped jobs — leaving sectors as-is for now",
+                jobs.Count);
+            aiResults = new AiClassificationResult[jobs.Count];
+            for (var i = 0; i < jobs.Count; i++)
+            {
+                var j = jobs[i];
+                aiResults[i] = new AiClassificationResult(
+                    JobId: j.Id.ToString(),
+                    SectorId: null,
+                    SectorName: null,
+                    SectorSlug: null,
+                    SubSectorName: null,
+                    Alias: FirstSourceSector(j.SourceSectors),
+                    Confidence: null,
+                    Reasoning: null,
+                    Uncategorized: true,
+                    Error: ex.Message);
+            }
+        }
+
+        // Apply the results: set SectorId/SectorName from the SubSector decision,
+        // store the AI trace, dedup-insert SubSector rows, and run the local
+        // SubSector fallback when the LLM failed.
+        var outcomes = await saveService.ApplyAsync(jobs, aiResults, ct);
+        var assigned = outcomes.Count(o => o.Assigned);
+        if (assigned > 0 || aiResults.Any(r => r.Error is not null))
+        {
+            await db.SaveChangesAsync(ct);
+        }
+
+        _logger.LogInformation(
+            "Post-sync AI classification: {Jobs} jobs sent, {Assigned} assigned a sector",
+            jobs.Count, assigned);
     }
 
     // --------------------------------------------------------------- Helpers
@@ -548,6 +664,57 @@ public sealed class ScrapedJobSyncService
     }
 
     /// <summary>Read a JSONB array column and return it as a JSON string, or null.</summary>
+    /// <summary>
+    /// Merge the raw listing sector labels from every source-specific field into
+    /// one deduped JSON array for Job.SourceSectors. Returns null when the job
+    /// carries no sector label at all.
+    /// </summary>
+    private static string? MergeSourceSectors(
+        string? universalSector,
+        string? afriworkSectorsJson,
+        string? hahuSector,
+        string? hahuSubSector)
+    {
+        var labels = new List<string>();
+        void Add(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return;
+            }
+            var trimmed = value.Trim();
+            if (!labels.Contains(trimmed, StringComparer.OrdinalIgnoreCase))
+            {
+                labels.Add(trimmed);
+            }
+        }
+
+        Add(universalSector);
+        if (!string.IsNullOrWhiteSpace(afriworkSectorsJson))
+        {
+            try
+            {
+                var parsed = System.Text.Json.JsonSerializer
+                    .Deserialize<List<string>>(afriworkSectorsJson);
+                if (parsed is not null)
+                {
+                    foreach (var s in parsed)
+                    {
+                        Add(s);
+                    }
+                }
+            }
+            catch
+            {
+                // Non-array garbage in the column — ignore it.
+            }
+        }
+        Add(hahuSector);
+        Add(hahuSubSector);
+
+        return labels.Count == 0 ? null : JsonSerializer.Serialize(labels);
+    }
+
     private static string? ReadJsonArray(DbDataReader reader, string column)
     {
         var i = reader.GetOrdinal(column);
@@ -571,6 +738,30 @@ public sealed class ScrapedJobSyncService
         if (years < 3) return "Junior";
         if (years < 5) return "Mid";
         return "Senior";
+    }
+
+    /// <summary>Parse the job's JSON-array sourceSectors into a list, or empty.</summary>
+    private static List<string> ParseSourceSectors(string? sourceSectors)
+    {
+        if (string.IsNullOrWhiteSpace(sourceSectors))
+        {
+            return [];
+        }
+        try
+        {
+            var parsed = System.Text.Json.JsonSerializer.Deserialize<List<string>>(sourceSectors);
+            return parsed ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static string? FirstSourceSector(string? sourceSectors)
+    {
+        var list = ParseSourceSectors(sourceSectors);
+        return list.Count > 0 ? list[0] : null;
     }
 
     // --------------------------------------------------------------- Queries
