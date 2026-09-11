@@ -808,6 +808,43 @@ export interface AdminUserResponse {
   city: string | null
   country: string | null
   createdAt: string
+  /** Only present on the detail endpoint — the list leaves it null/absent. */
+  activity?: AdminUserActivity | null
+}
+
+/**
+ * Role-specific engagement summary on the admin user detail page.
+ *
+ * `activeDaysThisWeek` / `activeDaysThisMonth` are derived from the user's own
+ * recorded actions (job views + applications) — there is no login audit table,
+ * so "online" means "did something we recorded on that UTC day".
+ */
+export interface AdminUserActivity {
+  role: string
+  profileCompletionPercent: number
+  profileComplete: boolean
+  missingProfileFields: string[]
+  activeDaysThisWeek: number
+  activeDaysThisMonth: number
+  lastActiveAt: string | null
+  talent: AdminTalentActivity | null
+  recruiter: AdminRecruiterActivity | null
+}
+
+/** Job-seeking numbers — present only for Talent users. */
+export interface AdminTalentActivity {
+  jobsViewed: number
+  applicationsSubmitted: number
+}
+
+/** Hiring numbers — present only for Recruiter users. */
+export interface AdminRecruiterActivity {
+  jobsPosted: number
+  jobsDraft: number
+  jobsPendingApproval: number
+  jobsPublished: number
+  applicationsReceived: number
+  uniqueApplicants: number
 }
 
 export interface AdminUserListData {
@@ -825,6 +862,85 @@ export interface AdminStatsTopResponse {
   end: string
   topSectors: { name: string; count: number }[]
   topWebsites: { slug: string; name: string; itemsFound: number; itemsInserted: number; runCount: number; apiHits: number }[]
+}
+
+// ---------------------------------------------------------------- Admin AI classification
+
+/** Token + job-count rollup for one time window (or all time). */
+export interface AiClassificationWindowStats {
+  jobsProcessed: number
+  jobsSuccessful: number
+  jobsUncategorized: number
+  tokensSent: number
+  tokensReceived: number
+  totalTokens: number
+  latencyMsAvg: number
+}
+
+/** All-time cumulative totals. */
+export interface AiClassificationSummary {
+  totalJobsEver: number
+  totalSuccessfulEver: number
+  totalUncategorizedEver: number
+  totalTokensSentEver: number
+  totalTokensReceivedEver: number
+  totalTokensEver: number
+}
+
+/** One day's LLM usage. */
+export interface AiClassificationDay {
+  date: string
+  jobsProcessed: number
+  jobsSuccessful: number
+  jobsUncategorized: number
+  tokensSent: number
+  tokensReceived: number
+  totalTokens: number
+}
+
+/** The `data` payload of GET /api/admin/ai/classification/stats. */
+export interface AiClassificationStatsResponse {
+  generatedAt: string
+  days: number
+  windows: {
+    today: AiClassificationWindowStats
+    thisWeek: AiClassificationWindowStats
+    thisMonth: AiClassificationWindowStats
+    allTime: AiClassificationWindowStats
+  }
+  summary: AiClassificationSummary
+  daily: AiClassificationDay[]
+  message: string | null
+}
+
+/** One classify attempt in the per-job audit trail. */
+export interface AiClassificationJobItem {
+  logId: number
+  jobId: string
+  jobTitle: string | null
+  jobCompany: string | null
+  sectorSlug: string | null
+  sectorName: string | null
+  originalSectorSlug: string | null
+  originalSectorName: string | null
+  confidence: number | null
+  reasoning: string | null
+  categorized: boolean
+  aiClassifiedAt: string
+  tokensSent: number
+  tokensReceived: number
+  totalTokens: number
+  latencyMs: number | null
+}
+
+/** The `data` payload of GET /api/admin/ai/classification/jobs. */
+export interface AiClassificationJobsResponse {
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+  items: AiClassificationJobItem[]
+  message: string | null
 }
 
 // ---------------------------------------------------------------- Admin Stats Overview
