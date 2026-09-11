@@ -19,9 +19,9 @@ public class ApplicationDbContext : AufyDbContext<ApplicationUser>
     public DbSet<TalentProfile> TalentProfiles => Set<TalentProfile>();
     public DbSet<RecruiterProfile> RecruiterProfiles => Set<RecruiterProfile>();
     public DbSet<Job> Jobs => Set<Job>();
-    public DbSet<SavedJob> SavedJobs => Set<SavedJob>();
-    public DbSet<Sector> Sectors => Set<Sector>();
-    public DbSet<SectorAlias> SectorAliases => Set<SectorAlias>();
+    public DbSet<SavedJob> SavedJobs => Set<SavedJob>();        public DbSet<Sector> Sectors => Set<Sector>();
+        public DbSet<SectorAlias> SectorAliases => Set<SectorAlias>();
+    public DbSet<SectorLabelMapping> SectorLabelMappings => Set<SectorLabelMapping>();
     public DbSet<SyncState> SyncState => Set<SyncState>();
     public DbSet<SyncRun> SyncRuns => Set<SyncRun>();
     public DbSet<JobApplication> JobApplications => Set<JobApplication>();
@@ -149,6 +149,22 @@ public class ApplicationDbContext : AufyDbContext<ApplicationUser>
             entity.HasIndex(a => a.SectorId);
 
             entity.HasData(SectorSeedData.AliasEntities());
+        });
+
+        // AI-derived observed mappings from real listing sectors → canonical sectors.
+        // One row per distinct (SectorId, Alias), driven by actual classified jobs.
+        // This is the table the fallback reads when the LLM fails for a job.
+        modelBuilder.Entity<SectorLabelMapping>(entity =>
+        {
+            entity.HasOne(s => s.Sector)
+                .WithMany()
+                .HasForeignKey(s => s.SectorId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(s => s.SectorId);
+            entity.HasIndex(s => new { s.SectorId, s.Alias }).IsUnique();
+
+            entity.ToTable("SectorLabelMappings");
         });
 
         // Single-row cursor (Id = 1) for the scraped-job sync; see SyncState.
