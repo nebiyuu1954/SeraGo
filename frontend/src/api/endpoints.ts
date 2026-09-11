@@ -87,6 +87,12 @@ export const API_ENDPOINTS = {
     top: '/admin/stats/top',
     overview: '/admin/stats/overview',
   },
+  adminAi: {
+    /** GET /api/admin/ai/classification/stats — LLM usage + token totals (admin). */
+    classificationStats: '/admin/ai/classification/stats',
+    /** GET /api/admin/ai/classification/jobs — per-job classify audit trail (admin). */
+    classificationJobs: '/admin/ai/classification/jobs',
+  },
   notifications: {
     /** GET /api/notifications — paginated notification list. */
     list: '/notifications',
