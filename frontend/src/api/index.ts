@@ -56,6 +56,8 @@ export {
   anonymizeUser,
   fetchAdminStats,
   fetchAdminStatsOverview,
+  fetchAiClassificationStats,
+  fetchAiClassificationJobs,
 } from './admin.ts'
 export {
   AUTH_TOKENS_KEY,
