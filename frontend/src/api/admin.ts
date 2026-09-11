@@ -1,6 +1,13 @@
 import { request } from './client.ts'
 import { API_ENDPOINTS } from './endpoints.ts'
-import type { AdminUserResponse, AdminUserListData, AdminStatsTopResponse, AdminStatsOverviewResponse } from '../types'
+import type {
+  AdminUserResponse,
+  AdminUserListData,
+  AdminStatsTopResponse,
+  AdminStatsOverviewResponse,
+  AiClassificationStatsResponse,
+  AiClassificationJobsResponse,
+} from '../types'
 
 function auth(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` }
@@ -104,6 +111,43 @@ export function fetchAdminStatsOverview(
 ): Promise<AdminStatsOverviewResponse> {
   return request<AdminStatsOverviewResponse>(
     API_ENDPOINTS.adminStats.overview,
+    { headers: auth(accessToken) },
+  )
+}
+
+// ---- AI classification ----
+
+/**
+ * GET /api/admin/ai/classification/stats — LLM usage and token totals for
+ * today / this week / this month / all time, plus a per-day breakdown.
+ * Admin only.
+ */
+export function fetchAiClassificationStats(
+  accessToken: string,
+  days = 30,
+): Promise<AiClassificationStatsResponse> {
+  const params = new URLSearchParams({ days: String(days) })
+  return request<AiClassificationStatsResponse>(
+    `${API_ENDPOINTS.adminAi.classificationStats}?${params}`,
+    { headers: auth(accessToken) },
+  )
+}
+
+/**
+ * GET /api/admin/ai/classification/jobs — paged per-job classify audit trail
+ * (sector before → after, confidence, reasoning, tokens). Admin only.
+ */
+export function fetchAiClassificationJobs(
+  accessToken: string,
+  page = 1,
+  pageSize = 25,
+): Promise<AiClassificationJobsResponse> {
+  const params = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  })
+  return request<AiClassificationJobsResponse>(
+    `${API_ENDPOINTS.adminAi.classificationJobs}?${params}`,
     { headers: auth(accessToken) },
   )
 }
