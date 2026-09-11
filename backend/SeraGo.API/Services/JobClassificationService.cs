@@ -208,36 +208,32 @@ public sealed class JobClassificationService
     }
 
     /// <summary>
-    /// Apply a classification result to a tracked Job entity (updates
-    /// SectorName if the AI picked a real sector, and stores the raw JSON as the
-    /// source of truth). Returns the values the caller needs to persist.
+    /// Legacy helper — applies a classification result to a tracked Job entity.
+    /// This service is kept only for backwards compatibility; the active classify
+    /// flow uses AiClassificationClient → the Django AI service instead.
+    /// 
+    /// Note: the old AiClassification / AiClassifiedAt columns on Job were removed
+    /// in favor of the Django-side AiClassificationLog table + Jobs.ClassificationId.
+    /// This method no longer writes those columns.
     /// </summary>
-    public (string? SectorSlug, string? SectorName, string? AiClassification, DateTimeOffset? AiClassifiedAt) ApplyClassification(
+    public (string? SectorSlug, string? SectorName) ApplyClassification(
         Job job, ClassificationResult? result)
     {
         if (result is null)
         {
-            return (null, null, null, null);
+            return (null, null);
         }
 
         var (slug, name) = (!string.IsNullOrWhiteSpace(result.SectorSlug))
             ? (result.SectorSlug, result.SectorName)
             : (null, null);
 
-        var json = JsonSerializer.Serialize(result, ClassificationRequest.JsonOpts);
-        var classifiedAt = DateTimeOffset.UtcNow;
-
-        job.AiClassification = json;
-        job.AiClassifiedAt = classifiedAt;
-
         if (slug is not null)
         {
             job.SectorName = name;
-            // SectorId is resolved by the caller from the loaded vocabulary
-            // before SaveChanges — do NOT null it out here if it was already set.
         }
 
-        return (slug, name, json, classifiedAt);
+        return (slug, name);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────
