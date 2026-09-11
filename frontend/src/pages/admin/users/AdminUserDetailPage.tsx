@@ -11,7 +11,29 @@ import {
   getStoredAuthTokens,
 } from '../../../api'
 import { useRequireRole } from '../../../hooks'
-import type { AdminUserResponse, JobResponse } from '../../../types'
+import type { AdminUserActivity, AdminUserResponse, JobResponse } from '../../../types'
+
+/** Human labels for the completion fields the backend reports as missing. */
+const PROFILE_FIELD_LABELS: Record<string, string> = {
+  headline: 'Headline',
+  about: 'About',
+  experienceLevel: 'Experience level',
+  yearsOfExperience: 'Years of experience',
+  desiredRoles: 'Desired roles',
+  skills: 'Skills',
+  desiredJobTypes: 'Desired job types',
+  workMode: 'Work mode',
+  availability: 'Availability',
+  companyName: 'Company name',
+  industry: 'Industry',
+  companySize: 'Company size',
+  websiteUrl: 'Website',
+  foundedYear: 'Founded year',
+  headquarters: 'Headquarters',
+  phoneNumber: 'Phone number',
+  email: 'Contact email',
+  companyType: 'Company type',
+}
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import { JOB_TYPE_LABELS } from '../../../components/dashboard/jobOptions.ts'
 import { cn } from '../../../lib/cn.ts'
@@ -21,6 +43,171 @@ const ROLE_COLORS: Record<string, string> = {
   Talent: 'bg-blue-100 text-blue-800',
   Recruiter: 'bg-green-100 text-green-800',
   Admin: 'bg-purple-100 text-purple-800',
+}
+
+/**
+ * Role-specific engagement summary. Recruiters see their hiring numbers;
+ * talents see their job-hunting numbers. Both see activity days, last-seen and
+ * profile completion.
+ */
+function ActivitySection({ activity }: { activity: AdminUserActivity }) {
+  const isTalent = activity.role === 'Talent'
+  const isRecruiter = activity.role === 'Recruiter'
+
+  // Admins have no role profile and no role activity to report.
+  if (!isTalent && !isRecruiter) return null
+
+  const roleTiles = isTalent
+    ? [
+        {
+          icon: 'visibility',
+          label: 'Jobs viewed',
+          value: activity.talent?.jobsViewed ?? 0,
+        },
+        {
+          icon: 'send',
+          label: 'Applications submitted',
+          value: activity.talent?.applicationsSubmitted ?? 0,
+        },
+      ]
+    : [
+        { icon: 'work', label: 'Jobs posted', value: activity.recruiter?.jobsPosted ?? 0 },
+        { icon: 'edit_note', label: 'Drafts', value: activity.recruiter?.jobsDraft ?? 0 },
+        {
+          icon: 'hourglass_top',
+          label: 'Pending review',
+          value: activity.recruiter?.jobsPendingApproval ?? 0,
+        },
+        {
+          icon: 'check_circle',
+          label: 'Published',
+          value: activity.recruiter?.jobsPublished ?? 0,
+        },
+        {
+          icon: 'inbox',
+          label: 'Applications received',
+          value: activity.recruiter?.applicationsReceived ?? 0,
+        },
+        {
+          icon: 'groups',
+          label: 'Unique applicants',
+          value: activity.recruiter?.uniqueApplicants ?? 0,
+        },
+      ]
+
+  const missingLabels = activity.missingProfileFields.map(
+    (field) => PROFILE_FIELD_LABELS[field] ?? field,
+  )
+
+  return (
+    <div className="mt-6 rounded-xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm">
+      <h2 className="font-label-md text-label-md font-semibold text-on-surface">Activity</h2>
+      <p className="mt-1 font-label-sm text-label-sm text-on-surface-variant">
+        {isTalent
+          ? 'What this talent has been doing on SeraGo.'
+          : 'What this recruiter has been doing on SeraGo.'}
+      </p>
+
+      {/* Role numbers */}
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {roleTiles.map((tile) => (
+          <ActivityTile key={tile.label} icon={tile.icon} label={tile.label} value={tile.value} />
+        ))}
+      </div>
+
+      {/* Shared: activity days + last seen */}
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <ActivityTile
+          icon="calendar_view_week"
+          label="Active days this week"
+          value={activity.activeDaysThisWeek}
+        />
+        <ActivityTile
+          icon="calendar_month"
+          label="Active days this month"
+          value={activity.activeDaysThisMonth}
+        />
+        <ActivityTile
+          icon="schedule"
+          label="Last active"
+          value={activity.lastActiveAt ? formatRelative(activity.lastActiveAt) : 'Never'}
+        />
+      </div>
+
+      {/* Profile completion */}
+      <div className="mt-4 rounded-lg border border-surface-variant px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="font-label-sm text-label-sm font-medium text-on-surface">
+            Profile completion
+          </p>
+          <p className="font-label-md text-label-md font-bold text-primary">
+            {activity.profileCompletionPercent}%
+          </p>
+        </div>
+        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-container-high">
+          <div
+            className={cn(
+              'h-2 rounded-full',
+              activity.profileComplete ? 'bg-success' : 'bg-primary',
+            )}
+            style={{ width: `${activity.profileCompletionPercent}%` }}
+          />
+        </div>
+        {missingLabels.length > 0 ? (
+          <p className="mt-2 font-label-xs text-label-xs text-on-surface-variant">
+            Still missing: {missingLabels.join(', ')}
+          </p>
+        ) : (
+          <p className="mt-2 font-label-xs text-label-xs text-success">
+            Profile is complete.
+          </p>
+        )}
+      </div>
+
+      <p className="mt-3 font-label-xs text-label-xs text-on-surface-variant">
+        &ldquo;Active days&rdquo; counts distinct UTC days with a recorded action (job view or
+        application) — SeraGo has no login audit trail, so this is the closest
+        available measure of how often they were online.
+      </p>
+    </div>
+  )
+}
+
+function ActivityTile({
+  icon,
+  label,
+  value,
+}: {
+  icon: string
+  label: string
+  value: number | string
+}) {
+  return (
+    <div className="rounded-lg border border-surface-variant bg-surface-container-low px-3 py-2.5">
+      <div className="flex items-center gap-1.5 text-on-surface-variant">
+        <span className="material-symbols-outlined text-base">{icon}</span>
+        <p className="font-label-xs text-label-xs">{label}</p>
+      </div>
+      <p className="mt-1 font-headline-sm text-headline-sm font-bold text-on-surface">
+        {typeof value === 'number' ? value.toLocaleString() : value}
+      </p>
+    </div>
+  )
+}
+
+/** "2h ago" / "3d ago" / a date for anything older than a month. */
+function formatRelative(value: string): string {
+  const then = new Date(value)
+  if (Number.isNaN(then.getTime())) return value
+  const diffMs = Date.now() - then.getTime()
+  const minutes = Math.floor(diffMs / 60_000)
+  if (minutes < 1) return 'Just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  return then.toLocaleDateString()
 }
 
 export default function AdminUserDetailPage() {
@@ -46,20 +233,20 @@ export default function AdminUserDetailPage() {
     setLoading(true)
     setError(null)
     try {
-      // Fetch user detail + their posted jobs in parallel
-      const [userData, jobsData] = await Promise.allSettled([
-        fetchAdminUser(userId, tokens.accessToken),
-        fetchJobs({ postedBy: userId, pageSize: 50 }, tokens.accessToken),
-      ])
+      const userData = await fetchAdminUser(userId, tokens.accessToken)
+      setUser(userData)
 
-      if (userData.status === 'fulfilled') {
-        setUser(userData.value)
+      // Only recruiters (and admins who have posted) can own jobs — fetching
+      // this for a talent user just returned an empty list and rendered a
+      // misleading "Posted jobs (0)" card.
+      if (userData.userType === 'Recruiter' || userData.userType === 'Admin') {
+        const jobsData = await fetchJobs(
+          { postedBy: userId, pageSize: 50 },
+          tokens.accessToken,
+        )
+        setJobs(jobsData.items)
       } else {
-        setError(getApiErrorMessage(userData.reason))
-      }
-
-      if (jobsData.status === 'fulfilled') {
-        setJobs(jobsData.value.items)
+        setJobs([])
       }
     } catch (err) {
       setError(getApiErrorMessage(err))
@@ -271,7 +458,12 @@ export default function AdminUserDetailPage() {
             </div>
           </div>
 
-          {/* Posted jobs */}
+          {/* Engagement — role-specific */}
+          {user.activity && <ActivitySection activity={user.activity} />}
+
+          {/* Posted jobs — recruiters only (talents and admins never own jobs,
+              so an empty "Posted jobs (0)" card was just noise) */}
+          {(user.userType === 'Recruiter' || user.userType === 'Admin') && (
           <div className="mt-6 rounded-xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm">
             <h2 className="font-label-md text-label-md font-semibold text-on-surface">
               Posted jobs ({jobs.length})
@@ -312,6 +504,7 @@ export default function AdminUserDetailPage() {
               </div>
             )}
           </div>
+          )}
 
           {/* Anonymize modal */}
           {anonymizeModal && (
