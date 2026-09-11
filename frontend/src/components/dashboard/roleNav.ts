@@ -37,6 +37,7 @@ export const ROLE_NAV: Record<RequiredRole, RoleNavItem[]> = {
     { label: 'Users', icon: 'group', to: '/dashboard/admin/users' },
     { label: 'Sectors', icon: 'category', to: '/dashboard/admin/sectors' },
     { label: 'Scraper', icon: 'inventory_2', to: '/dashboard/admin/scraper' },
+    { label: 'AI', icon: 'smart_toy', to: '/dashboard/admin/ai' },
     { label: 'Profile', icon: 'person', to: '/dashboard/admin/profile' },
     { label: 'Settings', icon: 'settings', to: '/dashboard/admin/settings', sidebarOnly: true },
   ],
