@@ -99,18 +99,29 @@ export default function UsersPage() {
         Manage all registered users.
       </p>
 
-      {/* ──── Stat cards ──── */}
+      {/*
+        Stat cards — three rows of three (on sm+):
+          row 1  who is active right now / this week / this month
+          row 2  cumulative totals (all users, and the two real roles)
+          row 3  new sign-ups in the same periods
+        Admin is deliberately omitted — there is only ever one admin account.
+      */}
       {stats && (
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <StatCard icon="group" label="Total users" value={stats.total} accent="text-on-surface" />
+          {/* Row 1 — activity */}
           <StatCard icon="play_arrow" label="Active today" value={stats.activeToday} accent="text-primary" />
           <StatCard icon="date_range" label="Active this week" value={stats.activeThisWeek} accent="text-accent" />
           <StatCard icon="calendar_month" label="Active this month" value={stats.activeThisMonth} accent="text-accent" />
-          <StatCard icon="person" label="Talent" value={stats.byRole.talent} accent="text-blue-600" />
-          <StatCard icon="business_center" label="Recruiter" value={stats.byRole.recruiter} accent="text-green-600" />
-          <StatCard icon="admin_panel_settings" label="Admin" value={stats.byRole.admin} accent="text-purple-600" />
+
+          {/* Row 2 — totals */}
+          <StatCard icon="group" label="Total users" value={stats.total} accent="text-on-surface" />
+          <StatCard icon="person" label="Total talent" value={stats.byRole.talent} accent="text-blue-600" />
+          <StatCard icon="business_center" label="Total recruiter" value={stats.byRole.recruiter} accent="text-green-600" />
+
+          {/* Row 3 — new sign-ups */}
           <StatCard icon="today" label="New today" value={stats.newToday} accent="text-accent" />
           <StatCard icon="date_range" label="New this week" value={stats.newThisWeek} accent="text-primary" />
+          <StatCard icon="calendar_month" label="New this month" value={stats.newThisMonth} accent="text-accent" />
         </div>
       )}
 
