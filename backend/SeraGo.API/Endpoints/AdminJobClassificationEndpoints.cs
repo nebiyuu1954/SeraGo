@@ -12,23 +12,24 @@ namespace SeraGo.API.Endpoints;
 /// <summary>
 /// Admin-only AI job classification endpoints. Behind the ADMIN_API_ENABLED gate.
 ///
-/// POST /api/admin/jobs/classify — classify one or more jobs via Groq (32B).
+/// POST /api/admin/jobs/classify — classify one or more jobs via the decoupled
+/// SeraGo-AI service (POST /api/ai/classify).
 ///   Body: { "jobId": guid }                → single job
 ///          { "jobIds": [guid, ...] }       → batch
 ///
-///   Returns: { results: [ { jobId, sectorSlug, sectorName, experienceLevel,
-///             jobType, workMode, confidence, reasoning, uncategorized,
-///             error? }, ... ], classified: int, failed: int, message?: string }
+///   Returns: { results: [ { jobId, sectorSlug, sectorName, confidence,
+///             reasoning, uncategorized, error? }, ... ],
+///             classified: int, failed: int, message?: string }
 ///
 /// Roles: Admin only. Auth: JWT Bearer (same pipeline as every other endpoint).
 ///
-/// The classification service writes the raw AI JSON (source of truth) to each
-/// Job's AiClassification field, sets AiClassifiedAt, and updates SectorName
-/// when the model picks a canonical sector. AiClassifiedAt lets you re-classify
-/// later and know what was old.
+/// On success the job's sector is set from the SubSector decision (SectorId +
+/// SectorName), the AI trace is stored, a SubSector mapping row is dedup-inserted,
+/// and, when the LLM failed for a job, a local SubSector-based fallback is
+/// attempted before leaving the job uncategorized.
 ///
-/// Best-effort: if Groq is down or a single job fails, the rest still classify
-/// and the error is surfaced per-job (not a 500).
+/// Best-effort: if the AI service is down or a single job fails, the rest still
+/// classify and the error is surfaced per-job (not a 500).
 /// </summary>
 public static class AdminJobClassificationEndpoints
 {
@@ -44,17 +45,20 @@ public static class AdminJobClassificationEndpoints
     }
 
     /// <summary>
-    /// Classify one or more jobs via Groq (32B). Returns per-job results with
-    /// the AI's chosen sector (validated against the real DB vocabulary) and any
-    /// normalized experience level / job type / work mode.
+    /// Classify one or more jobs via the decoupled SeraGo-AI service. Returns
+    /// per-job results. Best-effort: if the AI service is down or a single job
+    /// fails, the rest still classify and the error is surfaced per-job.
     ///
-    /// Best-effort: if Groq is down or a single job fails, the rest still
-    /// classify and the error is surfaced per-job (not a 500).
+    /// On success the job's sector is set from the SubSector decision (SectorId
+    /// + SectorName), the AI trace is stored, a SubSector mapping row is
+    /// dedup-inserted, and, when the LLM failed for a job, a local SubSector-based
+    /// fallback is attempted before leaving the job uncategorized.
     /// </summary>
     private static async Task<IResult> ClassifyJobsAsync(
         ClassifyJobRequest body,
         ApplicationDbContext db,
-        JobClassificationService classifier,
+        AiClassificationClient aiClient,
+        AiClassificationSaveService saveService,
         ILogger<object> logger)
     {
         var jobIds = (
@@ -70,16 +74,13 @@ public static class AdminJobClassificationEndpoints
             return Results.Ok(new ClassifyJobsResponse([], 0, 0, "No job ids provided."));
         }
 
-        // Load the jobs (with their sectors) plus ALL active sectors so we
-        // can resolve the AI's chosen slug to a real Sector row.
+        // Load the jobs (with their current sector) plus ALL active sectors, so
+        // the fallback path can match against the accumulated SubSector + Alias
+        // vocabulary.
         var jobs = await db.Jobs
             .Include(j => j.Sector)
             .Where(j => jobIdArr.Contains(j.Id))
             .ToListAsync();
-
-        var allSectorsBySlug = await db.Sectors
-            .Where(s => s.IsActive)
-            .ToDictionaryAsync(s => s.Slug, s => s, StringComparer.Ordinal);
 
         if (jobs.Count == 0)
         {
@@ -90,83 +91,147 @@ public static class AdminJobClassificationEndpoints
                 $"No jobs found for the provided ids ({string.Join(", ", jobIdArr)})."));
         }
 
-        // Classify — per-job failures are logged and skipped, not propagated.
-        var outcomes = await classifier.ClassifyBatchAsync(jobs);
+        // Build the request the AI service expects: one-to-many jobs with the
+        // fields needed for sector classification only. We also send the job's
+        // current sector so the AI service can record the 'before' state in the
+        // classify log (original_sector_slug/name).
+        var requestJobs = new List<AiClassificationRequestJob>(jobs.Count);
+        foreach (var j in jobs)
+        {
+            var currentSlug = j.Sector?.Slug;
+            var currentName = j.Sector?.Name;
+            var extraOriginal = (currentSlug is not null || currentName is not null)
+                ? new Dictionary<string, string>(2)
+                { ["sectorSlug"] = currentSlug ?? "", [
+                    "sectorName"] = currentName ?? "" }
+                : null;
+
+            requestJobs.Add(new AiClassificationRequestJob(
+                JobId: j.Id.ToString(),
+                Title: j.Title,
+                SourceSectors: ParseSourceSectors(j.SourceSectors),
+                Description: j.Description,
+                ExtraOriginal: extraOriginal));
+        }
+
+        // Classify via the decoupled AI service. A failure here (network /
+        // timeout / 5xx) is surfaced as an error on every result, not a 500.
+        AiClassificationResult[] aiResults;
+        string? aiError = null;
+        try
+        {
+            var list = await aiClient.ClassifyAsync(requestJobs);
+            aiResults = list.ToArray();
+
+            // Collect any per-job AI-service errors so we can still classify the
+            // successful ones and surface the failures per job.
+            var aiServiceErrors = aiResults.Where(r => r.Error is not null).ToList();
+            if (aiServiceErrors.Count > 0)
+            {
+                foreach (var r in aiServiceErrors)
+                {
+                    logger.LogWarning(
+                        "SeraGo-AI returned an error for job {JobId}: {Error}",
+                        r.JobId, r.Error);
+                }
+            }
+        }
+        catch (AiClassificationException ex)
+        {
+            aiError = ex.Message;
+            logger.LogWarning(ex, "SeraGo-AI classify failed for {JobCount} jobs", jobIdArr.Length);
+
+            // Best-effort: when the AI service is unreachable, fall back to the
+            // local SubSector matching path for every requested job.
+            aiResults = new AiClassificationResult[jobs.Count];
+            for (var i = 0; i < jobs.Count; i++)
+            {
+                var j = jobs[i];
+                aiResults[i] = new AiClassificationResult(
+                    JobId: j.Id.ToString(),
+                    SectorId: null,
+                    SectorName: null,
+                    SectorSlug: null,
+                    SubSectorName: null,
+                    Alias: FirstSourceSector(j.SourceSectors),
+                    Confidence: null,
+                    Reasoning: null,
+                    Uncategorized: true,
+                    Error: aiError);
+            }
+        }
+
+        // Apply the results to the tracked jobs: set SectorId/SectorName from
+        // the SubSector decision, store the AI trace, dedup-insert SubSector
+        // rows, and run the local fallback when the LLM failed.
+        var outcomes = await saveService.ApplyAsync(jobs, aiResults);
 
         var results = new List<ClassificationResultDto>(outcomes.Count);
         var classified = 0;
         var failed = 0;
 
+        var aiById = aiResults.ToDictionary(r => r.JobId, r => r);
+
         foreach (var outcome in outcomes)
         {
-            var job = jobs.First(j => j.Id == outcome.JobId);
+            var job = jobs.First(j => j.Id == Guid.Parse(outcome.JobId));
+            aiById.TryGetValue(outcome.JobId, out var ai);
 
-            if (outcome.Result is not null)
+            // Surface the fields that matter: the assigned sector plus the
+            // LLM's confidence and reasoning (when the LLM ran). The error
+            // (LLM failure / AI service unreachable) is reported separately.
+            results.Add(new ClassificationResultDto(
+                job.Id,
+                outcome.SectorId is not null ? job.Sector?.Slug : null,
+                outcome.SectorName,
+                ai?.Confidence,
+                ai?.Reasoning,
+                !outcome.Assigned,
+                outcome.LlmError));
+
+            if (outcome.Assigned)
             {
-                var (slug, name, json, classifiedAt) = classifier.ApplyClassification(job, outcome.Result);
-
-                // Resolve SectorId by slug from the sectors already loaded with
-                // the jobs (the Include(j => j.Sector) brings each job's sector
-                // into memory). Build a slug → sector map from the loaded sectors.
-                if (slug is not null)
-                {
-                    var sector = allSectorsBySlug.GetValueOrDefault(slug);
-                    if (sector is not null)
-                    {
-                        job.SectorId = sector.Id;
-                        job.SectorName = name;
-                    }
-                    else
-                    {
-                        // Should be impossible — we validate against the live
-                        // vocabulary. Defensive: don't apply a stale slug.
-                        logger.LogWarning(
-                            "Job {JobId} AI picked slug {Slug} but no matching Sector row loaded — leaving uncategorized",
-                            job.Id, slug);
-                        slug = null;
-                        name = null;
-                    }
-                }
-
-                if (slug is null)
-                {
-                    // AI said "uncategorized" or validation rejected the slug —
-                    // do NOT overwrite an existing SectorId/SectorName with null
-                    // (preserves a prior human classification).
-                }
-
-                job.AiClassification = json;
-                job.AiClassifiedAt = classifiedAt;
-                job.UpdatedAt = DateTimeOffset.UtcNow;
                 classified++;
             }
             else
             {
                 failed++;
             }
-
-            results.Add(new ClassificationResultDto(
-                job.Id,
-                outcome.Result?.SectorSlug,
-                outcome.Result?.SectorName,
-                outcome.Result?.ExperienceLevel,
-                outcome.Result?.JobType,
-                outcome.Result?.WorkMode,
-                outcome.Result?.Confidence,
-                outcome.Result?.Reasoning,
-                outcome.Result?.Uncategorized ?? false,
-                outcome.Error));
-
-    
         }
 
         await db.SaveChangesAsync();
 
+        var classifiedCount = jobs.Count(j => j.SectorId is not null);
         logger.LogInformation(
-            "Admin classified {Count} jobs via Groq — classified={Classified}, failed={Failed}",
-            jobIdArr.Length, classified, failed);
+            "Admin classified {Count} jobs via SeraGo-AI — assigned={Assigned}, uncategorized={Uncategorized}",
+            jobIdArr.Length, classifiedCount, jobIdArr.Length - classifiedCount);
 
-        return Results.Ok(new ClassifyJobsResponse(results, classified, failed));
+        return Results.Ok(new ClassifyJobsResponse(results, classified, failed,
+            aiError is not null ? "One or more jobs could not be classified." : null));
+    }
+
+    /// <summary>Parse the job's JSON-array sourceSectors into a list, or empty.</summary>
+    private static List<string> ParseSourceSectors(string? sourceSectors)
+    {
+        if (string.IsNullOrWhiteSpace(sourceSectors))
+        {
+            return [];
+        }
+        try
+        {
+            var parsed = System.Text.Json.JsonSerializer.Deserialize<List<string>>(sourceSectors);
+            return parsed ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static string? FirstSourceSector(string? sourceSectors)
+    {
+        var list = ParseSourceSectors(sourceSectors);
+        return list.Count > 0 ? list[0] : null;
     }
 
     // ── DTOs ──────────────────────────────────────────────────────────
@@ -190,9 +255,6 @@ public static class AdminJobClassificationEndpoints
         Guid JobId,
         string? SectorSlug,
         string? SectorName,
-        string? ExperienceLevel,
-        string? JobType,
-        string? WorkMode,
         double? Confidence,
         string? Reasoning,
         bool Uncategorized,
