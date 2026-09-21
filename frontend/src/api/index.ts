@@ -17,7 +17,7 @@ export {
   runApplicationsMatching,
   updateApplicationStatus,
 } from './applications.ts'
-export { fetchProfile, setPassword, updateProfile } from './profile.ts'
+export { fetchProfile, parseResume, setPassword, updateProfile } from './profile.ts'
 export {
   approveJob,
   createJob,
