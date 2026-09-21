@@ -34,6 +34,11 @@ export const API_ENDPOINTS = {
     emailConfirm: '/account/email/confirm',
     /** POST — resend the confirmation email: { email } */
     emailConfirmResend: '/account/email/confirm/resend',
+    /**
+     * POST — extract profile fields from the user's stored resume PDF.
+     * Parse-only: nothing is persisted, the user reviews before saving.
+     */
+    profileResumeParse: '/account/profile/parse-resume',
   },
   jobs: {
     /** GET/POST /api/jobs — item routes (/api/jobs/{id}, .../submit) are built in api/jobs.ts. */
