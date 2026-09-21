@@ -104,8 +104,13 @@ public class MatchingClient
         {
             if (jobIds.Count == 0) return new Dictionary<Guid, JobScore>();
 
+            // Generous on purpose: this is a stored-score READ, but the AI service's
+            // Neon DB autosuspends after ~5 min idle, so the first read after an idle
+            // period pays a wake-up penalty. Measured: ~1.5-2.3s warm, 17.1s cold.
+            // At 3s the call was cancelled and the feed SILENTLY degraded to null
+            // scores + newest-first ordering (SocketException 995 in the logs).
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(3));
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(15));
 
             var payload = new { userId, jobIds = jobIds.Select(j => j.ToString()).ToList() };
             var response = await SendJsonAsync("api/matching/scores/batch", payload, timeoutCts.Token);
@@ -135,8 +140,12 @@ public class MatchingClient
         {
             if (applicationIds.Count == 0) return new Dictionary<Guid, ApplicationScoreDto>();
 
+            // Same reasoning as GetForYouJobScoresAsync above: this looks like a
+            // cheap stored-score read, but the AI service's Neon DB autosuspends
+            // after ~5 min idle, so a cold read runs well past 3s and would have
+            // been cancelled — silently dropping the score badges.
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(3));
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(15));
 
             var payload = new { applicationIds = applicationIds.Select(id => id.ToString()).ToList() };
             var response = await SendJsonAsync("api/matching/application-scores/batch", payload, timeoutCts.Token);
@@ -255,6 +264,140 @@ public class MatchingClient
             _logger.LogWarning(ex, "Failed to rescore {Count} applications", applications.Count);
             return new RescoreApplicationsResult(false, "unavailable", 0, 0, 0, null);
         }
+    }
+
+    /// <summary>
+    /// Synchronous: ask the AI service to read a resume PDF and return the
+    /// profile fields it could find. The URL must be a short-lived presigned
+    /// R2 URL — resumes live in a private bucket and the AI service holds no
+    /// R2 credentials of its own.
+    ///
+    /// Best-effort, like every other method here: returns null when the service
+    /// is unreachable, so the caller can report "we couldn't read your resume"
+    /// instead of an error the user is expected to fix. A scanned (image-only)
+    /// PDF is NOT a failure — it returns successfully with zero characters and
+    /// an empty profile.
+    /// </summary>
+    public async Task<ResumeParseResult?> ParseResumeAsync(
+        string presignedResumeUrl, CancellationToken ct = default)
+    {
+        try
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            // 30s download + extraction on the AI side; 60s matches the
+            // service's own budget for the whole request.
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(60));
+
+            var payload = new { resumeUrl = presignedResumeUrl };
+            var response = await SendJsonAsync("api/matching/parse-resume", payload, timeoutCts.Token);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<ResumeParseResult>(JsonOpts, timeoutCts.Token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse resume via the AI service");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Result of POST /api/matching/parse-resume. Property names carry explicit
+    /// [JsonPropertyName] values so the wire shape is identical whether or not
+    /// the host applies a JSON naming policy — the frontend reads these as-is.
+    /// </summary>
+    public sealed class ResumeParseResult
+    {
+        [JsonPropertyName("success")]
+        public bool Success { get; set; }
+
+        [JsonPropertyName("charsExtracted")]
+        public int CharsExtracted { get; set; }
+
+        [JsonPropertyName("pagesRead")]
+        public int PagesRead { get; set; }
+
+        [JsonPropertyName("fieldsFound")]
+        public int FieldsFound { get; set; }
+
+        [JsonPropertyName("profile")]
+        public ResumeProfile? Profile { get; set; }
+    }
+
+    /// <summary>
+    /// Extracted resume fields. Key names deliberately mirror the frontend's
+    /// form shapes (WorkExperienceEntry / EducationEntry in ProfileForm.tsx) so
+    /// the values drop straight into the form with no mapping layer.
+    /// </summary>
+    public sealed class ResumeProfile
+    {
+        [JsonPropertyName("headline")]
+        public string? Headline { get; set; }
+
+        [JsonPropertyName("about")]
+        public string? About { get; set; }
+
+        [JsonPropertyName("skills")]
+        public List<string>? Skills { get; set; }
+
+        [JsonPropertyName("experience")]
+        public List<ResumeWorkExperience>? Experience { get; set; }
+
+        [JsonPropertyName("education")]
+        public List<ResumeEducation>? Education { get; set; }
+
+        [JsonPropertyName("currentProfession")]
+        public string? CurrentProfession { get; set; }
+
+        [JsonPropertyName("currentIndustry")]
+        public string? CurrentIndustry { get; set; }
+
+        /// <summary>One of Entry | Junior | Mid | Senior | Lead.</summary>
+        [JsonPropertyName("experienceLevel")]
+        public string? ExperienceLevel { get; set; }
+
+        [JsonPropertyName("yearsOfExperience")]
+        public int? YearsOfExperience { get; set; }
+    }
+
+    /// <summary>One extracted role. Dates are YYYY-MM-DD (the form uses date inputs).</summary>
+    public sealed class ResumeWorkExperience
+    {
+        [JsonPropertyName("company")]
+        public string? Company { get; set; }
+
+        [JsonPropertyName("title")]
+        public string? Title { get; set; }
+
+        [JsonPropertyName("startDate")]
+        public string? StartDate { get; set; }
+
+        [JsonPropertyName("endDate")]
+        public string? EndDate { get; set; }
+
+        [JsonPropertyName("description")]
+        public string? Description { get; set; }
+    }
+
+    /// <summary>One extracted education entry. `level` is from the form's own list.</summary>
+    public sealed class ResumeEducation
+    {
+        [JsonPropertyName("level")]
+        public string? Level { get; set; }
+
+        [JsonPropertyName("institution")]
+        public string? Institution { get; set; }
+
+        [JsonPropertyName("degree")]
+        public string? Degree { get; set; }
+
+        [JsonPropertyName("gpa")]
+        public string? Gpa { get; set; }
+
+        [JsonPropertyName("startYear")]
+        public string? StartYear { get; set; }
+
+        [JsonPropertyName("endYear")]
+        public string? EndYear { get; set; }
     }
 
     // ── DTOs ────────────────────────────────────────────────────────────
