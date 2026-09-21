@@ -1,6 +1,8 @@
 using Aufy.Core;
 using Hangfire;
 using Hangfire.Dashboard;
+using Hangfire.PostgreSql;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using SeraGo.API.Email;
@@ -49,6 +51,85 @@ foreach (var envFile in new[] { ".env", ".env(SeraGo-Scraper)", ".env(SeraGo-AI)
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ── Startup configuration validation (before the container is built) ────────
+// The JWT signing key must come from the environment (Aufy__JwtBearer__SigningKey
+// in .env — it is deliberately NOT committed to appsettings.json) and must be
+// ≥ 32 bytes: a weak/known key lets anyone forge tokens for any user, including
+// admins. Fail fast instead of booting with a broken security posture, and warn
+// on other misconfigurations that would silently degrade production behavior.
+{
+    var signingKey = builder.Configuration["Aufy:JwtBearer:SigningKey"];
+
+    if (string.IsNullOrWhiteSpace(signingKey))
+    {
+        Console.WriteLine("[config] CRITICAL: JWT signing key is not configured. "
+            + "Set Aufy__JwtBearer__SigningKey in .env (≥ 32 random bytes, e.g. `openssl rand -base64 48`). See .env.example.");
+        throw new InvalidOperationException(
+            "Missing JWT signing key (Aufy:JwtBearer:SigningKey). See .env.example.");
+    }
+
+    var signingKeyBytes = System.Text.Encoding.UTF8.GetByteCount(signingKey);
+    if (signingKeyBytes < 32)
+    {
+        Console.WriteLine($"[config] CRITICAL: JWT signing key is too short ({signingKeyBytes} bytes; minimum 32 = 256 bits for HMAC-SHA256). "
+            + "Generate a new one with `openssl rand -base64 48`.");
+        throw new InvalidOperationException(
+            "JWT signing key must be at least 32 bytes (256 bits).");
+    }
+
+    // The old key was committed to the repo, so treat its distinctive markers
+    // as poisoned even though it satisfies the length check.
+    if (signingKey.Contains("dev-only", StringComparison.OrdinalIgnoreCase)
+        || signingKey.Contains("change-me", StringComparison.OrdinalIgnoreCase))
+    {
+        Console.WriteLine("[config] CRITICAL: JWT signing key looks like the previously committed dev key — "
+            + "it must be considered compromised. Generate a fresh random key and set Aufy__JwtBearer__SigningKey.");
+        throw new InvalidOperationException(
+            "JWT signing key matches the known compromised dev key. Replace it.");
+    }
+
+    if (builder.Environment.IsProduction())
+    {
+        // Redis is REQUIRED in Production: without it the unread-count bell
+        // falls back to a Postgres COUNT per page load and SignalR presence
+        // tracking is disabled — a silent degradation that only shows up as
+        // DB load at scale. Fail fast rather than boot half-configured.
+        // (Development stays optional — the null-multiplexer fallbacks apply.)
+        if (string.IsNullOrWhiteSpace(builder.Configuration["REDIS_CONNECTION"]))
+        {
+            Console.WriteLine("[config] CRITICAL: Production requires REDIS_CONNECTION — unread counts "
+                + "fall back to per-page Postgres queries without it, and SignalR presence tracking is disabled. "
+                + "Get a free Upstash instance at https://upstash.com.");
+            throw new InvalidOperationException(
+                "Production requires REDIS_CONNECTION — unread counts fall back to per-page Postgres queries "
+                + "without it, and SignalR presence tracking is disabled. Get a free Upstash instance at https://upstash.com.");
+        }
+
+        // Email provider is a HARD requirement in Production — a fail-fast, not
+        // a warning. RequireConfirmedEmail=true means with no provider configured
+        // the default ISender is NullSender: signup returns 200 ("check your
+        // inbox"), but nothing is ever sent and the user can never log in. The
+        // silent failure mode is worse than not starting.
+        if (string.IsNullOrWhiteSpace(builder.Configuration["SENDGRID_API_KEY"])
+            && string.IsNullOrWhiteSpace(builder.Configuration["FluentEmail:SendGridApiKey"])
+            && string.IsNullOrWhiteSpace(builder.Configuration["EmailJs:ServiceId"])
+            && string.IsNullOrWhiteSpace(builder.Configuration["EMAILJS_SERVICE_ID"]))
+        {
+            Console.WriteLine("[config] CRITICAL: Production requires an email provider because RequireConfirmedEmail=true. "
+                + "Without it, users can sign up but cannot log in. Configure SENDGRID_API_KEY or EmailJS.");
+            throw new InvalidOperationException(
+                "Production requires an email provider because RequireConfirmedEmail=true. Without it, users can sign up but "
+                + "cannot log in. Configure SENDGRID_API_KEY or EmailJS.");
+        }
+
+        if (string.IsNullOrWhiteSpace(builder.Configuration["Admin:Email"])
+            || string.IsNullOrWhiteSpace(builder.Configuration["Admin:Password"]))
+        {
+            Console.WriteLine("[config] INFO: admin bootstrap credentials not set (Admin__Email / Admin__Password) — no admin account will be seeded.");
+        }
+    }
+}
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerWithJwt();
 builder.Services.AddHttpClient(); // HttpClient factory for the EmailJS relay
@@ -58,8 +139,25 @@ builder.Services.AddRateLimiting(builder.Configuration); // API throttling (fixe
 builder.Services.AddMemoryCache(); // short-TTL cache for expensive aggregate stats
 
 builder.Services.AddInfrastructure(builder.Configuration); // PostgreSQL DbContext + AuthSeeder
-builder.Services.SetupAufy(builder.Configuration);         // Aufy: Identity + JWT + custom signup
+builder.Services.SetupAufy(builder.Configuration, builder.Environment); // Aufy: Identity + JWT + custom signup
 builder.Services.AddNotificationInfrastructure(builder.Configuration); // Hangfire + Redis + SignalR + NotificationService
+
+// All three pools draw on DefaultConnection but share nothing — count them
+// together against Neon's ~20-connection free-tier ceiling at a glance.
+// SignalR's 2 only apply when Redis is configured (one shared multiplexer:
+// 1 pub/sub + 1 interactive connection).
+{
+    var hangfirePool = SeraGo.API.Extensions.ServicesExtensions.HangfireEnabled
+        ? SeraGo.API.Extensions.ServicesExtensions.HangfireMaxPoolSize
+        : 0;
+    var signalRPool = string.IsNullOrWhiteSpace(builder.Configuration["REDIS_CONNECTION"])
+        ? 0
+        : SeraGo.API.Extensions.ServicesExtensions.SignalRBackplaneConnections;
+    var total = SeraGo.Infrastructure.DependencyInjection.EfCoreMaxPoolSize + hangfirePool + signalRPool;
+    Console.WriteLine($"[db] Pool budget vs Neon (~20 ceiling): " +
+        $"EF={SeraGo.Infrastructure.DependencyInjection.EfCoreMaxPoolSize} " +
+        $"+ Hangfire={hangfirePool} + SignalR={signalRPool} = {total}");
+}
 
 // Surface the main-DB connection source so connection-string issues are obvious at startup.
 {
@@ -153,6 +251,21 @@ builder.Services.Configure<IdentityOptions>(options =>
 
 var app = builder.Build();
 
+// R2 readiness surfacing — a WARNING, never a throw. The service is lazy now
+// (constructor can't throw), so a deploy without R2 env vars boots fine and
+// upload requests get a clean 503 instead of crashing. In Production make the
+// gap loud so it's fixed before users hit it.
+if (app.Environment.IsProduction())
+{
+    var r2 = app.Services.GetRequiredService<R2StorageService>();
+    if (!r2.IsConfigured)
+    {
+        app.Logger.LogWarning(
+            "R2 storage not configured — avatar/resume/logo uploads will return 503. "
+            + "Set R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, CLOUDFLARE_ACCOUNT_ID, R2_BUCKET_NAME, R2_PUBLIC_URL.");
+    }
+}
+
 // Apply pending migrations and seed roles + admin account on startup. The
 // serverless database (Neon) can take a few seconds to wake from sleep, and
 // connection resets are normal on flaky networks — retry transient failures
@@ -205,6 +318,13 @@ if (app.Environment.IsDevelopment())
 // 401s, rate-limit 429s, unhandled 500s) come out in the one format.
 app.UseMiddleware<ResponseEnvelopeMiddleware>();
 
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+    KnownNetworks = { },
+    KnownProxies = { },
+});
+
 app.UseCors();
 app.UseRateLimiter(); // throttling for endpoints that opt in via RequireRateLimiting
 app.UseAuthentication();
@@ -251,39 +371,80 @@ if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TELEGRAM_BOT_
     app.MapTelegramEndpoints(); // /api/telegram — account linking, webhook
 }
 
-// SignalR hub for real-time notifications
+// SignalR hub for real-time notifications — keep-alive tuned for the Cloudflare
+// proxy in front of this API. Cloudflare closes idle WebSocket connections after
+// ~100 seconds, so the keep-alive ping must fire well inside that window (15s).
+// ClientTimeoutInterval (30s) is the server-side idle cutoff before it considers
+// a client gone; KeepAliveInterval (15s) is how often the server pings an idle
+// connection to prove it's still there. Both are kept well under 60s so the
+// connection survives the proxy timeout without relying on the client to send
+// traffic first.
 app.MapHub<NotificationHub>("/hubs/notifications");
 
-// Hangfire dashboard (dev only — behind auth in production)
-if (app.Environment.IsDevelopment())
+// Hangfire dashboard (dev only — behind auth in production). Also skipped when
+// HANGFIRE_ENABLED=false: no storage is registered, so the dashboard would fail.
+if (app.Environment.IsDevelopment() && SeraGo.API.Extensions.ServicesExtensions.HangfireEnabled)
 {
     app.UseHangfireDashboard("/hangfire");
 }
 
-// Register recurring Hangfire jobs
+// Register recurring Hangfire jobs. Registration takes a distributed lock on
+// the job storage; after a hard kill/restart the advisory lock can briefly
+// outlive the previous instance (seen on the Neon pooler), making AddOrUpdate
+// throw PostgreSqlDistributedLockException. Retry with backoff instead of
+// crashing startup — AddOrUpdate is idempotent so re-running is safe.
+// Skipped entirely when HANGFIRE_ENABLED=false (no storage registered).
+if (SeraGo.API.Extensions.ServicesExtensions.HangfireEnabled)
 {
     var recurringJobs = app.Services.GetRequiredService<IRecurringJobManager>();
-    var orchestrator = app.Services.GetRequiredService<IServiceScopeFactory>();
+    const int maxAttempts = 8;
+    for (var attempt = 1; ; attempt++)
+    {
+        try
+        {
+            recurringJobs.AddOrUpdate<NotificationOrchestrator>(
+                "notification-digest-emails",
+                o => o.SendDigestEmails(),
+                "0 8 * * *",  // daily at 8 AM UTC
+                new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-    recurringJobs.AddOrUpdate<NotificationOrchestrator>(
-        "notification-digest-emails",
-        o => o.SendDigestEmails(),
-        "0 8 * * *",  // daily at 8 AM UTC
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+            recurringJobs.AddOrUpdate<NotificationOrchestrator>(
+                "notification-cleanup",
+                o => o.CleanupOldNotifications(),
+                "0 3 * * 0",  // weekly Sunday 3 AM UTC
+                new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-    recurringJobs.AddOrUpdate<NotificationOrchestrator>(
-        "notification-cleanup",
-        o => o.CleanupOldNotifications(),
-        "0 3 * * 0",  // weekly Sunday 3 AM UTC
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-    recurringJobs.AddOrUpdate<NotificationOrchestrator>(
-        "notification-redis-sync",
-        o => o.SyncRedisCounters(),
-        "0 * * * *",  // hourly
-        new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+            recurringJobs.AddOrUpdate<NotificationOrchestrator>(
+                "notification-redis-sync",
+                o => o.SyncRedisCounters(),
+                "0 * * * *",  // hourly
+                new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+            break;
+        }
+        catch (PostgreSqlDistributedLockException ex) when (attempt < maxAttempts)
+        {
+            var delay = TimeSpan.FromSeconds(5 * attempt);
+            app.Logger.LogWarning(
+                ex,
+                "Hangfire recurring-job registration failed (attempt {Attempt}/{MaxAttempts}) — retrying in {DelaySeconds}s",
+                attempt, maxAttempts, delay.TotalSeconds);
+            Thread.Sleep(delay);
+        }
+    }
 }
+
+// Lightweight health check for the Render container health monitor.
+// Deliberately stateless: no DB, Redis, R2, or external calls — safe to hit
+// every 10 minutes without consuming meaningful resources. Excluded from auth,
+// rate limiting, and the admin gate middleware, so it stays reachable even when
+// ADMIN_API_ENABLED=false.
+app.MapGet("/health", () => Results.Ok(new HealthResponse("ok")))
+    .WithTags("Health")
+    .Produces<HealthResponse>(StatusCodes.Status200OK);
 
 app.MapGet("/", () => Results.Ok(new { service = "SeraGo API", docs = "/swagger" }));
 
 app.Run();
+
+
+public sealed record HealthResponse(string status);
