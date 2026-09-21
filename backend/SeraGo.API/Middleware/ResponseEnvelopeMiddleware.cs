@@ -140,6 +140,7 @@ public class ResponseEnvelopeMiddleware
             405 => "METHOD_NOT_ALLOWED",
             409 => "CONFLICT",
             429 => "RATE_LIMITED",
+            503 => "SERVICE_UNAVAILABLE",
             _ => "INTERNAL_ERROR",
         };
 
