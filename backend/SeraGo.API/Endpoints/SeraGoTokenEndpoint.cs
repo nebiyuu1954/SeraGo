@@ -12,11 +12,16 @@ namespace SeraGo.API.Endpoints;
 /// for EVERY failure — including account lockout — so users get locked out
 /// (Identity's 5-attempt / 5-minute policy is on) with no explanation.
 ///
-/// This endpoint mirrors Aufy's flow exactly (sign-in via the
-/// "Aufy.BearerSignInTokenScheme" handler, which writes the token pair and
-/// sets the refresh cookie) but surfaces lockout / deactivated states with
-/// actionable messages. Registered by removing Aufy's endpoint from DI and
-/// mapping this one in Program.cs.
+/// This endpoint mirrors Aufy's flow exactly but surfaces lockout /
+/// deactivated states with actionable messages. Registered by removing Aufy's
+/// endpoint from DI and mapping this one in Program.cs.
+///
+/// Auth scheme: "Aufy.BearerSignInCookieScheme", whose
+/// AufySignInJwtBearerHandler writes the { AccessToken, ExpiresIn } body AND
+/// appends the httpOnly Aufy.RefreshToken cookie (Aufy source:
+/// src/Aufy.Core/AuthSchemes/AufySignInJwtBearerHandler.cs). The
+/// "Aufy.BearerSignInTokenScheme" handler only writes the body — no cookie —
+/// which left the refresh endpoint with nothing to read.
 /// </summary>
 public static class SeraGoTokenEndpoint
 {
@@ -34,9 +39,16 @@ public static class SeraGoTokenEndpoint
         SignInManager<ApplicationUser> signInManager,
         UserManager<ApplicationUser> userManager)
     {
-        // Matches Aufy: sign-in is routed to the JWT handler that writes the
-        // { AccessToken, ExpiresIn } body and sets the Aufy.RefreshToken cookie.
-        signInManager.AuthenticationScheme = "Aufy.BearerSignInTokenScheme";
+        // Sign-in is routed to the COOKIE scheme handler, which is the one that
+        // does both halves of the exchange: the { AccessToken, ExpiresIn } body
+        // the frontend reads, plus the httpOnly Aufy.RefreshToken cookie that
+        // POST /api/auth/token/refresh requires. The token scheme writes only
+        // the body, and the refresh endpoint accepts the token ONLY as a cookie
+        // — so without this the session died at the access-token expiry with a
+        // 401 → refresh → 401 loop. Consequence of the switch: `refreshToken`
+        // in the body is now null (the cookie carries it instead); the frontend
+        // already types it nullable and stores only the access token.
+        signInManager.AuthenticationScheme = "Aufy.BearerSignInCookieScheme";
         var result = await signInManager.PasswordSignInAsync(
             req.Email, req.Password, isPersistent: false, lockoutOnFailure: true);
 
