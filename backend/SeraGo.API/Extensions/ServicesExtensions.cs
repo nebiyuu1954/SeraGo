@@ -7,6 +7,7 @@ using FluentEmail.Core.Interfaces;
 using FluentEmail.SendGrid;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
@@ -35,8 +36,21 @@ public static class ServicesExtensions
     /// blank ClientId/ClientSecret the provider stays disabled and the app
     /// behaves as before.
     /// </summary>
-    public static IServiceCollection SetupAufy(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection SetupAufy(
+        this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
+        // Surface Google OAuth gaps in Production: with empty ClientId/Secret the
+        // Google provider is silently not registered, /api/auth/external/providers
+        // reports nothing, and the frontend's Google button just stays disabled —
+        // no error anywhere. Warn (do NOT fail: email/password auth still works).
+        if (environment.IsProduction()
+            && (string.IsNullOrWhiteSpace(configuration["Aufy:Providers:Google:ClientId"])
+                || string.IsNullOrWhiteSpace(configuration["Aufy:Providers:Google:ClientSecret"])))
+        {
+            Console.WriteLine("[config] WARNING: Google OAuth not configured — Google sign-in is unavailable. "
+                + "Set Aufy__Providers__Google__ClientId and ClientSecret.");
+        }
+
         services.AddAufy<ApplicationUser>(configuration)
             .UseSignUpModel<SeraGoSignUpRequest>()
             // Custom external signup: new Google users must pick a role and
@@ -168,9 +182,13 @@ public static class ServicesExtensions
             configuration["FluentEmail:FromName"] ?? "SeraGo");
 
         // Dev-only: write emails to disk (see SeraGo.API/logs/emails) instead of
-        // sending them. Keep "FluentEmail:SaveEmailsOnDisk" for local development.
+        // sending them. Gated to the Development environment — previously this was
+        // enabled by mere presence of "FluentEmail:SaveEmailsOnDisk" in the BASE
+        // appsettings.json, so a production deploy with no email provider silently
+        // wrote confirmation emails to a local folder instead of sending them,
+        // leaving every new user unable to confirm their account and sign in.
         var emailDir = configuration["FluentEmail:SaveEmailsOnDisk"];
-        if (!string.IsNullOrWhiteSpace(emailDir))
+        if (!string.IsNullOrWhiteSpace(emailDir) && environment.IsDevelopment())
         {
             Directory.CreateDirectory(emailDir);
             services.Replace(ServiceDescriptor.Scoped<ISender>(_ => new SaveToDiskSender(emailDir)));
@@ -236,37 +254,139 @@ public static class ServicesExtensions
         this IServiceCollection services, IConfiguration configuration)
     {
         // ── Hangfire ──
-        services.AddHangfire(config => config
-            .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
-            .UseSimpleAssemblyNameTypeSerializer()
-            .UseRecommendedSerializerSettings()
-            .UsePostgreSqlStorage(options =>
-                options.UseNpgsqlConnection(
-                    configuration.GetConnectionString("DefaultConnection"))));
-
-        services.AddHangfireServer(options =>
+        // HANGFIRE_ENABLED=false is an EMERGENCY off-switch (cost spikes), not a
+        // normal setting: with it off, no storage/server/dashboard is registered,
+        // email and Telegram delivery is disabled and not retried, recurring
+        // jobs never register — but in-app notifications still work (they are
+        // written to Postgres before the enqueue attempt). Default: on.
+        if (HangfireEnabled)
         {
-            options.Queues = ["email", "telegram", "maintenance"];
-            options.WorkerCount = Environment.ProcessorCount * 2;
-        });
+            // Hangfire keeps its OWN Npgsql pool, separate from EF Core's (both
+            // derive from DefaultConnection but share nothing) — cap it explicitly
+            // so the pools can't jointly overrun Neon's ~20-connection free-tier
+            // ceiling. There is no pool-size knob on PostgreSqlStorageOptions; the
+            // cap lives on the connection string Hangfire's connections are drawn
+            // from. Budget: 6 covers the 4 workers (each holds a dedicated
+            // connection while executing) plus schedulers/dispatchers, and
+            // completes the pool budget EF 12 + Hangfire 6 + SignalR 2 = 20.
+            var hangfireCs = new Npgsql.NpgsqlConnectionStringBuilder(
+                configuration.GetConnectionString("DefaultConnection"));
+            if (!hangfireCs.ContainsKey("Max Pool Size"))
+            {
+                hangfireCs.MaxPoolSize = HangfireMaxPoolSize;
+            }
+
+            services.AddHangfire(config => config
+                .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+                .UseSimpleAssemblyNameTypeSerializer()
+                .UseRecommendedSerializerSettings()
+                .UsePostgreSqlStorage(
+                    bootstrapper => bootstrapper.UseNpgsqlConnection(hangfireCs.ConnectionString),
+                    new PostgreSqlStorageOptions
+                    {
+                        // QueuePollInterval: default is 15s; 30s halves Neon
+                        // wakeups and lets the serverless DB auto-suspend overnight.
+                        QueuePollInterval = TimeSpan.FromSeconds(30),
+                    }));
+
+            services.AddHangfireServer(options =>
+            {
+                options.Queues = ["email", "telegram", "maintenance"];
+                // Fixed small count instead of ProcessorCount * 2: these queues
+                // carry emails/telegram sends/maintenance — light workloads where
+                // extra workers only add DB connections and Neon wakeups. Must
+                // stay below Hangfire's Max Pool Size cap above.
+                options.WorkerCount = Math.Min(Environment.ProcessorCount, 4);
+            });
+        }
+        else
+        {
+            Console.WriteLine("[config] WARNING: HANGFIRE_ENABLED=false — background jobs are DISABLED. "
+                + "In-app notifications still work; email and Telegram delivery is disabled and not retried. "
+                + "Recurring jobs are skipped.");
+        }
 
         // ── Redis ──
+        // Required in Production (enforced by Program.cs startup validation):
+        // without it, unread counts degrade to per-page Postgres COUNT queries
+        // and SignalR presence tracking is disabled. Optional in Development —
+        // NotificationService/NotificationHub take IConnectionMultiplexer? and
+        // fall back gracefully when it's absent.
         var redisConnectionString = configuration["REDIS_CONNECTION"]
             ?? configuration["ConnectionStrings:Redis"];
 
-        if (!string.IsNullOrWhiteSpace(redisConnectionString))
-        {
-            services.AddSingleton<IConnectionMultiplexer>(sp =>
-                ConnectionMultiplexer.Connect(redisConnectionString));
-        }
-
         // ── SignalR ──
-        services.AddSignalR()
+        var signalR = services.AddSignalR()
             .AddJsonProtocol(options =>
             {
                 options.PayloadSerializerOptions.PropertyNamingPolicy =
                     System.Text.Json.JsonNamingPolicy.CamelCase;
             });
+
+        if (!string.IsNullOrWhiteSpace(redisConnectionString))
+        {
+            // abortConnect=false: with StackExchange.Redis's default
+            // (abortConnect=true) a brief Redis blip at startup — Upstash TLS
+            // handshake delays during a Render deploy, for instance — throws out
+            // of Connect and the app can't boot, restart-looping on the host.
+            // With it, the multiplexer starts disconnected and reconnects in the
+            // background, which is what you want for a managed Redis dependency.
+            // Command failures still surface normally once connected.
+            var connectString = redisConnectionString.Contains("abortConnect", StringComparison.OrdinalIgnoreCase)
+                ? redisConnectionString
+                : redisConnectionString + ",abortConnect=false";
+
+            // ONE multiplexer, shared: NotificationService/NotificationHub (via
+            // IConnectionMultiplexer) and the SignalR backplane. This package
+            // version has no IConnectionMultiplexer overload for the backplane —
+            // sharing is done via RedisOptions.ConnectionFactory below. Passing
+            // the raw string there would make the backplane open its own second
+            // connection — wasteful, and connection count is limited on
+            // Upstash's free tier. Connect eagerly here (not inside a sp =>
+            // lambda) so a bad Redis URL fails at DI registration, keeping the
+            // fail-fast policy from the startup validation block. With
+            // abortConnect=false above, a well-formed but UNREACHABLE host still
+            // boots (multiplexer retries in the background) — only config
+            // errors (malformed URL, auth rejected) fail fast.
+            StackExchange.Redis.IConnectionMultiplexer multiplexer;
+            try
+            {
+                multiplexer = ConnectionMultiplexer.Connect(connectString);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    "REDIS_CONNECTION could not be connected — fix the value (check host, port, and password) " +
+                    "or unset it to run without Redis. Underlying error: " + ex.Message, ex);
+            }
+            services.AddSingleton(multiplexer);
+            services.AddSingleton<IConnectionMultiplexer>(multiplexer);
+
+            // Register for disposal with the host so a clean shutdown closes
+            // the Redis connection instead of leaking it until process exit.
+            // (The backplane's lifetime manager may also dispose it on shutdown;
+            // IConnectionMultiplexer.Dispose is idempotent, so that's benign.)
+            services.AddSingleton<IHostedService>(_ => new DisposerHostedService(multiplexer));
+
+            // Redis backplane: adds one subscription per hub method group —
+            // effectively free for a single instance, and the day this API
+            // scales to 2+ instances, pushes emitted by instance B reach
+            // clients connected to instance A (without it, only same-instance
+            // clients get real-time events).
+            //
+            // Share the ONE multiplexer above via ConnectionFactory — this
+            // package version has no IConnectionMultiplexer overload, and the
+            // string overloads would make the backplane open a second
+            // connection. With ConnectionFactory set, the backplane uses the
+            // returned multiplexer as-is (no own connect, no extra socket).
+            // Channels are namespaced automatically by hub type
+            // ("SeraGo.API.Hubs.NotificationHub:all", ":group:*", …), so no
+            // explicit ChannelPrefix is needed.
+            signalR.AddStackExchangeRedis(options =>
+            {
+                options.ConnectionFactory = _ => Task.FromResult<IConnectionMultiplexer>(multiplexer);
+            });
+        }
 
         // ── Notification service ──
         services.AddScoped<NotificationService>();
@@ -327,6 +447,54 @@ public static class ServicesExtensions
         return null;
     }
 
+    /// <summary>
+    /// Hangfire's pool cap (must cover WorkerCount + schedulers/dispatchers).
+    /// Budgeted so EF Core (12) + Hangfire (6) + SignalR backplane (2) = 20,
+    /// Neon's free-tier connection ceiling — see .env.example.
+    /// </summary>
+    public const int HangfireMaxPoolSize = 6;
+
+    /// <summary>
+    /// SignalR backplane connection budget: one pub/sub + one interactive
+    /// connection for the shared multiplexer (0 when Redis is unconfigured).
+    /// </summary>
+    public const int SignalRBackplaneConnections = 2;
+
+    /// <summary>
+    /// Emergency kill switch for background jobs (HANGFIRE_ENABLED env var).
+    /// Read in ONE place so Program.cs (dashboard, recurring-job registration)
+    /// and DI (storage, server) can never disagree.
+    /// Env-var-only by design: unlike config-bound switches this one must stay
+    /// readable even when configuration providers themselves are the problem
+    /// (and it matches how AdminApiOptions reads its flag).
+    /// </summary>
+    public static bool HangfireEnabled =>
+        Environment.GetEnvironmentVariable("HANGFIRE_ENABLED") is not { } raw
+        || raw.Trim().ToLowerInvariant() is not ("0" or "false" or "no" or "off");
+
+    /// <summary>
+    /// Stops the shared Redis <see cref="IConnectionMultiplexer"/> when the host
+    /// shuts down. Multiplexer.DisposeAsync also flushes pending commands, so
+    /// wiring it into the host lifetime is preferable to waiting for process
+    /// teardown.
+    /// </summary>
+    private sealed class DisposerHostedService(IConnectionMultiplexer multiplexer) : IHostedService
+    {
+        public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public async Task StopAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                await multiplexer.DisposeAsync();
+            }
+            catch
+            {
+                // Shutdown-time cleanup must never mask the real stop reason.
+            }
+        }
+    }
+
     /// <summary>Swagger/OpenAPI with JWT Bearer support for testing protected endpoints.</summary>
     public static IServiceCollection AddSwaggerWithJwt(this IServiceCollection services)
     {
@@ -369,6 +537,15 @@ public static class ServicesExtensions
     /// fixed window; read and write traffic get their own limits. Endpoints opt
     /// in via <c>.RequireRateLimiting("jobs_read")</c> / "jobs_write" (see
     /// JobEndpoints). Limits come from the "RateLimiting" config section.
+    ///
+    /// Auth endpoints additionally go through a GLOBAL partitioned limiter
+    /// (auth_signin / auth_signup / auth_email) instead of per-endpoint
+    /// policies: several of those routes (e.g. /api/auth/signin,
+    /// /api/auth/token/refresh) are registered inside the Aufy library and
+    /// can't be annotated with .RequireRateLimiting(...). A global limiter with
+    /// a (method, path) matcher covers them all; everything else gets
+    /// NoLimiter and behaves exactly as before. auth_email is per-IP by
+    /// design — per-email throttling is EmailThrottleService's job.
     /// </summary>
     public static IServiceCollection AddRateLimiting(this IServiceCollection services, IConfiguration configuration)
     {
@@ -404,6 +581,62 @@ public static class ServicesExtensions
                     QueueLimit = 0,
                     AutoReplenishment = true,
                 }));
+
+            // ── Auth endpoint limits (global partitioned limiter) ──────────
+            // Runs for every request; non-auth traffic gets NoLimiter. The
+            // global limiter and the OnRejected above compose: rejected auth
+            // requests produce the same 429 envelope as job-limit rejections.
+            limiter.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+            {
+                var path = httpContext.Request.Path;
+                var isPost = HttpMethods.IsPost(httpContext.Request.Method);
+
+                // Same fixed-window shape as the named policies, sharing the
+                // X-Forwarded-For-aware PartitionKey helper. The key is prefixed
+                // with the policy name — the global limiter caches by TKey, so
+                // all three policies sharing a bare IP would collide into ONE
+                // bucket (whichever was created first wins for every policy).
+                RateLimitPartition<string> AuthPartition(string policy, RateLimitPolicyOptions o) =>
+                    RateLimitPartition.GetFixedWindowLimiter<string>(
+                        $"{policy}:{PartitionKey(httpContext)}",
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = o.PermitLimit,
+                            Window = TimeSpan.FromMinutes(o.WindowMinutes),
+                            QueueLimit = 0,
+                            AutoReplenishment = true,
+                        });
+
+                // Login + refresh — password spraying and refresh-token probing.
+                // StartsWithSegments intentionally sweeps /api/auth/token/refresh
+                // and /api/auth/signin/refresh into the same bucket.
+                if (isPost && (path.StartsWithSegments("/api/auth/token")
+                            || path.StartsWithSegments("/api/auth/signin")))
+                {
+                    return AuthPartition("signin", options.AuthSignin);
+                }
+
+                // Signup — bulk fake-account creation and email-credit burn.
+                if (isPost && path.StartsWithSegments("/api/auth/signup"))
+                {
+                    return AuthPartition("signup", options.AuthSignup);
+                }
+
+                // Email-bearing flows — forgot password + resend confirmation
+                // (email bombing). Deliberately per-IP: EmailThrottleService
+                // already caps sends per recipient address; this limiter stops
+                // the request flood (CPU/DB/token generation) before that.
+                // NOTE: the confirm LINK (GET /api/account/email/confirm) is
+                // intentionally not limited — real users click it once per
+                // email and shared-IP offices would collide here.
+                if (isPost && (path.StartsWithSegments("/api/account/password/forgot")
+                            || path.StartsWithSegments("/api/account/email/confirm/resend")))
+                {
+                    return AuthPartition("email", options.AuthEmail);
+                }
+
+                return RateLimitPartition.GetNoLimiter<string>("no-limit");
+            });
         });
 
         return services;
@@ -430,6 +663,15 @@ public sealed class RateLimitOptions
 {
     public RateLimitPolicyOptions JobsRead { get; set; } = new();
     public RateLimitPolicyOptions JobsWrite { get; set; } = new();
+
+    /// <summary>POST /api/auth/token*, /api/auth/signin* — login + refresh. Default: 10 / 15 min.</summary>
+    public RateLimitPolicyOptions AuthSignin { get; set; } = new() { PermitLimit = 10, WindowMinutes = 15 };
+
+    /// <summary>POST /api/auth/signup* — signup + external signup. Default: 5 / hour.</summary>
+    public RateLimitPolicyOptions AuthSignup { get; set; } = new() { PermitLimit = 5, WindowMinutes = 60 };
+
+    /// <summary>POST forgot-password + resend-confirmation. Per-IP. Default: 5 / hour.</summary>
+    public RateLimitPolicyOptions AuthEmail { get; set; } = new() { PermitLimit = 5, WindowMinutes = 60 };
 }
 
 /// <summary>Fixed-window policy settings for one endpoint group.</summary>
