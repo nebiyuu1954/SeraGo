@@ -30,6 +30,9 @@ public static class ProfileEndpoints
 
         group.MapGet("/profile", GetProfileAsync).WithOpenApi();
         group.MapPut("/profile", UpdateProfileAsync).WithOpenApi();
+        // Resume → profile fields. Parse-only; the user reviews and then saves
+        // through PUT /profile above, so both paths share one validator.
+        group.MapPost("/profile/parse-resume", ParseResumeAsync).WithOpenApi();
 
         return app;
     }
@@ -83,6 +86,18 @@ public static class ProfileEndpoints
         // Role-specific — only the section matching the user's role is applied.
         public TalentProfileUpdate? Talent { get; set; }
         public RecruiterProfileUpdate? Recruiter { get; set; }
+    }
+
+    /// <summary>
+    /// Body of POST /api/account/profile/parse-resume.
+    ///
+    /// <c>ResumeUrl</c> carries whatever is stored on TalentProfile.ResumeUrl —
+    /// an R2 object KEY, not a public URL (resumes live in a private bucket).
+    /// The name is kept for symmetry with the profile field.
+    /// </summary>
+    public sealed class ParseResumeRequest
+    {
+        public string? ResumeUrl { get; set; }
     }
 
     public sealed class TalentProfileUpdate
@@ -317,6 +332,79 @@ public static class ProfileEndpoints
         await db.SaveChangesAsync();
 
         return Results.Ok(await BuildResponseAsync(user, db));
+    }
+
+    /// <summary>
+    /// POST /api/account/profile/parse-resume — read the caller's uploaded
+    /// resume and return the profile fields that could be extracted.
+    ///
+    /// Parse-only: NOTHING is saved here. The talent reviews (and edits) the
+    /// values and then saves them through PUT /api/account/profile, so this
+    /// flow inherits exactly the same validation as a manual edit — there is
+    /// deliberately no second save path to keep in sync.
+    /// </summary>
+    [Authorize]
+    private static async Task<IResult> ParseResumeAsync(
+        ParseResumeRequest request,
+        ClaimsPrincipal claims,
+        UserManager<ApplicationUser> userManager,
+        R2StorageService storageService,
+        MatchingClient matchingClient)
+    {
+        var user = await userManager.GetUserAsync(claims);
+        if (user is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        if (user.UserType != UserType.Talent)
+        {
+            return Results.Problem(
+                "Resume parsing is only available on talent profiles.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        // The stored value is an R2 object KEY (resumes/{userId}/{timestamp}_{name}.pdf).
+        var key = request.ResumeUrl?.Trim() ?? string.Empty;
+        if (key.Length == 0)
+        {
+            return Results.Problem(
+                "resumeUrl is required.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        // Ownership check. The other upload endpoints accept any "resumes/…"
+        // key, which would otherwise let one talent have somebody else's CV
+        // fetched, parsed and handed back as their own profile.
+        if (!key.StartsWith($"resumes/{user.Id}/", StringComparison.Ordinal))
+        {
+            return Results.Problem(
+                "You can only parse your own resume.",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        string presignedUrl;
+        try
+        {
+            // Short-lived (15 min) SigV4 GET. The AI service holds no R2
+            // credentials — it only ever sees this URL.
+            presignedUrl = storageService.GetPresignedDownloadUrlAsync(key);
+        }
+        catch (R2NotConfiguredException)
+        {
+            // Narrow catch, exactly like the upload endpoints: a genuine AWS
+            // failure must not be reported as "not configured".
+            return Results.Problem(
+                "File uploads are not configured on this server.",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        var result = await matchingClient.ParseResumeAsync(presignedUrl);
+
+        // The AI service is optional and an unreadable resume is a normal
+        // outcome, not an error the user must fix: unreachable ⇒ success:false.
+        // A scanned (image-only) PDF arrives the same way with charsExtracted 0.
+        return Results.Ok(result ?? new MatchingClient.ResumeParseResult { Success = false });
     }
 
     // --------------------------------------------------------------- Helpers
