@@ -7,8 +7,11 @@ namespace SeraGo.API.Services;
 /// don't exist, Swagger doesn't list them, and there's nothing
 /// to enumerate or probe.
 ///
-///   ADMIN_API_ENABLED  "true"/"1" keeps admin APIs on (default).
-///                      "false"/"0" /unset turns them off entirely.
+///   ADMIN_API_ENABLED  "true"/"1"/"yes"/"on" keeps admin APIs on.
+///                      "false"/"0"/unset turns them off entirely (default).
+///
+/// Secure by default: an environment that forgets to set the flag gets
+/// NO admin surface, not a public one. Enable it explicitly per environment.
 /// </summary>
 public sealed class AdminApiOptions
 {
@@ -17,8 +20,8 @@ public sealed class AdminApiOptions
     public AdminApiOptions()
     {
         var raw = Environment.GetEnvironmentVariable("ADMIN_API_ENABLED");
-        // Default: ON (admin APIs visible). Only explicitly disabling them hides everything.
-        Enabled = string.IsNullOrWhiteSpace(raw)
-            || raw.Trim().ToLowerInvariant() is "1" or "true" or "yes" or "on";
+        // Default: OFF. Only an explicit truthy value exposes the admin APIs.
+        Enabled = raw is not null
+            && raw.Trim().ToLowerInvariant() is "1" or "true" or "yes" or "on";
     }
 }
