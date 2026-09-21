@@ -80,10 +80,13 @@ export interface ResetPasswordRequest {
  * JsonSerializerContext (not ASP.NET's camelCase web defaults), so the wire
  * format is PascalCase: { TokenType, AccessToken, ExpiresIn, RefreshToken }.
  *
- * `RefreshToken` is null for the external (Google) flows: those deliver the
- * refresh token as the httpOnly `Aufy.RefreshToken` cookie instead of in the
- * body (only POST /api/auth/token returns it in the body). `AccessToken` is
- * always present in the body for the flows this app uses (we never pass
+ * Since the token endpoint uses "Aufy.BearerSignInCookieScheme", POST
+ * /api/auth/token now sets the httpOnly `Aufy.RefreshToken` cookie AND returns
+ * `RefreshToken` in the body. The cookie is what POST /api/auth/token/refresh
+ * actually reads (it accepts the token only as a cookie), which is why the
+ * refresh flow is same-origin only. The external (Google) flows set the same
+ * cookie and omit `RefreshToken` from the body. `AccessToken` is always
+ * present in the body for the flows this app uses (we never pass
  * `?useCookie=true`).
  */
 export interface AuthTokenResponse {
@@ -244,6 +247,68 @@ export interface TalentProfileUpdate {
   // Privacy
   profileVisibility?: string
   skillVisibility?: string
+}
+
+/* ------------------------------------------- Resume → profile auto-fill */
+
+/**
+ * One work-experience entry extracted from a resume.
+ *
+ * Mirrors `WorkExperienceEntry` in ProfileForm: `startDate`/`endDate` are
+ * `YYYY-MM-DD` because the form renders them as `<input type="date">`, and the
+ * form's schema requires every field — the parser emits save-ready rows only.
+ */
+export interface ParsedWorkExperience {
+  company: string
+  title: string
+  startDate: string
+  endDate: string
+  description: string
+}
+
+/** One education entry extracted from a resume. Mirrors `EducationEntry`. */
+export interface ParsedEducation {
+  level: string
+  institution: string
+  degree: string
+  gpa: string
+  startYear: string
+  endYear: string
+}
+
+/**
+ * Profile fields extracted from a resume. Every field is optional — a section
+ * that wasn't found comes back as null / [] rather than being guessed at.
+ */
+export interface ParsedResumeProfile {
+  headline: string | null
+  about: string | null
+  skills: string[]
+  experience: ParsedWorkExperience[]
+  education: ParsedEducation[]
+  currentProfession: string | null
+  /** Best-effort match against the Sectors table; null when unsure. */
+  currentIndustry: string | null
+  /** One of Entry | Junior | Mid | Senior | Lead. */
+  experienceLevel: string | null
+  yearsOfExperience: number | null
+}
+
+/**
+ * Data payload of POST /api/account/profile/parse-resume.
+ *
+ * `success: false` means the AI service was unreachable — an expected outcome,
+ * not an error. `success: true` with `charsExtracted: 0` (or an empty profile)
+ * means the PDF was read but nothing usable was found, which is what a scanned
+ * / image-only resume produces. Neither is shown as a failure: the user is told
+ * plainly and fills the form by hand.
+ */
+export interface ResumeParseResponse {
+  success: boolean
+  charsExtracted: number
+  pagesRead: number
+  fieldsFound: number
+  profile: ParsedResumeProfile | null
 }
 
 /** Recruiter section of PUT /api/account/profile. CompanyName is required. */
