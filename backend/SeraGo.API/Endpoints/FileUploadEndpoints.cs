@@ -96,9 +96,20 @@ public static class FileUploadEndpoints
 
         var folder = fileType == "avatar" ? "avatars" : "resumes";
         using var stream = file.OpenReadStream();
-        var url = await storageService.UploadFileAsync(user.Id, file.FileName, file.ContentType!, folder, stream);
-
-        return Results.Ok(new { Url = url });
+        try
+        {
+            var url = await storageService.UploadFileAsync(user.Id, file.FileName, file.ContentType!, folder, stream);
+            return Results.Ok(new { Url = url });
+        }
+        catch (R2NotConfiguredException)
+        {
+            // Deliberately narrow: ONLY the not-configured case becomes a 503.
+            // A blanket catch here would hide real AWS/network misconfigurations
+            // (bad credentials, wrong bucket, DNS failures) as "not configured".
+            return Results.Problem(
+                "File uploads are not configured on this server.",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
     }
 
     /// <summary>
@@ -177,6 +188,12 @@ public static class FileUploadEndpoints
                 result.PublicUrl,
                 result.Key));
         }
+        catch (R2NotConfiguredException)
+        {
+            return Results.Problem(
+                "File uploads are not configured on this server.",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
         catch (Exception ex)
         {
             return Results.Problem(
@@ -230,6 +247,12 @@ public static class FileUploadEndpoints
         {
             var url = storageService.GetPresignedDownloadUrlAsync(key);
             return Results.Ok(new { downloadUrl = url });
+        }
+        catch (R2NotConfiguredException)
+        {
+            return Results.Problem(
+                "File uploads are not configured on this server.",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
         }
         catch (Exception ex)
         {
