@@ -2,6 +2,7 @@ import { request } from './client.ts'
 import { API_ENDPOINTS } from './endpoints.ts'
 import type {
   ProfileResponse,
+  ResumeParseResponse,
   SetPasswordRequest,
   UpdateProfileRequest,
 } from '../types'
@@ -26,6 +27,30 @@ export function updateProfile(
   return request<ProfileResponse>(API_ENDPOINTS.account.profile, {
     method: 'PUT',
     body: payload,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+}
+
+/**
+ * Extracts profile fields from the user's stored resume PDF.
+ *
+ * Parse-only — nothing is persisted. The caller pre-fills the profile form
+ * with the result and the user saves it through `updateProfile`, which stays
+ * the single validated write path.
+ *
+ * POST /api/account/profile/parse-resume (Bearer auth)
+ *
+ * @param resumeUrl Whatever `TalentProfile.resumeUrl` holds — an R2 object KEY
+ *   (`resumes/{userId}/…`), not a public URL. Resumes live in a private bucket,
+ *   so the API mints a short-lived presigned GET for the extractor.
+ */
+export function parseResume(
+  accessToken: string,
+  resumeUrl: string,
+): Promise<ResumeParseResponse> {
+  return request<ResumeParseResponse>(API_ENDPOINTS.account.profileResumeParse, {
+    method: 'POST',
+    body: { resumeUrl },
     headers: { Authorization: `Bearer ${accessToken}` },
   })
 }
