@@ -5,11 +5,16 @@ import {
   fetchProfile,
   getApiErrorMessage,
   getStoredAuthTokens,
+  parseResume,
   updateProfile,
 } from '../../../api'
 import { useRequireRole, useUnsavedChanges } from '../../../hooks'
 import type { RequiredRole } from '../../../hooks'
-import type { ProfileResponse, UpdateProfileRequest } from '../../../types'
+import type {
+  ParsedResumeProfile,
+  ProfileResponse,
+  UpdateProfileRequest,
+} from '../../../types'
 import { useNavigate } from 'react-router-dom'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import UnsavedChangesDialog from '../../../components/ui/UnsavedChangesDialog.tsx'
@@ -653,6 +658,12 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [photoModalOpen, setPhotoModalOpen] = useState(false)
   const [resumeUploading, setResumeUploading] = useState(false)
+  const [resumeParsing, setResumeParsing] = useState(false)
+  const [resumeNotice, setResumeNotice] = useState<{
+    kind: 'filled' | 'empty'
+    message: string
+  } | null>(null)
+  const [resumeCtaDismissed, setResumeCtaDismissed] = useState(false)
   const { showToast } = useToast()
   const [validationModalOpen, setValidationModalOpen] = useState(false)
   const [validationErrors, setValidationErrors] = useState<{ field: string; message: string }[]>([])
@@ -1005,6 +1016,81 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
     }
   }
 
+  /**
+   * Drops parsed resume fields into the form without saving anything. Only the
+   * fields that were actually found are touched — everything else keeps
+   * whatever the user already had.
+   */
+  const applyParsedResume = (parsed: ParsedResumeProfile) => {
+    if (parsed.about) formik.setFieldValue('about', parsed.about)
+    if (parsed.skills.length > 0) formik.setFieldValue('skills', parsed.skills)
+    if (parsed.experience.length > 0) {
+      formik.setFieldValue('workExperience', parsed.experience)
+    }
+    if (parsed.education.length > 0) {
+      formik.setFieldValue('educationHistory', parsed.education)
+      // The form tracks the highest level in its own field, separate from each
+      // entry's `level`.
+      if (!formik.values.educationLevel) {
+        formik.setFieldValue('educationLevel', parsed.education[0].level)
+      }
+    }
+    if (parsed.experienceLevel) {
+      formik.setFieldValue('experienceLevel', parsed.experienceLevel)
+    }
+    if (parsed.yearsOfExperience !== null) {
+      formik.setFieldValue('yearsOfExperience', String(parsed.yearsOfExperience))
+    }
+    if (parsed.currentIndustry) {
+      formik.setFieldValue('currentIndustry', parsed.currentIndustry)
+    }
+    // `headline` has no field of its own in this form and carries the same kind
+    // of value as `currentProfession`, so it is only used as a fallback.
+    const profession = parsed.currentProfession ?? parsed.headline
+    if (profession) formik.setFieldValue('currentProfession', profession)
+  }
+
+  /**
+   * Sends a stored resume key to the API for extraction and pre-fills the form
+   * with whatever comes back. Called after an upload, and on demand from the
+   * resume section.
+   *
+   * Every failure mode — AI service unreachable, scanned/image-only PDF, no
+   * recognisable sections — ends in the same calm message rather than an error
+   * state: the resume is optional, the profile form is not.
+   */
+  const parseUploadedResume = async (resumeKey: string) => {
+    const tokens = getStoredAuthTokens()
+    if (!tokens) return
+    setResumeParsing(true)
+    setResumeNotice(null)
+    try {
+      const result = await parseResume(tokens.accessToken, resumeKey)
+      const parsed = result.profile
+      if (result.success && parsed && result.fieldsFound > 0) {
+        applyParsedResume(parsed)
+        setResumeNotice({
+          kind: 'filled',
+          message: `We read your resume and pre-filled ${result.fieldsFound} section${
+            result.fieldsFound === 1 ? '' : 's'
+          }. Nothing is saved yet — review the fields below, then press Save profile.`,
+        })
+      } else {
+        setResumeNotice({
+          kind: 'empty',
+          message: "We couldn't read your resume. Please fill your profile manually.",
+        })
+      }
+    } catch {
+      setResumeNotice({
+        kind: 'empty',
+        message: "We couldn't read your resume. Please fill your profile manually.",
+      })
+    } finally {
+      setResumeParsing(false)
+    }
+  }
+
   const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -1017,17 +1103,24 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
       return
     }
     setResumeUploading(true)
+    setResumeNotice(null)
     setSubmitError(null)
+    let uploadedKey = ''
     try {
       const { uploadFile } = await import('../../../api/fileUpload.ts')
-      const url = await uploadFile(file, 'resume')
-      formik.setFieldValue('resumeUrl', url)
+      uploadedKey = await uploadFile(file, 'resume')
+      formik.setFieldValue('resumeUrl', uploadedKey)
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Upload failed')
+      return
     } finally {
       setResumeUploading(false)
       if (resumeInputRef.current) resumeInputRef.current.value = ''
     }
+
+    // The upload has already succeeded. Parsing is a convenience layered on top
+    // of it and must never turn a successful upload into an error.
+    await parseUploadedResume(uploadedKey)
   }
 
   if (auth.status !== 'authenticated') {
@@ -1042,6 +1135,18 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
   }
 
   const completion = profile?.completion
+
+  /**
+   * True while a talent has nothing meaningful on their profile yet — the only
+   * state that shows the resume-first call to action.
+   */
+  const profileIsEmpty =
+    isTalent &&
+    !formik.values.about.trim() &&
+    formik.values.skills.length === 0 &&
+    formik.values.workExperience.length === 0 &&
+    !formik.values.experienceLevel &&
+    !formik.values.currentProfession.trim()
 
   /* ——— Talent: count fields filled per section for accordion badges ——— */
   const personalFilled = [
@@ -1309,6 +1414,77 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
             <div className="absolute top-0 right-0 w-64 h-full bg-gradient-to-l from-surface-container-low to-transparent opacity-50 z-0 pointer-events-none" />
           </section>
         </>
+      )}
+
+      {/* Resume-first call to action — only while the talent profile is empty */}
+      {isTalent && !loading && !resumeCtaDismissed && profileIsEmpty && !resumeNotice && (
+        <div className="mt-6 rounded-xl border border-primary/30 bg-primary-container/10 p-5">
+          <div className="flex items-start gap-3">
+            <span className="material-symbols-outlined text-[24px] text-primary">
+              auto_awesome
+            </span>
+            <div className="min-w-0">
+              <h2 className="font-label-md text-label-md font-semibold text-on-surface">
+                Start with your resume
+              </h2>
+              <p className="mt-1 font-label-sm text-label-sm text-on-surface-variant">
+                Upload your CV and we'll fill in your skills, experience and education. You
+                review everything before it is saved.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => resumeInputRef.current?.click()}
+              disabled={resumeUploading || resumeParsing}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 font-label-md text-label-md text-on-primary transition-colors hover:opacity-90 disabled:opacity-50"
+            >
+              {resumeUploading || resumeParsing ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-on-primary/30 border-t-on-primary" />
+              ) : (
+                <span className="material-symbols-outlined text-[18px]">upload_file</span>
+              )}
+              {resumeParsing ? 'Reading resume…' : 'Upload resume'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setResumeCtaDismissed(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low"
+            >
+              Fill manually
+            </button>
+          </div>
+          <p className="mt-2 font-label-sm text-label-sm text-on-surface-variant/60">
+            PDF only · Max 10MB · text-based PDFs work best
+          </p>
+        </div>
+      )}
+
+      {/* Parse result — a review reminder, never an error */}
+      {isTalent && resumeNotice && (
+        <div
+          role="status"
+          className={cn(
+            'mt-6 flex items-start gap-2.5 rounded-xl border px-4 py-3.5 font-label-md text-label-md',
+            resumeNotice.kind === 'filled'
+              ? 'border-success/30 bg-surface-container-lowest text-on-surface'
+              : 'border-amber-200 bg-amber-50 text-amber-900',
+          )}
+        >
+          <span className="material-symbols-outlined mt-0.5 text-lg">
+            {resumeNotice.kind === 'filled' ? 'check_circle' : 'info'}
+          </span>
+          <span className="min-w-0 flex-1">{resumeNotice.message}</span>
+          <button
+            type="button"
+            onClick={() => setResumeNotice(null)}
+            aria-label="Dismiss"
+            className="shrink-0 rounded-lg p-0.5 text-on-surface-variant transition-colors hover:bg-surface-container-low"
+          >
+            <span className="material-symbols-outlined text-[18px]">close</span>
+          </button>
+        </div>
       )}
 
       {/* Completion banner */}
@@ -2068,6 +2244,19 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                         >
                           <span className="material-symbols-outlined text-[18px]">open_in_new</span>
                           View resume
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => parseUploadedResume(formik.values.resumeUrl)}
+                          disabled={resumeParsing}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-primary transition-colors hover:bg-primary-container/10 disabled:opacity-50"
+                        >
+                          {resumeParsing ? (
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                          ) : (
+                            <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
+                          )}
+                          {resumeParsing ? 'Reading…' : 'Fill from resume'}
                         </button>
                       </div>
                     </div>
