@@ -1,9 +1,7 @@
 using System.Globalization;
 using System.Security.Claims;
-using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SeraGo.API.Services;
 using SeraGo.Core.Domain;
@@ -14,15 +12,12 @@ using SeraGo.Infrastructure.Context;
 namespace SeraGo.API.Endpoints;
 
 /// <summary>
-/// Job application API — talent applies to Serago-posted jobs; recruiters
-/// review and manage the applicants for their own postings.
+/// Job application API — talents apply to Serago-posted jobs and track their
+/// own applications.
 ///
 /// POST   /api/applications               — talent applies to a Serago job
 /// GET    /api/applications               — talent: my applications
-/// GET    /api/applications/all           — recruiter: all applications across their jobs
-/// GET    /api/applications/job/{jobId}   — recruiter: applications for a job
-/// PATCH  /api/applications/{id}/status   — recruiter: update application status
-/// GET    /api/applications/{id}          — detail (talent sees own; recruiter sees for own jobs)
+/// GET    /api/applications/{id}          — detail (the talent's own; admins see all)
 ///
 /// Only Serago-posted jobs (SourceName null or "SeraGo") accept applications.
 /// External scraper jobs redirect the applicant to the source website.
@@ -35,13 +30,7 @@ public static class ApplicationEndpoints
 
         group.MapPost("/", ApplyAsync).RequireRateLimiting("jobs_write").WithOpenApi();
         group.MapGet("/", ListMyApplicationsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
-        group.MapGet("/stats", GetRecruiterJobStatsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
-        group.MapGet("/all", ListAllRecruiterApplicationsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
-        group.MapGet("/job/{jobId:guid}", ListJobApplicationsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
-        // Recruiter-initiated: score the job's applicants now ("Run AI matching").
-        group.MapPost("/job/{jobId:guid}/match", MatchApplicationsAsync).RequireRateLimiting("jobs_write").WithOpenApi();
         group.MapGet("/{id:guid}", GetApplicationAsync).RequireRateLimiting("jobs_read").WithOpenApi();
-        group.MapPatch("/{id:guid}/status", UpdateStatusAsync).RequireRateLimiting("jobs_write").WithOpenApi();
 
         return app;
     }
@@ -53,10 +42,6 @@ public static class ApplicationEndpoints
         string? CoverLetter,
         string? ResumeUrl,
         bool? ShareProfile);
-
-    public sealed record UpdateApplicationStatusRequest(
-        string Status,
-        string? RecruiterNotes);
 
     public sealed record ApplicationResponse(
         Guid Id,
@@ -93,34 +78,6 @@ public static class ApplicationEndpoints
         int TotalPages,
         bool HasNextPage);
 
-    /// <summary>The envelope's data for POST /api/applications/job/{jobId}/match.</summary>
-    public sealed record ApplicationsMatchResponse(
-        int Scored, int Cached, int Failed, int Total, string? Message);
-
-    public sealed record RecruiterJobStats(
-        Guid JobId,
-        string JobTitle,
-        string JobCompany,
-        string? JobLocation,
-        string JobType,
-        int ViewCount,
-        int PendingCount,
-        int ReviewedCount,
-        int InterviewCount,
-        int HiredCount,
-        int RejectedCount,
-        int TotalApplications);
-
-    private class JobStatsItem
-    {
-        public Guid JobId { get; set; }
-        public string JobTitle { get; set; } = string.Empty;
-        public string JobCompany { get; set; } = string.Empty;
-        public string? JobLocation { get; set; }
-        public string JobType { get; set; } = string.Empty;
-        public int ViewCount { get; set; }
-    }
-
     // ------------------------------------------------------------- Handlers
 
     /// <summary>POST /api/applications — talent applies to a Serago job.</summary>
@@ -141,8 +98,6 @@ public static class ApplicationEndpoints
         }
 
         var job = await db.Jobs.AsNoTracking()
-            .Include(j => j.PostedBy)
-                .ThenInclude(u => u!.RecruiterProfile)
             .FirstOrDefaultAsync(j => j.Id == request.JobId, ct);
         if (job is null)
         {
@@ -205,7 +160,7 @@ public static class ApplicationEndpoints
         db.JobApplications.Add(application);
         await db.SaveChangesAsync(ct);
 
-        // Notify the recruiter that someone applied
+        // Notify the job poster (an admin) that someone applied
         if (job.PostedByUserId is not null)
         {
             var talentName = user.FirstName is not null && user.LastName is not null
@@ -330,11 +285,8 @@ public static class ApplicationEndpoints
         var page = Math.Clamp(query.Page ?? 1, 1, 100_000);
         var pageSize = Math.Clamp(query.PageSize ?? 20, 1, 50);
 
-        // Load job + user + the job poster's RecruiterProfile (for company-privacy check).
         var items = await q
             .Include(a => a.Job)
-                .ThenInclude(j => j!.PostedBy)
-                    .ThenInclude(u => u!.RecruiterProfile)
             .Include(a => a.User)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -343,208 +295,6 @@ public static class ApplicationEndpoints
         var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
 
         var response = items.Select(a => ToResponse(a, a.User!, a.Job!)).ToList();
-
-        return Results.Ok(new ApplicationListData(
-            response, totalCount, page, pageSize, totalPages, page < totalPages));
-    }
-
-    /// <summary>GET /api/applications/stats — recruiter: per-job application counts + view counts.</summary>
-    [Authorize(Roles = Roles.Recruiter + "," + Roles.Admin)]
-    private static async Task<IResult> GetRecruiterJobStatsAsync(
-        ClaimsPrincipal claims,
-        UserManager<ApplicationUser> userManager,
-        ApplicationDbContext db,
-        CancellationToken ct)
-    {
-        var user = await userManager.GetUserAsync(claims);
-        if (user is null)
-        {
-            return Results.Unauthorized();
-        }
-
-        var isAdmin = await userManager.IsInRoleAsync(user, Roles.Admin);
-
-        // Get the recruiter's published jobs with view counts.
-        var jobs = await db.Jobs
-            .AsNoTracking()
-            .Where(j => (isAdmin || j.PostedByUserId == user.Id) && j.Status == JobStatus.Published && j.IsActive)
-            .Select(j => new JobStatsItem
-            {
-                JobId = j.Id,
-                JobTitle = j.Title,
-                JobCompany = j.Company,
-                JobLocation = j.Location,
-                JobType = EnumCamel(j.JobType.ToString()),
-                ViewCount = j.ViewCount,
-            })
-            .ToListAsync(ct);
-
-        var jobIds = jobs.Select(j => j.JobId).ToList();
-
-        // Get application counts per job per status.
-        var statusCounts = await db.JobApplications
-            .AsNoTracking()
-            .Where(a => jobIds.Contains(a.JobId))
-            .GroupBy(a => new { a.JobId, a.Status })
-            .Select(g => new { g.Key.JobId, Status = EnumCamel(g.Key.Status.ToString()), Count = g.Count() })
-            .ToListAsync(ct);
-
-        // Build the response.
-        var result = jobs.Select(j =>
-        {
-            var counts = statusCounts.Where(c => c.JobId == j.JobId).ToList();
-            return new RecruiterJobStats(
-                j.JobId,
-                j.JobTitle,
-                j.JobCompany,
-                j.JobLocation,
-                j.JobType,
-                j.ViewCount,
-                counts.FirstOrDefault(c => c.Status == "pending")?.Count ?? 0,
-                counts.FirstOrDefault(c => c.Status == "reviewed")?.Count ?? 0,
-                counts.FirstOrDefault(c => c.Status == "interview")?.Count ?? 0,
-                counts.FirstOrDefault(c => c.Status == "hired")?.Count ?? 0,
-                counts.FirstOrDefault(c => c.Status == "rejected")?.Count ?? 0,
-                counts.Sum(c => c.Count));
-        }).ToList();
-
-        return Results.Ok(result);
-    }
-
-    /// <summary>GET /api/applications/all — recruiter: all applications across all their posted jobs.</summary>
-    [Authorize(Roles = Roles.Recruiter + "," + Roles.Admin)]
-    private static async Task<IResult> ListAllRecruiterApplicationsAsync(
-        ClaimsPrincipal claims,
-        UserManager<ApplicationUser> userManager,
-        ApplicationDbContext db,
-        MatchingClient matchingClient,
-        [AsParameters] ApplicationListQuery query,
-        CancellationToken ct)
-    {
-        var user = await userManager.GetUserAsync(claims);
-        if (user is null)
-        {
-            return Results.Unauthorized();
-        }
-
-        var isAdmin = await userManager.IsInRoleAsync(user, Roles.Admin);
-
-        IQueryable<JobApplication> q = db.JobApplications
-            .AsNoTracking()
-            .Where(a => isAdmin || a.Job!.PostedByUserId == user.Id);
-
-        // Filter by status if provided.
-        if (!string.IsNullOrWhiteSpace(query.Status)
-            && Enum.TryParse<ApplicationStatus>(query.Status, ignoreCase: true, out var statusFilter))
-        {
-            q = q.Where(a => a.Status == statusFilter);
-        }
-
-        // Filter by specific job if provided.
-        if (query.JobId.HasValue)
-        {
-            q = q.Where(a => a.JobId == query.JobId.Value);
-        }
-
-        // Free-text search across applicant name, email, job title, company.
-        if (!string.IsNullOrWhiteSpace(query.Search))
-        {
-            var search = query.Search.Trim().ToLower();
-            q = q.Where(a =>
-                (a.User!.FirstName + " " + a.User.LastName).ToLower().Contains(search)
-                || (a.User.Email != null && a.User.Email.ToLower().Contains(search))
-                || (a.Job!.Title != null && a.Job.Title.ToLower().Contains(search))
-                || (a.Job.Company != null && a.Job.Company.ToLower().Contains(search))
-            );
-        }
-
-        // Sort.
-        q = query.Sort?.ToLowerInvariant() switch
-        {
-            "oldest" => q.OrderBy(a => a.AppliedAt),
-            _ => q.OrderByDescending(a => a.AppliedAt),
-        };
-
-        var totalCount = await q.CountAsync(ct);
-        var page = Math.Clamp(query.Page ?? 1, 1, 100_000);
-        var pageSize = Math.Clamp(query.PageSize ?? 20, 1, 50);
-
-        var items = await q
-            .Include(a => a.User)
-            .ThenInclude(u => u!.TalentProfile)
-            .Include(a => a.Job)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(ct);
-
-        var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
-
-        var response = await AnnotateApplicationScoresAsync(
-            items.Select(a => ToResponse(a, a.User!, a.Job!)).ToList(),
-            matchingClient, ct);
-
-        return Results.Ok(new ApplicationListData(
-            response, totalCount, page, pageSize, totalPages, page < totalPages));
-    }
-
-    /// <summary>GET /api/applications/job/{jobId} — recruiter: all applications for a job they own.</summary>
-    [Authorize(Roles = Roles.Recruiter + "," + Roles.Admin)]
-    private static async Task<IResult> ListJobApplicationsAsync(
-        Guid jobId,
-        ClaimsPrincipal claims,
-        UserManager<ApplicationUser> userManager,
-        ApplicationDbContext db,
-        MatchingClient matchingClient,
-        [AsParameters] PaginationQuery pagination,
-        CancellationToken ct)
-    {
-        var user = await userManager.GetUserAsync(claims);
-        if (user is null)
-        {
-            return Results.Unauthorized();
-        }
-
-        var job = await db.Jobs.AsNoTracking()
-            .FirstOrDefaultAsync(j => j.Id == jobId, ct);
-        if (job is null)
-        {
-            return Results.NotFound();
-        }
-
-        var isAdmin = await userManager.IsInRoleAsync(user, Roles.Admin);
-        if (!isAdmin && job.PostedByUserId != user.Id)
-        {
-            return Results.Problem(
-                "You can only view applications for jobs you posted.",
-                statusCode: StatusCodes.Status403Forbidden);
-        }
-
-        var q = db.JobApplications
-            .AsNoTracking()
-            .Where(a => a.JobId == jobId)
-            .OrderByDescending(a => a.AppliedAt);
-
-        var totalCount = await q.CountAsync(ct);
-        var page = Math.Clamp(pagination.Page ?? 1, 1, 100_000);
-        var pageSize = Math.Clamp(pagination.PageSize ?? 20, 1, 50);
-
-        var items = await q
-            .Include(a => a.User)
-            .ThenInclude(u => u!.TalentProfile)
-            .Include(a => a.Job)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(ct);
-
-        var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
-
-        var response = await AnnotateApplicationScoresAsync(
-            items.Select(a =>
-            {
-                var applicant = a.User!;
-                return ToResponse(a, applicant, a.Job!);
-            }).ToList(),
-            matchingClient, ct);
 
         return Results.Ok(new ApplicationListData(
             response, totalCount, page, pageSize, totalPages, page < totalPages));
@@ -569,8 +319,6 @@ public static class ApplicationEndpoints
         var application = await db.JobApplications
             .AsNoTracking()
             .Include(a => a.Job)
-                .ThenInclude(j => j!.PostedBy)
-                    .ThenInclude(u => u!.RecruiterProfile)
             .Include(a => a.User)
             .ThenInclude(u => u!.TalentProfile)
             .FirstOrDefaultAsync(a => a.Id == id, ct);
@@ -581,10 +329,9 @@ public static class ApplicationEndpoints
 
         var isAdmin = await userManager.IsInRoleAsync(user, Roles.Admin);
         var isOwner = application.UserId == user.Id;
-        var isRecruiterForJob = application.Job?.PostedByUserId == user.Id;
 
-        // Talent can see their own; recruiter can see for their jobs; admin sees all.
-        if (!isOwner && !isRecruiterForJob && !isAdmin)
+        // A talent can see their own application; admins see all.
+        if (!isOwner && !isAdmin)
         {
             return Results.NotFound();
         }
@@ -596,308 +343,7 @@ public static class ApplicationEndpoints
         return Results.Ok(response[0]);
     }
 
-    /// <summary>PATCH /api/applications/{id}/status — recruiter updates application status.</summary>
-    [Authorize(Roles = Roles.Recruiter + "," + Roles.Admin)]
-    private static async Task<IResult> UpdateStatusAsync(
-        Guid id,
-        UpdateApplicationStatusRequest request,
-        ClaimsPrincipal claims,
-        UserManager<ApplicationUser> userManager,
-        ApplicationDbContext db,
-        NotificationService notificationService,
-        CancellationToken ct)
-    {
-        var user = await userManager.GetUserAsync(claims);
-        if (user is null)
-        {
-            return Results.Unauthorized();
-        }
-
-        var application = await db.JobApplications
-            .Include(a => a.Job)
-            .FirstOrDefaultAsync(a => a.Id == id, ct);
-        if (application is null)
-        {
-            return Results.NotFound();
-        }
-
-        var isAdmin = await userManager.IsInRoleAsync(user, Roles.Admin);
-        if (!isAdmin && application.Job?.PostedByUserId != user.Id)
-        {
-            return Results.Problem(
-                "You can only update applications for jobs you posted.",
-                statusCode: StatusCodes.Status403Forbidden);
-        }
-
-        if (!Enum.TryParse<ApplicationStatus>(request.Status, ignoreCase: true, out var newStatus))
-        {
-            return Results.Problem(
-                $"Invalid status '{request.Status}'. Valid values: Pending, Reviewed, Interview, Hired, Rejected.",
-                statusCode: StatusCodes.Status400BadRequest);
-        }
-
-        var now = DateTimeOffset.UtcNow;
-        application.Status = newStatus;
-        application.StatusUpdatedAt = now;
-        application.UpdatedAt = now;
-
-        if (request.RecruiterNotes is not null)
-        {
-            application.RecruiterNotes = request.RecruiterNotes.Trim();
-        }
-
-        await db.SaveChangesAsync(ct);
-
-        // Notify the talent that their application status changed
-        var talentName = application.User?.FirstName is not null && application.User?.LastName is not null
-            ? $"{application.User.FirstName} {application.User.LastName}"
-            : application.User?.UserName ?? "You";
-        var jobTitle = application.Job?.Title ?? "the job";
-        var statusLabel = newStatus switch
-        {
-            ApplicationStatus.Reviewed => "reviewed",
-            ApplicationStatus.Interview => "moved to interview",
-            ApplicationStatus.Hired => "accepted",
-            ApplicationStatus.Rejected => "not selected",
-            _ => newStatus.ToString().ToLower()
-        };
-
-        await notificationService.CreateAsync(new NotificationService.CreateNotificationRequest(
-            UserId: application.UserId,
-            Type: NotificationType.ApplicationStatusChanged,
-            Title: "Application status updated",
-            Body: $"Your application for {jobTitle} has been {statusLabel}",
-            Data: $"{{\"job_id\":\"{application.JobId}\",\"application_id\":\"{application.Id}\",\"new_status\":\"{newStatus}\"}}",
-            SkipEmail: false,
-            SkipTelegram: true
-        ));
-
-        // Reload with navigation properties for the response.
-        await db.Entry(application).Reference(a => a.User).LoadAsync(ct);
-        await db.Entry(application).Reference(a => a.Job).LoadAsync(ct);
-
-        return Results.Ok(ToResponse(application, application.User!, application.Job!));
-    }
-
     // --------------------------------------------------------------- Helpers
-
-    /// <summary>
-    /// Build a JSON snapshot of the talent's profile data at apply time.
-    /// When shareProfile is true, includes all visible fields (respecting ProfileVisibility).
-    /// When false (resume-only), only mandatory fields are included: name, email,
-    /// city, country, experience level, years of experience, and highest education level.
-    /// </summary>
-    /// <summary>
-    /// POST /api/applications/job/{jobId}/match — the recruiter's "Run AI
-    /// matching" button on the job's applicants. Scores every application of
-    /// the job (from each applicant's apply-time profile snapshot) right now
-    /// via the AI service; the frontend then re-fetches the list, whose items
-    /// are annotated with the stored scores.
-    /// </summary>
-    [Authorize(Roles = Roles.Recruiter + "," + Roles.Admin)]
-    private static async Task<IResult> MatchApplicationsAsync(
-        Guid jobId,
-        ClaimsPrincipal claims,
-        UserManager<ApplicationUser> userManager,
-        ApplicationDbContext db,
-        MatchingClient matchingClient,
-        CancellationToken ct)
-    {
-        var user = await userManager.GetUserAsync(claims);
-        if (user is null)
-        {
-            return Results.Unauthorized();
-        }
-
-        var isAdmin = await userManager.IsInRoleAsync(user, Roles.Admin);
-        var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == jobId, ct);
-        if (job is null)
-        {
-            return Results.NotFound();
-        }
-        if (!isAdmin && job.PostedByUserId != user.Id)
-        {
-            // Don't leak other recruiters' jobs/applicants.
-            return Results.NotFound();
-        }
-
-        var applications = await db.JobApplications.AsNoTracking()
-            .Where(a => a.JobId == jobId)
-            .OrderByDescending(a => a.AppliedAt)
-            .Take(200)
-            .ToListAsync(ct);
-
-        if (applications.Count == 0)
-        {
-            return Results.Ok(new ApplicationsMatchResponse(0, 0, 0, 0,
-                "No one has applied to this job yet."));
-        }
-
-        var entries = applications.Select(a => BuildApplicationMatchEntry(a, job)).ToList();
-        var result = await matchingClient.RescoreApplicationsAsync(entries, ct);
-
-        if (!result.Succeeded)
-        {
-            return Results.Ok(new ApplicationsMatchResponse(0, 0, 0, entries.Count,
-                "The AI matching service is not reachable right now — try again in a moment."));
-        }
-        if (result.Scored == 0 && result.Cached == 0)
-        {
-            return Results.Ok(new ApplicationsMatchResponse(0, 0, result.Failed, entries.Count,
-                "None could be matched — applicants who didn't share enough of their profile when applying can't be scored."));
-        }
-        if (result.Scored == 0 && result.Cached > 0)
-        {
-            return Results.Ok(new ApplicationsMatchResponse(0, result.Cached, result.Failed, entries.Count,
-                "Matches are already up to date."));
-        }
-
-        return Results.Ok(new ApplicationsMatchResponse(
-            result.Scored, result.Cached, result.Failed, entries.Count, null));
-    }
-
-    /// <summary>
-    /// Builds one AI rescore payload entry from an application's apply-time
-    /// profile snapshot (<see cref="JobApplication.ProfileSnapshot"/>). The
-    /// snapshot is the source of truth — what the talent shared when they
-    /// applied — even if they later changed their profile. Applications
-    /// without enough shared data simply produce an entry the AI reports as
-    /// unscorable.
-    /// </summary>
-    private static Dictionary<string, object?> BuildApplicationMatchEntry(
-        JobApplication app, Job job)
-    {
-        JsonElement root;
-        if (!string.IsNullOrWhiteSpace(app.ProfileSnapshot))
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(app.ProfileSnapshot);
-                root = doc.RootElement.Clone();
-            }
-            catch
-            {
-                root = default;
-            }
-        }
-        else
-        {
-            root = default;
-        }
-
-        string Str(string key)
-        {
-            if (root.ValueKind != JsonValueKind.Object
-                || !root.TryGetProperty(key, out var e)
-                || e.ValueKind != JsonValueKind.String)
-            {
-                return string.Empty;
-            }
-            return e.GetString() ?? string.Empty;
-        }
-
-        var talent = new Dictionary<string, object?>
-        {
-            ["userId"] = app.UserId,
-            ["headline"] = null,
-            ["about"] = NullIfBlank(Str("about")),
-            ["skills"] = ReadStringList(root, "skills"),
-            ["experienceLevel"] = NullIfBlank(Str("experienceLevel")),
-            ["yearsOfExperience"] = ReadNullableInt(root, "yearsOfExperience"),
-            ["currentIndustry"] = NullIfBlank(Str("currentIndustry")),
-            ["currentProfession"] = NullIfBlank(Str("currentProfession")),
-            ["workMode"] = NullIfBlank(Str("workMode")),
-            ["desiredRoles"] = ReadStringList(root, "desiredRoles"),
-            ["desiredJobTypes"] = new List<string>(),
-            ["preferredLocations"] = ReadStringList(root, "preferredLocations"),
-            ["workExperience"] = NullIfBlank(Str("workExperience")),
-            ["educationHistory"] = NullIfBlank(Str("educationHistory")),
-            ["preferredSectorIds"] = new List<string>(),
-        };
-
-        return new Dictionary<string, object?>
-        {
-            ["applicationId"] = app.Id.ToString(),
-            ["talentProfile"] = talent,
-            ["job"] = BuildJobMatchingPayload(job),
-        };
-    }
-
-    private static List<string> ReadStringList(JsonElement root, string key)
-    {
-        var result = new List<string>();
-        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty(key, out var e))
-        {
-            return result;
-        }
-
-        void AddStrings(JsonElement arr)
-        {
-            foreach (var item in arr.EnumerateArray())
-            {
-                if (item.ValueKind == JsonValueKind.String
-                    && !string.IsNullOrWhiteSpace(item.GetString()))
-                {
-                    result.Add(item.GetString()!);
-                }
-            }
-        }
-
-        if (e.ValueKind == JsonValueKind.Array)
-        {
-            AddStrings(e);
-        }
-        else if (e.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(e.GetString()))
-        {
-            // Some snapshot lists (e.g. preferredLocations) are stored as a
-            // JSON string — unwrap them.
-            try
-            {
-                using var nested = JsonDocument.Parse(e.GetString()!);
-                if (nested.RootElement.ValueKind == JsonValueKind.Array)
-                {
-                    AddStrings(nested.RootElement);
-                }
-            }
-            catch
-            {
-                // Not valid JSON — ignore.
-            }
-        }
-
-        return result;
-    }
-
-    private static int? ReadNullableInt(JsonElement root, string key)
-    {
-        if (root.ValueKind == JsonValueKind.Object
-            && root.TryGetProperty(key, out var e)
-            && e.ValueKind == JsonValueKind.Number
-            && e.TryGetInt32(out var value))
-        {
-            return value;
-        }
-        return null;
-    }
-
-    /// <summary>The job fields the AI service scores against (same shape as
-    /// the webhook payloads).</summary>
-    private static Dictionary<string, object?> BuildJobMatchingPayload(Job job) => new()
-    {
-        ["jobId"] = job.Id.ToString(),
-        ["title"] = job.Title,
-        ["description"] = job.Description,
-        ["company"] = job.Company,
-        ["location"] = job.Location,
-        ["sectorId"] = job.SectorId?.ToString(),
-        ["sectorName"] = job.SectorName,
-        ["experienceLevel"] = job.ExperienceLevel,
-        ["jobType"] = job.JobType.ToString(),
-        ["workMode"] = job.WorkMode.ToString(),
-        ["skills"] = job.Skills,
-        ["experienceMinYears"] = job.ExperienceMinYears,
-        ["experienceMaxYears"] = job.ExperienceMaxYears,
-    };
 
     private static string BuildProfileSnapshot(ApplicationUser user, TalentProfile? profile, bool shareProfile)
     {
@@ -1019,10 +465,7 @@ public static class ApplicationEndpoints
     private static ApplicationResponse ToResponse(
         JobApplication a, ApplicationUser user, Job job)
     {
-        // Check if the job poster's company is private.
-        var isCompanyPrivate = job.PostedBy?.RecruiterProfile?.IsCompanyPrivate == true;
-
-        // Company logo: prefer job's own logo, fall back to the recruiter's avatar.
+        // Company logo: prefer the job's own logo, fall back to the poster's avatar.
         var companyLogo = NullIfBlank(job.CompanyLogoUrl)
                           ?? NullIfBlank(job.PostedBy?.AvatarUrl);
 
@@ -1030,8 +473,8 @@ public static class ApplicationEndpoints
         a.Id,
         a.JobId,
         job.Title,
-        isCompanyPrivate ? "Confidential Company" : job.Company,
-        isCompanyPrivate ? null : job.Location,
+        job.Company,
+        job.Location,
         job.SourceName,
         a.UserId,
         $"{user.FirstName} {user.LastName}".Trim(),
@@ -1047,7 +490,7 @@ public static class ApplicationEndpoints
         a.ProfileSnapshot,
         NullIfBlank(job.Salary),
         FormatDate(job.Deadline),
-        isCompanyPrivate ? null : companyLogo,
+        companyLogo,
         null,   // MatchScore — annotated after listing where applicable
         null,   // MatchedSkills
         null);  // MissingSkills
@@ -1067,12 +510,6 @@ public static class ApplicationEndpoints
     private static string? NullIfBlank(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    public sealed class PaginationQuery
-    {
-        public int? Page { get; set; }
-        public int? PageSize { get; set; }
-    }
-
     public sealed class ApplicationListQuery
     {
         public int? Page { get; set; }
@@ -1081,10 +518,7 @@ public static class ApplicationEndpoints
         /// <summary>Filter by status: pending, reviewed, accepted, rejected.</summary>
         public string? Status { get; set; }
 
-        /// <summary>Filter by a specific job id the recruiter posted.</summary>
-        public Guid? JobId { get; set; }
-
-        /// <summary>Free-text search across applicant name, email, job title, company.</summary>
+        /// <summary>Free-text search across job title, company.</summary>
         public string? Search { get; set; }
 
         /// <summary>Sort order: "newest" (default) or "oldest".</summary>

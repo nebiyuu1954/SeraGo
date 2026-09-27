@@ -41,7 +41,7 @@ public static class AdminStatsOverviewEndpoint
         int NewToday, int NewThisWeek, int NewThisMonth,
         RoleBreakdown ByRole);
 
-    public sealed record RoleBreakdown(int Talent, int Recruiter, int Admin);
+    public sealed record RoleBreakdown(int Talent, int Admin);
 
     public sealed record ScraperSiteStats(
         string Source, string Name, string Status,
@@ -107,7 +107,6 @@ public static class AdminStatsOverviewEndpoint
         var activeThisMonth = await GetActiveUserCountAsync(db, monthAgo, ct);
 
         var talentCount = users.Count(u => u.UserType == UserType.Talent);
-        var recruiterCount = users.Count(u => u.UserType == UserType.Recruiter);
         var adminCount = users.Count(u => u.UserType == UserType.Admin);
 
         // ---- Jobs ----
@@ -168,7 +167,7 @@ public static class AdminStatsOverviewEndpoint
                 totalUsers,
                 activeToday, activeThisWeek, activeThisMonth,
                 newToday, newThisWeek, newThisMonth,
-                new RoleBreakdown(talentCount, recruiterCount, adminCount)),
+                new RoleBreakdown(talentCount, adminCount)),
             Scraper: scraperToday,
             Jobs: new JobStats(
                 jobCounts.Values.Sum(),

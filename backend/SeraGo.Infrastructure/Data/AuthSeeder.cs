@@ -10,11 +10,13 @@ using SeraGo.Infrastructure.Context;
 namespace SeraGo.Infrastructure.Data;
 
 /// <summary>
-/// Seeds the three roles (Admin, Talent, Recruiter) and the bootstrap Admin
-/// account. Also keeps the "every Talent/Recruiter has a profile row"
-/// invariant: new signups get one from the signup extension, this repairs
-/// accounts created before profiles existed. Runs on startup (see Program.cs).
-/// Idempotent — safe to run every boot.
+/// Seeds the roles (Admin, Talent) and the bootstrap Admin account. Also keeps
+/// the "every Talent has a profile row" invariant: new signups get one from the
+/// signup extension, this repairs accounts created before profiles existed.
+/// Runs on startup (see Program.cs). Idempotent — safe to run every boot.
+///
+/// Recruiter accounts (a retired role) are deactivated here so they can no
+/// longer sign in.
 /// </summary>
 public class AuthSeeder(
     UserManager<ApplicationUser> userManager,
@@ -39,21 +41,35 @@ public class AuthSeeder(
             }
         }
 
-        // 2. Backfill: every Talent/Recruiter user must have a profile row.
-        var usersMissingProfiles = await userManager.Users
-            .Where(u => u.UserType == UserType.Talent || u.UserType == UserType.Recruiter)
+        // 2. Retire recruiter accounts — the recruiter role no longer exists.
+        // Any user still typed as a Recruiter is deactivated and locked out.
+        var retiredRecruiters = await userManager.Users
+            .Where(u => u.UserType == UserType.Recruiter && u.IsActive)
             .ToListAsync();
 
-        foreach (var user in usersMissingProfiles)
+        foreach (var user in retiredRecruiters)
         {
-            if (user.UserType == UserType.Recruiter)
-            {
-                if (!await dbContext.RecruiterProfiles.AnyAsync(p => p.UserId == user.Id))
-                {
-                    dbContext.RecruiterProfiles.Add(new RecruiterProfile { UserId = user.Id });
-                }
-            }
-            else if (!await dbContext.TalentProfiles.AnyAsync(p => p.UserId == user.Id))
+            user.IsActive = false;
+            user.LockoutEnabled = true;
+            user.LockoutEnd = DateTimeOffset.MaxValue;
+            user.UpdatedAt = DateTime.UtcNow;
+            await userManager.UpdateAsync(user);
+        }
+
+        if (retiredRecruiters.Count > 0)
+        {
+            logger.LogInformation(
+                "Deactivated {Count} retired recruiter account(s).", retiredRecruiters.Count);
+        }
+
+        // 3. Backfill: every Talent user must have a profile row.
+        var talentUsers = await userManager.Users
+            .Where(u => u.UserType == UserType.Talent)
+            .ToListAsync();
+
+        foreach (var user in talentUsers)
+        {
+            if (!await dbContext.TalentProfiles.AnyAsync(p => p.UserId == user.Id))
             {
                 dbContext.TalentProfiles.Add(new TalentProfile { UserId = user.Id });
             }
@@ -64,7 +80,7 @@ public class AuthSeeder(
             await dbContext.SaveChangesAsync();
         }
 
-        // 3. Bootstrap admin — only when Admin:Email / Admin:Password are configured.
+        // 4. Bootstrap admin — only when Admin:Email / Admin:Password are configured.
         var adminEmail = configuration["Admin:Email"];
         var adminPassword = configuration["Admin:Password"];
         if (string.IsNullOrWhiteSpace(adminEmail) || string.IsNullOrWhiteSpace(adminPassword))
@@ -95,7 +111,7 @@ public class AuthSeeder(
             }
         }
 
-        // 4. Repair: make sure the admin account actually holds the Admin role.
+        // 5. Repair: make sure the admin account actually holds the Admin role.
         if (!await userManager.IsInRoleAsync(admin, Roles.Admin))
         {
             var roleResult = await userManager.AddToRoleAsync(admin, Roles.Admin);

@@ -78,20 +78,11 @@ public static class AdminUserEndpoints
         int ActiveDaysThisWeek,
         int ActiveDaysThisMonth,
         string? LastActiveAt,
-        TalentActivity? Talent,
-        RecruiterActivity? Recruiter);
+        TalentActivity? Talent);
 
     public sealed record TalentActivity(
         int JobsViewed,
         int ApplicationsSubmitted);
-
-    public sealed record RecruiterActivity(
-        int JobsPosted,
-        int JobsDraft,
-        int JobsPendingApproval,
-        int JobsPublished,
-        int ApplicationsReceived,
-        int UniqueApplicants);
 
     public sealed record UserListData(
         List<UserResponse> Items,
@@ -314,21 +305,6 @@ public static class AdminUserEndpoints
             await db.SaveChangesAsync();
         }
 
-        // Strip PII from recruiter profile if it exists
-        var recruiterProfile = await db.RecruiterProfiles.FirstOrDefaultAsync(p => p.UserId == user.Id);
-        if (recruiterProfile is not null)
-        {
-            recruiterProfile.CompanyName = "Deleted Company";
-            recruiterProfile.WebsiteUrl = string.Empty;
-            recruiterProfile.About = string.Empty;
-            recruiterProfile.Headquarters = string.Empty;
-            recruiterProfile.PhoneNumber = string.Empty;
-            recruiterProfile.Email = anonEmail;
-            recruiterProfile.LinkedInUrl = string.Empty;
-            recruiterProfile.TwitterUrl = string.Empty;
-            await db.SaveChangesAsync();
-        }
-
         return Results.Ok(ToResponse(user));
     }
 
@@ -385,35 +361,10 @@ public static class AdminUserEndpoints
         var completion = await GetCompletionAsync(user, db, ct);
 
         TalentActivity? talent = null;
-        RecruiterActivity? recruiter = null;
 
         if (user.UserType == UserType.Talent)
         {
             talent = new TalentActivity(jobsViewed, applicationsSubmitted);
-        }
-        else if (user.UserType == UserType.Recruiter)
-        {
-            var jobStatuses = await db.Jobs.AsNoTracking()
-                .Where(j => j.PostedByUserId == user.Id)
-                .GroupBy(j => j.Status)
-                .Select(g => new { Status = g.Key, Count = g.Count() })
-                .ToListAsync(ct);
-
-            var applicationsReceived = await db.JobApplications.AsNoTracking()
-                .CountAsync(a => a.Job!.PostedByUserId == user.Id, ct);
-            var uniqueApplicants = await db.JobApplications.AsNoTracking()
-                .Where(a => a.Job!.PostedByUserId == user.Id)
-                .Select(a => a.UserId)
-                .Distinct()
-                .CountAsync(ct);
-
-            recruiter = new RecruiterActivity(
-                jobStatuses.Sum(s => s.Count),
-                jobStatuses.FirstOrDefault(s => s.Status == JobStatus.Draft)?.Count ?? 0,
-                jobStatuses.FirstOrDefault(s => s.Status == JobStatus.PendingApproval)?.Count ?? 0,
-                jobStatuses.FirstOrDefault(s => s.Status == JobStatus.Published)?.Count ?? 0,
-                applicationsReceived,
-                uniqueApplicants);
         }
 
         return new UserActivityResponse(
@@ -424,8 +375,7 @@ public static class AdminUserEndpoints
             activeDaysThisWeek,
             activeDaysThisMonth,
             lastActiveAt?.ToString("o"),
-            talent,
-            recruiter);
+            talent);
     }
 
     private static async Task<ProfileCompletionCalculator.Result?> GetCompletionAsync(
@@ -436,13 +386,6 @@ public static class AdminUserEndpoints
             var profile = await db.TalentProfiles.AsNoTracking()
                 .FirstOrDefaultAsync(p => p.UserId == user.Id, ct);
             return profile is null ? null : ProfileCompletionCalculator.ForTalent(profile);
-        }
-
-        if (user.UserType == UserType.Recruiter)
-        {
-            var profile = await db.RecruiterProfiles.AsNoTracking()
-                .FirstOrDefaultAsync(p => p.UserId == user.Id, ct);
-            return profile is null ? null : ProfileCompletionCalculator.ForRecruiter(profile);
         }
 
         // Admin accounts have no role profile.

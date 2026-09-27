@@ -18,19 +18,17 @@ namespace SeraGo.API.Endpoints;
 ///
 /// GET    /api/jobs                     — list with sorting, filtering, search, pagination
 /// GET    /api/jobs/{id}                — detail
-/// POST   /api/jobs                     — create (Recruiter, Admin). saveAsDraft=true keeps a
+/// POST   /api/jobs                     — create (Admin). saveAsDraft=true keeps a
 ///                                        hidden draft; saveAsDraft=false submits for admin approval.
-/// PUT    /api/jobs/{id}                — full update. Recruiters edit their own non-published
-///                                        jobs (a rejected job resets to draft on edit); admins edit anything.
-/// DELETE /api/jobs/{id}                — soft delete (is_active=false). Recruiters delete their
-///                                        own jobs; admins pass ?hard=true for a permanent delete.
+/// PUT    /api/jobs/{id}                — full update (Admin; a rejected job resets to draft on edit).
+/// DELETE /api/jobs/{id}                — soft delete (is_active=false); admins pass ?hard=true for a permanent delete.
 /// PATCH  /api/jobs/{id}/submit         — owner: draft/rejected → pending approval
 /// PATCH  /api/jobs/{id}/approve        — admin: pending → published (live)
 /// PATCH  /api/jobs/{id}/reject         — admin: pending → rejected (+ reason)
 /// PATCH  /api/jobs/{id}/restore        — admin: unhide a soft-deleted job
 ///
-/// Roles: Talent can read only. Recruiter can create/read/update/soft-delete
-/// their own postings (admin approval gates going live). Admin has full rights.
+/// Roles: Talent can read only. Admin has full rights (create/read/update/
+/// soft-delete), and admin approval gates jobs going live.
 ///
 /// Throttling: reads and writes opt into the "jobs_read" / "jobs_write" rate
 /// limit policies (fixed window per IP, limits in the RateLimiting config).
@@ -905,7 +903,7 @@ public static class JobEndpoints
     }
 
     /// <summary>POST /api/jobs — create a job (recruiter or admin). Draft by default.</summary>
-    [Authorize(Roles = Roles.Recruiter + "," + Roles.Admin)]
+    [Authorize(Roles = Roles.Admin)]
     private static async Task<IResult> CreateJobAsync(
         JobWriteRequest request,
         ClaimsPrincipal claims,
@@ -1056,7 +1054,7 @@ public static class JobEndpoints
     }
 
     /// <summary>PUT /api/jobs/{id} — full update. Owners edit non-published jobs; admins edit anything.</summary>
-    [Authorize(Roles = Roles.Recruiter + "," + Roles.Admin)]
+    [Authorize(Roles = Roles.Admin)]
     private static async Task<IResult> UpdateJobAsync(
         Guid id,
         JobWriteRequest request,
@@ -1173,7 +1171,7 @@ public static class JobEndpoints
     }
 
     /// <summary>DELETE /api/jobs/{id} — soft delete (is_active=false). Admins pass ?hard=true for permanent.</summary>
-    [Authorize(Roles = Roles.Recruiter + "," + Roles.Admin)]
+    [Authorize(Roles = Roles.Admin)]
     private static async Task<IResult> DeleteJobAsync(
         Guid id,
         ClaimsPrincipal claims,
@@ -1233,7 +1231,7 @@ public static class JobEndpoints
     }
 
     /// <summary>PATCH /api/jobs/{id}/submit — owner sends a draft (or rejected) job in for review.</summary>
-    [Authorize(Roles = Roles.Recruiter + "," + Roles.Admin)]
+    [Authorize(Roles = Roles.Admin)]
     private static async Task<IResult> SubmitJobAsync(
         Guid id,
         ClaimsPrincipal claims,
@@ -1335,7 +1333,7 @@ public static class JobEndpoints
         job.IsActive = true;
         job.UpdatedAt = now;        await db.SaveChangesAsync();
 
-        // Notify the recruiter their job was approved
+        // Notify the poster their job was approved
         if (job.PostedByUserId is not null)
         {
             await notificationService.CreateAsync(new NotificationService.CreateNotificationRequest(
@@ -1435,7 +1433,7 @@ public static class JobEndpoints
 
         await db.SaveChangesAsync();
 
-        // Notify the recruiter their job was rejected
+        // Notify the poster their job was rejected
         if (job.PostedByUserId is not null)
         {
             var reason = string.IsNullOrWhiteSpace(job.RejectionReason)

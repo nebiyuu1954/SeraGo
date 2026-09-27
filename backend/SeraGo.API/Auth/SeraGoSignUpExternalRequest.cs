@@ -25,10 +25,9 @@ public class SeraGoSignUpExternalRequest : SignUpExternalRequest
     public string? LastName { get; set; }
 
     /// <summary>
-    /// Must be "Talent" or "Recruiter" (validated server-side against the
-    /// shared whitelist). No default on purpose — omitting it must fail.
+    /// Retained for backwards compatibility and ignored — every self-service
+    /// signup now creates a Talent account.
     /// </summary>
-    [Required]
     public string? Role { get; set; }
 
     /// <summary>

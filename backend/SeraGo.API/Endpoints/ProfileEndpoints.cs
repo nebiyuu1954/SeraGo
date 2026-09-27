@@ -13,9 +13,9 @@ namespace SeraGo.API.Endpoints;
 /// GET/PUT /api/account/profile — the current user's own profile.
 ///
 /// Response shape: common fields (name, avatar, city, country) plus the
-/// role-specific section (Talent or Recruiter) plus a completion summary the
-/// frontend can use for "finish your profile" states. Admin users have no
-/// role profile, so their Talent/Recruiter and Completion are null.
+/// talent section plus a completion summary the frontend can use for
+/// "finish your profile" states. Admin users have no role profile, so their
+/// Talent and Completion are null.
 ///
 /// PUT semantics: full-replace, per section. A section you send is applied
 /// as-is (strings null → "", lists null → [], enums null → unset); a section
@@ -58,19 +58,10 @@ public static class ProfileEndpoints
         // Privacy
         string ProfileVisibility, string SkillVisibility);
 
-    public sealed record RecruiterProfileResponse(
-        string CompanyName, string Industry, string CompanySize,
-        string WebsiteUrl, string About,
-        // New attributes
-        int? FoundedYear, string Headquarters, string PhoneNumber, string Email,
-        string? CompanyType, string LinkedInUrl, string TwitterUrl,
-        // Privacy
-        string CompanyVisibility, bool IsCompanyPrivate);
-
     public sealed record ProfileResponse(
         string FirstName, string MiddleName, string LastName, string Email, string Role, string AvatarUrl,
         string City, string Country, TalentProfileResponse? Talent,
-        RecruiterProfileResponse? Recruiter, ProfileCompletionResponse? Completion,
+        ProfileCompletionResponse? Completion,
         bool HasPassword);
 
     public sealed class UpdateProfileRequest
@@ -85,7 +76,6 @@ public static class ProfileEndpoints
 
         // Role-specific — only the section matching the user's role is applied.
         public TalentProfileUpdate? Talent { get; set; }
-        public RecruiterProfileUpdate? Recruiter { get; set; }
     }
 
     /// <summary>
@@ -136,26 +126,6 @@ public static class ProfileEndpoints
         // Privacy
         public string? ProfileVisibility { get; set; }  // JSON object
         public string? SkillVisibility { get; set; }  // JSON object per-skill toggles
-    }
-
-    public sealed class RecruiterProfileUpdate
-    {
-        public string? CompanyName { get; set; }
-        public string? Industry { get; set; }
-        public string? CompanySize { get; set; }
-        public string? WebsiteUrl { get; set; }
-        public string? About { get; set; }
-        // New attributes
-        public int? FoundedYear { get; set; }
-        public string? Headquarters { get; set; }
-        public string? PhoneNumber { get; set; }
-        public string? Email { get; set; }
-        public string? CompanyType { get; set; }  // PascalCase enum name
-        public string? LinkedInUrl { get; set; }
-        public string? TwitterUrl { get; set; }
-        // Privacy
-        public string? CompanyVisibility { get; set; }  // JSON object
-        public bool? IsCompanyPrivate { get; set; }
     }
 
     // -------------------------------------------------------------- Handlers
@@ -280,53 +250,6 @@ public static class ProfileEndpoints
                 profile.UpdatedAt = DateTime.UtcNow;
                 break;
             }
-
-            case UserType.Recruiter when request.Recruiter is not null:
-            {
-                var profile = await db.RecruiterProfiles.FirstOrDefaultAsync(p => p.UserId == user.Id)
-                    ?? AddRecruiterProfile(db, user.Id);
-
-                // CompanyName is the one field that must be present the moment a
-                // recruiter touches their profile — job posts depend on it.
-                if (string.IsNullOrWhiteSpace(request.Recruiter.CompanyName))
-                {
-                    return Results.Problem(
-                        "CompanyName is required on a recruiter profile.",
-                        statusCode: StatusCodes.Status400BadRequest);
-                }
-
-                profile.CompanyName = request.Recruiter.CompanyName.Trim();
-                if (request.Recruiter.Industry is not null) profile.Industry = request.Recruiter.Industry.Trim();
-                if (request.Recruiter.CompanySize is not null) profile.CompanySize = request.Recruiter.CompanySize.Trim();
-                if (request.Recruiter.WebsiteUrl is not null) profile.WebsiteUrl = request.Recruiter.WebsiteUrl.Trim();
-                if (request.Recruiter.About is not null) profile.About = request.Recruiter.About.Trim();
-
-                // New attributes
-                profile.FoundedYear = request.Recruiter.FoundedYear;
-                if (request.Recruiter.Headquarters is not null) profile.Headquarters = request.Recruiter.Headquarters.Trim();
-                if (request.Recruiter.PhoneNumber is not null) profile.PhoneNumber = request.Recruiter.PhoneNumber.Trim();
-                if (request.Recruiter.Email is not null) profile.Email = request.Recruiter.Email.Trim();
-                if (TryParseEnum<CompanyType>(request.Recruiter.CompanyType, out var companyType))
-                {
-                    profile.CompanyType = companyType;
-                }
-                else
-                {
-                    return EnumError(typeof(CompanyType), request.Recruiter.CompanyType);
-                }
-                if (request.Recruiter.LinkedInUrl is not null) profile.LinkedInUrl = request.Recruiter.LinkedInUrl.Trim();
-                if (request.Recruiter.TwitterUrl is not null) profile.TwitterUrl = request.Recruiter.TwitterUrl.Trim();
-
-                // Privacy
-                if (request.Recruiter.CompanyVisibility is not null) profile.CompanyVisibility = request.Recruiter.CompanyVisibility.Trim();
-                if (request.Recruiter.IsCompanyPrivate.HasValue)
-                {
-                    profile.IsCompanyPrivate = request.Recruiter.IsCompanyPrivate.Value;
-                }
-
-                profile.UpdatedAt = DateTime.UtcNow;
-                break;
-            }
         }
 
         await db.SaveChangesAsync();
@@ -416,17 +339,9 @@ public static class ProfileEndpoints
         return profile;
     }
 
-    private static RecruiterProfile AddRecruiterProfile(ApplicationDbContext db, string userId)
-    {
-        var profile = new RecruiterProfile { UserId = userId };
-        db.RecruiterProfiles.Add(profile);
-        return profile;
-    }
-
     private static async Task<ProfileResponse> BuildResponseAsync(ApplicationUser user, ApplicationDbContext db)
     {
         TalentProfileResponse? talent = null;
-        RecruiterProfileResponse? recruiter = null;
         ProfileCompletionResponse? completion = null;
 
         if (user.UserType == UserType.Talent)
@@ -457,24 +372,10 @@ public static class ProfileEndpoints
                 completion = ComputeTalentCompletion(profile);
             }
         }
-        else if (user.UserType == UserType.Recruiter)
-        {
-            var profile = await db.RecruiterProfiles.FirstOrDefaultAsync(p => p.UserId == user.Id);
-            if (profile is not null)
-            {
-                recruiter = new RecruiterProfileResponse(
-                    profile.CompanyName, profile.Industry,
-                    profile.CompanySize, profile.WebsiteUrl, profile.About,
-                    profile.FoundedYear, profile.Headquarters, profile.PhoneNumber, profile.Email,
-                    profile.CompanyType?.ToString(), profile.LinkedInUrl, profile.TwitterUrl,
-                    profile.CompanyVisibility, profile.IsCompanyPrivate);
-                completion = ComputeRecruiterCompletion(profile);
-            }
-        }
 
         return new ProfileResponse(
             user.FirstName, user.MiddleName, user.LastName, user.Email ?? string.Empty, user.UserType.ToString(),
-            user.AvatarUrl, user.City, user.Country, talent, recruiter, completion,
+            user.AvatarUrl, user.City, user.Country, talent, completion,
             user.PasswordHash is not null);
     }
 
@@ -486,14 +387,6 @@ public static class ProfileEndpoints
     private static ProfileCompletionResponse ComputeTalentCompletion(TalentProfile profile)
     {
         var result = ProfileCompletionCalculator.ForTalent(profile);
-        return new ProfileCompletionResponse(
-            result.IsComplete, result.PercentComplete, result.MissingFields);
-    }
-
-    /// <summary>Fields a job post depends on — shared with the admin user detail.</summary>
-    private static ProfileCompletionResponse ComputeRecruiterCompletion(RecruiterProfile profile)
-    {
-        var result = ProfileCompletionCalculator.ForRecruiter(profile);
         return new ProfileCompletionResponse(
             result.IsComplete, result.PercentComplete, result.MissingFields);
     }

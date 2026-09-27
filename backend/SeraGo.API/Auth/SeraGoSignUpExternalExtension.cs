@@ -11,10 +11,9 @@ namespace SeraGo.API.Auth;
 
 /// <summary>
 /// Hooks into Aufy's external (Google) signup endpoint to copy the display
-/// name and assign the chosen role — mirroring
-/// <see cref="SeraGoSignUpExtension"/> for the email/password path. The role
-/// is validated against the shared whitelist, so "Admin" can never be
-/// requested through Google signup either.
+/// name and create a Talent account — mirroring
+/// <see cref="SeraGoSignUpExtension"/> for the email/password path. The
+/// recruiter role has been removed, and "Admin" is never self-service.
 /// </summary>
 public class SeraGoSignUpExternalExtension(
     UserManager<ApplicationUser> userManager,
@@ -33,14 +32,6 @@ public class SeraGoSignUpExternalExtension(
             user.UserName = user.Email;
         }
 
-        var role = ResolveRole(model.Role);
-        if (role is null)
-        {
-            return Task.FromResult<ProblemHttpResult?>(TypedResults.Problem(
-                $"Role must be one of: {string.Join(", ", Roles.SelfService)}",
-                statusCode: StatusCodes.Status400BadRequest));
-        }
-
         // The account is created WITH a password: the user chooses one on the
         // role step so they can also sign in with email + password on any
         // device (not just "Continue with Google"). Validated here because
@@ -55,7 +46,7 @@ public class SeraGoSignUpExternalExtension(
         user.PasswordHash = userManager.PasswordHasher.HashPassword(user, model.Password!);
 
         // Google already knows the name — prefer its claims so the UI only has
-        // to ask for the role. Falls back to the (optional) payload values, and
+        // to ask for a password. Falls back to the (optional) payload values, and
         // to the full-name claim when given/family names are missing.
         var claims = httpRequest.HttpContext.User;
         user.FirstName = claims.FindFirstValue(ClaimTypes.GivenName)
@@ -65,7 +56,7 @@ public class SeraGoSignUpExternalExtension(
         user.LastName = claims.FindFirstValue(ClaimTypes.Surname)
             ?? model.LastName?.Trim()
             ?? string.Empty;
-        user.UserType = role == Roles.Recruiter ? UserType.Recruiter : UserType.Talent;
+        user.UserType = UserType.Talent;
         return Task.FromResult<ProblemHttpResult?>(null);
     }
 
@@ -95,33 +86,20 @@ public class SeraGoSignUpExternalExtension(
     public async Task UserCreatedAsync(
         SeraGoSignUpExternalRequest model, HttpRequest httpRequest, ApplicationUser user)
     {
-        var role = ResolveRole(model.Role);
-        if (role is null)
-        {
-            return;
-        }
-
-        var result = await userManager.AddToRoleAsync(user, role);
+        var result = await userManager.AddToRoleAsync(user, Roles.Talent);
         if (!result.Succeeded)
         {
             // Never leave a half-created account: roll back the user and fail the request.
             await userManager.DeleteAsync(user);
             var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-            throw new InvalidOperationException($"Failed to assign role '{role}' to {user.Email}: {errors}");
+            throw new InvalidOperationException($"Failed to assign role '{Roles.Talent}' to {user.Email}: {errors}");
         }
 
-        // Create the role-appropriate profile row (fields stay empty until the
-        // user completes their profile) so profile endpoints always find a row.
+        // Create the talent profile row (fields stay empty until the user
+        // completes their profile) so profile endpoints always find a row.
         try
         {
-            if (role == Roles.Recruiter)
-            {
-                dbContext.RecruiterProfiles.Add(new RecruiterProfile { UserId = user.Id });
-            }
-            else
-            {
-                dbContext.TalentProfiles.Add(new TalentProfile { UserId = user.Id });
-            }
+            dbContext.TalentProfiles.Add(new TalentProfile { UserId = user.Id });
             await dbContext.SaveChangesAsync();
         }
         catch
@@ -130,7 +108,4 @@ public class SeraGoSignUpExternalExtension(
             throw;
         }
     }
-
-    private static string? ResolveRole(string? role) =>
-        Roles.SelfService.FirstOrDefault(r => r.Equals(role, StringComparison.OrdinalIgnoreCase));
 }

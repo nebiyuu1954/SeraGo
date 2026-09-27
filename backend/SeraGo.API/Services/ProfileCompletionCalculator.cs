@@ -30,25 +30,6 @@ public static class ProfileCompletionCalculator
         return Build(missing, total);
     }
 
-    /// <summary>Fields a job post depends on.</summary>
-    public static Result ForRecruiter(RecruiterProfile profile)
-    {
-        var missing = new List<string>();
-        if (string.IsNullOrWhiteSpace(profile.CompanyName)) missing.Add("companyName");
-        if (string.IsNullOrWhiteSpace(profile.Industry)) missing.Add("industry");
-        if (string.IsNullOrWhiteSpace(profile.CompanySize)) missing.Add("companySize");
-        if (string.IsNullOrWhiteSpace(profile.WebsiteUrl)) missing.Add("websiteUrl");
-        if (string.IsNullOrWhiteSpace(profile.About)) missing.Add("about");
-        if (profile.FoundedYear is null) missing.Add("foundedYear");
-        if (string.IsNullOrWhiteSpace(profile.Headquarters)) missing.Add("headquarters");
-        if (string.IsNullOrWhiteSpace(profile.PhoneNumber)) missing.Add("phoneNumber");
-        if (string.IsNullOrWhiteSpace(profile.Email)) missing.Add("email");
-        if (profile.CompanyType is null) missing.Add("companyType");
-
-        const int total = 10;
-        return Build(missing, total);
-    }
-
     private static Result Build(List<string> missing, int total) =>
         new(missing.Count == 0,
             (int)Math.Round((total - missing.Count) / (double)total * 100),

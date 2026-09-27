@@ -408,11 +408,11 @@ public static class ServicesExtensions
         // Roles come from ASP.NET Core Identity (added by Aufy via
         // AddIdentityCore<TUser>().AddRoles<IdentityRole>() in SetupAufy).
         // `[Authorize(Roles = "Admin")]` / `[Authorize(Roles = Roles.Admin)]`
-        // resolve to a policy named "Admin" / "Talent" / "Recruiter" at
+        // resolve to a policy named "Admin" / "Talent" at
         // runtime, so those policy names must exist in the container.
         services.AddAuthorization(options =>
         {
-            foreach (var role in new[] { "Admin", "Talent", "Recruiter" })
+            foreach (var role in new[] { "Admin", "Talent" })
             {
                 options.AddPolicy(role, policy => policy.RequireRole(role));
             }

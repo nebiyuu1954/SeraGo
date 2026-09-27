@@ -16,10 +16,8 @@ public class SeraGoSignUpRequest : SignUpRequest
     public string LastName { get; set; } = string.Empty;
 
     /// <summary>
-    /// Must be "Talent" or "Recruiter" (validated server-side against the whitelist).
-    /// No default value on purpose: omitting it must fail, not silently become Talent.
-    /// "Admin" is never self-service.
+    /// Retained for backwards compatibility and ignored — every self-service
+    /// signup now creates a Talent account.
     /// </summary>
-    [Required]
     public string? Role { get; set; }
 }
