@@ -34,9 +34,9 @@ const faqItems: FaqItem[] = [
       'SeraGo aggregates listings from across the web, then ranks them against your profile and preferences so you see the roles most likely to be a good fit first.',
   },
   {
-    question: 'How do employers post jobs?',
+    question: 'Where do the job listings come from?',
     answer:
-      'Post once and your listing reaches candidates aggregated across job websites, with AI helping you prioritize who fits best.',
+      'We pull listings from multiple job websites and combine them with roles posted directly on SeraGo, so you can search everything from one place.',
   },
   {
     question: 'How fast can I apply?',
@@ -44,9 +44,9 @@ const faqItems: FaqItem[] = [
       'With aggregated listings, you can apply instantly from SeraGo — fewer extra steps and less effort than applying site by site.',
   },
   {
-    question: 'Can I use SeraGo for both hiring and finding a job?',
+    question: 'Do I need an account to save or apply to jobs?',
     answer:
-      'Absolutely — flip between the For Employers and For Job Seekers views anytime. One platform, both sides of the job market.',
+      'You need a free account to save jobs, apply, and track your applications. Creating one takes a minute and keeps everything in one place.',
   },
 ]
 
