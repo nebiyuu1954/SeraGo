@@ -16,13 +16,15 @@ interface DashboardSidebarProps {
 }
 
 /**
- * Dashboard sidebar. On md+ screens it's a collapsible column: expanded it
- * shows labels, collapsed it shrinks to a narrow icon-only rail (tooltips
- * keep the items discoverable). The collapse/expand toggle lives at the
- * bottom of the nav, right under Settings. On mobile it's a slide-in drawer
- * opened from the shell's menu button and closed via the backdrop or the
- * header's hamburger. The two states are independent so resizing across the
- * md breakpoint never surprises the user.
+ * Dashboard sidebar.
+ *
+ * Desktop: a column with a pin button at the top-right (only while expanded).
+ * Pinned → always expanded. Unpinned → a collapsed icon rail that expands on
+ * hover and collapses again as soon as the pointer leaves it.
+ *
+ * Mobile: a slide-in drawer opened from the shell's menu button and closed via
+ * the backdrop. The two states are independent so resizing across the md
+ * breakpoint never surprises the user.
  */
 export default function DashboardSidebar({
   role,
@@ -32,12 +34,16 @@ export default function DashboardSidebar({
   onSignOut,
   badges,
 }: DashboardSidebarProps) {
-  const { sidebarOpen, toggleSidebar, drawerOpen, setDrawerOpen } = useSidebar()
+  const { sidebarOpen, pinned, togglePinned, expand, collapse, drawerOpen, setDrawerOpen } =
+    useSidebar()
 
   return (
     <>
-      {/* Desktop sidebar column — always visible on md+, collapses to an icon rail */}
+      {/* Desktop sidebar column — collapsed rail expands on hover, collapses
+          again on mouse-leave (pinned sidebars ignore both). */}
       <aside
+        onMouseEnter={expand}
+        onMouseLeave={collapse}
         className={cn(
           'hidden flex-shrink-0 flex-col overflow-hidden border-r border-surface-variant bg-surface-container-lowest transition-[width] duration-300 ease-in-out md:flex',
           sidebarOpen ? 'w-60' : 'w-20',
@@ -50,7 +56,8 @@ export default function DashboardSidebar({
           userAvatarUrl={userAvatarUrl}
           onSignOut={onSignOut}
           collapsed={!sidebarOpen}
-          onToggle={toggleSidebar}
+          pinned={pinned}
+          onTogglePin={togglePinned}
           badges={badges}
         />
       </aside>
@@ -87,7 +94,8 @@ function SidebarBody({
   userAvatarUrl,
   onSignOut,
   collapsed,
-  onToggle,
+  pinned,
+  onTogglePin,
   badges,
 }: {
   role: RequiredRole
@@ -96,7 +104,8 @@ function SidebarBody({
   userAvatarUrl?: string
   onSignOut: () => void
   collapsed: boolean
-  onToggle?: () => void
+  pinned?: boolean
+  onTogglePin?: () => void
   badges?: Record<string, number>
 }) {
   const location = useLocation()
@@ -115,6 +124,32 @@ function SidebarBody({
 
   return (
     <>
+      {/* Pin button — top-right of the sidebar (desktop only, shown once the
+          sidebar is expanded). Pinned = filled + tinted and stays expanded. */}
+      {onTogglePin && (
+        <div className="flex h-16 items-center justify-center px-4">
+          {!collapsed && (
+            <button
+              type="button"
+              onClick={onTogglePin}
+              aria-pressed={pinned}
+              title={pinned ? 'Unpin sidebar' : 'Pin sidebar open'}
+              aria-label={pinned ? 'Unpin sidebar' : 'Pin sidebar open'}
+              className={cn(
+                'ml-auto flex h-9 w-9 items-center justify-center rounded-lg transition-colors',
+                pinned
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-on-surface-variant hover:bg-surface-container-low hover:text-primary',
+              )}
+            >
+              <span className={cn('material-symbols-outlined', pinned && 'fill')}>
+                push_pin
+              </span>
+            </button>
+          )}
+        </div>
+      )}
+
       <nav className="flex-1 space-y-1.5 px-4 py-6">
         {ROLE_NAV[role].map((item) => {
           const isActive = item.to === activeTo
@@ -166,32 +201,6 @@ function SidebarBody({
             </a>
           )
         })}
-
-        {/* Collapse/expand toggle — sits under Settings (desktop only) */}
-        {onToggle && (
-          <button
-            type="button"
-            onClick={onToggle}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className={cn(
-              'flex w-full items-center gap-3 rounded-lg px-4 py-3 font-label-md text-label-md text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-primary',
-              collapsed && 'justify-center px-0',
-            )}
-          >
-            {/* menu_open points left when expanded (collapse); rotated 180° it
-                points right when collapsed, signaling "click to expand". */}
-            <span
-              className={cn(
-                'material-symbols-outlined transition-transform duration-300',
-                collapsed && 'rotate-180',
-              )}
-            >
-              menu_open
-            </span>
-            {!collapsed && 'Collapse'}
-          </button>
-        )}
       </nav>
 
       <div className="border-t border-surface-variant p-4">

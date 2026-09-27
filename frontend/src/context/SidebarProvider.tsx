@@ -3,32 +3,36 @@ import type { ReactNode } from 'react'
 import { SidebarContext } from './sidebar.ts'
 
 /**
- * Shares the dashboard sidebar's expanded/collapsed state. Expanded shows
- * labels; collapsed shrinks it to an icon-only rail. The toggle lives in
- * the sidebar itself (under Settings), so the header no longer controls it.
+ * Shares the dashboard sidebar's pinned/expanded state.
  *
- * The desktop column opens by default on desktop (it's the primary dashboard
- * nav); the mobile drawer always starts closed.
+ * Pinned → the desktop column stays expanded permanently. Unpinned → it's a
+ * collapsed icon rail that expands on hover and collapses again when the
+ * pointer leaves it. The pin button lives at the top-right of the sidebar.
+ *
+ * The mobile drawer is tracked separately and always starts closed.
  */
 export function SidebarProvider({ children }: { children: ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = useState<boolean>(
-    () => window.matchMedia('(min-width: 768px)').matches,
-  )
+  const [pinned, setPinned] = useState(false)
+  const [hoverOpen, setHoverOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  const toggleSidebar = useCallback(() => {
-    setSidebarOpen((open) => !open)
-  }, [])
+  const sidebarOpen = pinned || hoverOpen
+
+  const togglePinned = useCallback(() => setPinned((p) => !p), [])
+  const expand = useCallback(() => setHoverOpen(true), [])
+  const collapse = useCallback(() => setHoverOpen(false), [])
 
   const value = useMemo(
     () => ({
       sidebarOpen,
-      setSidebarOpen,
-      toggleSidebar,
+      pinned,
+      togglePinned,
+      expand,
+      collapse,
       drawerOpen,
       setDrawerOpen,
     }),
-    [sidebarOpen, toggleSidebar, drawerOpen],
+    [sidebarOpen, pinned, togglePinned, expand, collapse, drawerOpen],
   )
 
   return <SidebarContext.Provider value={value}>{children}</SidebarContext.Provider>

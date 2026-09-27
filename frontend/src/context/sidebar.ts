@@ -2,12 +2,23 @@ import { createContext, useContext } from 'react'
 
 export interface SidebarContextValue {
   /**
-   * Desktop sidebar column. Expanded shows labels; collapsed becomes a
-   * narrow icon-only rail. Toggled from the sidebar itself (under Settings).
+   * Whether the desktop sidebar column is currently expanded (labels shown).
+   * True when the sidebar is pinned, or when an unpinned sidebar has been
+   * opened by hovering it.
    */
   sidebarOpen: boolean
-  setSidebarOpen: (open: boolean) => void
-  toggleSidebar: () => void
+  /**
+   * Pinned sidebars stay expanded permanently. Unpinned sidebars are a
+   * collapsed icon rail that expands on hover and collapses again once the
+   * pointer leaves it.
+   */
+  pinned: boolean
+  /** Flip the pinned state (the pin button at the top of the sidebar). */
+  togglePinned: () => void
+  /** Expand an unpinned sidebar — called when the pointer enters it. */
+  expand: () => void
+  /** Collapse an unpinned sidebar — called when the pointer leaves it. */
+  collapse: () => void
   /**
    * Mobile slide-in drawer. Kept separate from the desktop column so the
    * two never leak into each other when the viewport crosses the md
