@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useFormik } from 'formik'
-import { mixed, object, string } from 'yup'
+import { object, string } from 'yup'
 import {
   ApiError,
   getApiErrorMessage,
@@ -9,25 +9,11 @@ import {
   signUpExternal,
   storeAuthTokens,
 } from '../../../api'
-import type { SignUpRole } from '../../../types'
-import { cn } from '../../../lib/cn.ts'
 import PasswordInput from '../../../components/auth/PasswordInput.tsx'
 import { meetsPasswordRules } from '../../../components/auth/passwordRules.ts'
+import { trackEvent } from '../../../lib/analytics'
 
 type Stage = 'loading' | 'profile' | 'error' | 'done'
-
-const ROLE_OPTIONS: { value: SignUpRole; title: string; caption: string }[] = [
-  {
-    value: 'Talent',
-    title: 'I\u2019m a Talent',
-    caption: 'Looking for my next role',
-  },
-  {
-    value: 'Recruiter',
-    title: 'I\u2019m a Recruiter',
-    caption: 'Hiring great people',
-  },
-]
 
 export default function GoogleCallbackPage() {
   const navigate = useNavigate()
@@ -61,6 +47,8 @@ export default function GoogleCallbackPage() {
       .then((tokens) => {
         if (cancelled) return
         storeAuthTokens(tokens)
+        // An existing Google account was found — this is a login, not a signup.
+        trackEvent('login', { method: 'google' })
         setStage('done')
         redirectTimerRef.current = window.setTimeout(
           () => navigate('/dashboard'),
@@ -94,18 +82,14 @@ export default function GoogleCallbackPage() {
   }, [])
 
   // Google provides the name via its claims (backend uses them), so a brand-
-  // new Google user only chooses their role and a password — the account is
-  // created WITH the password so email + password login works too.
+  // new Google user only chooses a password — the account is created WITH it
+  // so email + password login works too.
   const formik = useFormik({
     initialValues: {
-      role: 'Talent' as SignUpRole,
       password: '',
       confirmPassword: '',
     },
     validationSchema: object({
-      role: mixed<SignUpRole>()
-        .oneOf(['Talent', 'Recruiter'], 'Please choose a role.')
-        .required('Please choose a role.'),
       password: string()
         .required('Please choose a password.')
         .test(
@@ -127,10 +111,11 @@ export default function GoogleCallbackPage() {
       setError(null)
       try {
         const tokens = await signUpExternal({
-          role: values.role,
+          role: 'Talent',
           password: values.password,
         })
         storeAuthTokens(tokens)
+        trackEvent('sign_up', { method: 'google' })
         setStage('done')
         redirectTimerRef.current = window.setTimeout(
           () => navigate('/dashboard'),
@@ -224,8 +209,8 @@ export default function GoogleCallbackPage() {
                   One last step
                 </h2>
                 <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
-                  Your Google account is verified — tell us how you&rsquo;ll use
-                  SeraGo.
+                  Your Google account is verified — choose a password to finish
+                  creating your SeraGo account.
                 </p>
                 <p className="mt-2 font-label-sm text-label-sm text-on-surface-variant">
                   Choose a password so you can also sign in with email. We
@@ -254,45 +239,6 @@ export default function GoogleCallbackPage() {
                 noValidate
                 className="space-y-5"
               >
-                <fieldset>
-                  <legend className="mb-1.5 block font-label-md text-label-md font-medium text-on-surface">
-                    I am joining as
-                  </legend>
-                  <div className="grid grid-cols-2 gap-3">
-                    {ROLE_OPTIONS.map((option) => {
-                      const selected = formik.values.role === option.value
-                      return (
-                        <label
-                          key={option.value}
-                          className={cn(
-                            'flex cursor-pointer items-center gap-2.5 rounded-xl border p-3 transition-all duration-200 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary/40',
-                            selected
-                              ? 'border-primary bg-primary-container/60 shadow-sm ring-2 ring-primary/30'
-                              : 'border-outline-variant bg-surface-container-lowest hover:border-primary/50 hover:bg-surface-container-low',
-                          )}
-                        >
-                          <input
-                            type="radio"
-                            name="role"
-                            value={option.value}
-                            checked={selected}
-                            onChange={formik.handleChange}
-                            className="sr-only"
-                          />
-                          <span className="min-w-0">
-                            <span className="block truncate font-label-md text-label-md font-semibold text-on-surface">
-                              {option.title}
-                            </span>
-                            <span className="block truncate font-label-sm text-label-sm text-on-surface-variant">
-                              {option.caption}
-                            </span>
-                          </span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                </fieldset>
-
                 <PasswordInput
                   id="password"
                   name="password"

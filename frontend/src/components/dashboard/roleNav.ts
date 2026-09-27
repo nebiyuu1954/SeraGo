@@ -18,16 +18,9 @@ export interface RoleNavItem {
 
 /** Signed-in header + sidebar navigation per role. */
 export const ROLE_NAV: Record<RequiredRole, RoleNavItem[]> = {
-  Recruiter: [
-    { label: 'Jobs', icon: 'work', to: '/dashboard/recruiter' },
-    { label: 'Applications', icon: 'description', to: '/dashboard/recruiter/applications' },
-    { label: 'Profile', icon: 'person', to: '/dashboard/recruiter/profile' },
-    { label: 'Settings', icon: 'settings', to: '/dashboard/recruiter/settings', sidebarOnly: true },
-  ],
   Talent: [
     { label: 'Find jobs', icon: 'search', to: '/dashboard/talent' },
     { label: 'Saved jobs', icon: 'bookmark', to: '/dashboard/talent/saved' },
-    { label: 'Applications', icon: 'description', to: '/dashboard/talent/applications' },
     { label: 'Profile', icon: 'person', to: '/dashboard/talent/profile' },
     { label: 'Settings', icon: 'settings', to: '/dashboard/talent/settings', sidebarOnly: true },
   ],
@@ -50,9 +43,8 @@ export function roleHome(role: RequiredRole): string {
 
 /**
  * Which nav item's route the current path resolves to. Uses the LONGEST
- * prefix match, so a nested page like /dashboard/recruiter/profile highlights
- * Profile — never its parent (/dashboard/recruiter) — while a job-form page
- * under /dashboard/recruiter/jobs still highlights Jobs.
+ * prefix match, so a nested page like /dashboard/talent/profile highlights
+ * Profile — never its parent (/dashboard/talent).
  */
 export function activeNavTo(
   nav: RoleNavItem[],
@@ -70,7 +62,6 @@ export function activeNavTo(
 /** Maps whoami role names to a dashboard role, or null for unknown roles. */
 export function pickRole(roles: string[]): RequiredRole | null {
   if (roles.includes('Admin')) return 'Admin'
-  if (roles.includes('Recruiter')) return 'Recruiter'
   if (roles.includes('Talent')) return 'Talent'
   return null
 }

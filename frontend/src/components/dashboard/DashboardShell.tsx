@@ -59,14 +59,12 @@ export default function DashboardShell({
     authUser.username ||
     authUser.email ||
     'User'
-  const company = profile?.recruiter?.companyName || undefined
 
   return (
     <div className="ui-scale-fill-below-nav flex items-stretch">
       <DashboardSidebar
         role={role}
         userName={name}
-        userCompany={company}
         userAvatarUrl={profile?.avatarUrl}
         onSignOut={signOut}
         badges={adminBadges}

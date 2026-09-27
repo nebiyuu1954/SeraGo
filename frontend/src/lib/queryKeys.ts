@@ -36,20 +36,11 @@ export const queryKeys = {
     list: ['savedJobs', 'list'] as const,
   },
 
-  /** Recruiter job stats (per-job application counts + view counts). */
-  recruiterJobStats: ['applications', 'stats'] as const,
-
   /** Job applications. */
   applications: {
     all: ['applications'] as const,
     /** Talent's own applications. */
     my: (page: number, pageSize: number, status: string, sort: string, search: string) =>
       ['applications', 'my', page, pageSize, status, sort, search] as const,
-    /** Recruiter: all applications across their posted jobs. */
-    recruiterAll: (page: number, pageSize: number, status: string, sort: string, search: string, jobId: string) =>
-      ['applications', 'recruiterAll', page, pageSize, status, sort, search, jobId] as const,
-    /** Recruiter's applications for a specific job. */
-    job: (jobId: string, page: number) =>
-      ['applications', 'job', jobId, page] as const,
   },
 } as const

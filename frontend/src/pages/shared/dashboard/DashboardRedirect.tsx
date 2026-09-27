@@ -23,11 +23,9 @@ export default function DashboardRedirect() {
     }
     const target = auth.user.roles.includes('Admin')
       ? 'admin'
-      : auth.user.roles.includes('Recruiter')
-        ? 'recruiter'
-        : auth.user.roles.includes('Talent')
-          ? 'talent'
-          : null
+      : auth.user.roles.includes('Talent')
+        ? 'talent'
+        : null
     // No recognized role (e.g. revoked) — don't default to a page whose
     // guard would bounce us back here forever. Send them to login instead.
     if (!target) {

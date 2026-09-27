@@ -112,7 +112,7 @@ export default function TalentProfilePreviewPage() {
             backTo="/dashboard/talent/profile"
             topRight={
               <span className="font-body-md text-body-md text-on-surface-variant">
-                This is how your profile appears to recruiters.{' '}
+                This is how your profile appears to employers.{' '}
                 <button
                   type="button"
                   onClick={() => navigate('/dashboard/talent/profile')}

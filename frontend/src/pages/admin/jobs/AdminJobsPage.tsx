@@ -385,7 +385,7 @@ export default function AdminJobsPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="w-full max-w-md rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
               <h2 className="font-headline-md text-headline-md font-bold text-on-surface">Reject "{rejectModal.jobTitle}"</h2>
-              <p className="mt-1 font-body-sm text-sm text-on-surface-variant">Optionally provide a reason — the recruiter will see it.</p>
+              <p className="mt-1 font-body-sm text-sm text-on-surface-variant">Optionally provide a reason — it will be shown on the job.</p>
               <textarea value={rejectReason} onChange={(e) => { if (e.target.value.length <= 500) setRejectReason(e.target.value) }}
                 placeholder="Reason for rejection (optional)..." rows={3} maxLength={500}
                 className="mt-4 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-3 font-body-md text-body-md text-on-surface placeholder:text-on-surface-variant/60 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" />

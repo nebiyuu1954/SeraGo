@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useFormik } from 'formik'
-import { mixed, object, ref, string } from 'yup'
+import { object, ref, string } from 'yup'
 import {
   ApiError,
   getApiErrorMessage,
@@ -9,8 +9,6 @@ import {
   signUp,
   storeAuthTokens,
 } from '../../../api'
-import type { SignUpRole } from '../../../types'
-import { cn } from '../../../lib/cn.ts'
 import AuthShell from '../../../components/auth/AuthShell.tsx'
 import AccountExistsBanner from '../../../components/auth/AccountExistsBanner.tsx'
 import ErrorBanner from '../../../components/auth/ErrorBanner.tsx'
@@ -21,26 +19,7 @@ import Divider from '../../../components/auth/Divider.tsx'
 import GoogleButton from '../../../components/auth/GoogleButton.tsx'
 import AuthSuccess from '../../../components/auth/AuthSuccess.tsx'
 import { meetsPasswordRules } from '../../../components/auth/passwordRules.ts'
-
-const ROLE_OPTIONS: {
-  value: SignUpRole
-  title: string
-  caption: string
-  icon: string
-}[] = [
-  {
-    value: 'Talent',
-    title: 'I\u2019m a Talent',
-    caption: 'Looking for my next role',
-    icon: 'work',
-  },
-  {
-    value: 'Recruiter',
-    title: 'I\u2019m a Recruiter',
-    caption: 'Hiring great people',
-    icon: 'groups',
-  },
-]
+import { trackEvent } from '../../../lib/analytics'
 
 const FIELD_ORDER = [
   'firstName',
@@ -65,7 +44,6 @@ type SignUpValues = {
   email: string
   password: string
   confirmPassword: string
-  role: SignUpRole
 }
 
 const initialValues: SignUpValues = {
@@ -74,7 +52,6 @@ const initialValues: SignUpValues = {
   email: '',
   password: '',
   confirmPassword: '',
-  role: 'Talent',
 }
 
 /** Single source of truth for field validation — Formik runs this (Yup). */
@@ -95,9 +72,6 @@ const validationSchema = object<SignUpValues>({
   confirmPassword: string()
     .required('Please confirm your password.')
     .oneOf([ref('password')], 'Passwords do not match.'),
-  role: mixed<SignUpRole>()
-    .oneOf(['Talent', 'Recruiter'], 'Please choose a role.')
-    .required('Please choose a role.'),
 })
 
 export default function SignupPage() {
@@ -131,8 +105,9 @@ export default function SignupPage() {
           lastName: values.lastName,
           email: values.email,
           password: values.password,
-          role: values.role,
+          role: 'Talent',
         })
+        trackEvent('sign_up', { method: 'email' })
 
         if (signUpResponse.requiresEmailConfirmation) {
           // The account is created but inactive until the emailed link is
@@ -241,55 +216,6 @@ export default function SignupPage() {
           {error && <ErrorBanner message={error} />}
 
           <form onSubmit={formik.handleSubmit} noValidate className="space-y-5">
-            {/* Role selector — required by the API */}
-            <fieldset>
-              <legend className="mb-1.5 block font-label-md text-label-md font-medium text-on-surface">
-                I am joining as
-              </legend>
-              <div className="grid grid-cols-2 gap-3">
-                {ROLE_OPTIONS.map((option) => {
-                  const selected = formik.values.role === option.value
-                  return (
-                    <label
-                      key={option.value}
-                      className={cn(
-                        'flex cursor-pointer items-center gap-3 rounded-xl border p-3.5 transition-all duration-200 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary/40',
-                        selected
-                          ? 'border-primary bg-primary-container/60 shadow-sm ring-2 ring-primary/30'
-                          : 'border-outline-variant bg-surface-container-lowest hover:border-primary/50 hover:bg-surface-container-low',
-                      )}
-                    >
-                      <input
-                        type="radio"
-                        name="role"
-                        value={option.value}
-                        checked={selected}
-                        onChange={formik.handleChange}
-                        className="sr-only"
-                      />
-                      <span
-                        aria-hidden="true"
-                        className={cn(
-                          'material-symbols-outlined text-xl',
-                          selected ? 'text-primary' : 'text-on-surface-variant',
-                        )}
-                      >
-                        {option.icon}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate font-label-md text-label-md font-semibold text-on-surface">
-                          {option.title}
-                        </span>
-                        <span className="block truncate font-label-sm text-label-sm text-on-surface-variant">
-                          {option.caption}
-                        </span>
-                      </span>
-                    </label>
-                  )
-                })}
-              </div>
-            </fieldset>
-
             {/* Name fields */}
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
               <TextInput
@@ -370,19 +296,19 @@ export default function SignupPage() {
 
           <p className="mt-5 text-center font-label-sm text-label-sm leading-relaxed text-on-surface-variant">
             By signing up, you agree to our{' '}
-            <a
-              href="#"
+            <Link
+              to="/terms"
               className="font-medium text-primary transition-opacity hover:opacity-80"
             >
               Terms of Service
-            </a>{' '}
+            </Link>{' '}
             and{' '}
-            <a
-              href="#"
+            <Link
+              to="/privacy"
               className="font-medium text-primary transition-opacity hover:opacity-80"
             >
               Privacy Policy
-            </a>
+            </Link>
             .
           </p>
         </>

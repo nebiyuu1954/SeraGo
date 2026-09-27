@@ -6,10 +6,6 @@ import { cn } from '../../../lib/cn.ts'
 
 const ROLE_META: Record<RequiredRole, { icon: string; badgeClass: string }> = {
   Talent: { icon: 'work', badgeClass: 'bg-primary-container/60 text-primary' },
-  Recruiter: {
-    icon: 'groups',
-    badgeClass: 'bg-tertiary-container/50 text-tertiary',
-  },
   Admin: {
     icon: 'admin_panel_settings',
     badgeClass: 'bg-error-container text-error',
@@ -26,7 +22,7 @@ interface RoleDashboardProps {
  * Shared "you're signed in" screen used by the talent and admin dashboards.
  * Resolves the current user (via the stored token + /api/auth/whoami),
  * redirects signed-out/wrong-role visitors, and renders the greeting inside
- * the standard sidebar shell (same chrome as the recruiter workspace).
+ * the standard sidebar shell.
  */
 export default function RoleDashboard({
   role,

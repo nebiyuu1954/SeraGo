@@ -31,7 +31,7 @@ export interface HealthResponse {
 }
 
 /** Roles a user may self-select at registration (mirrors backend Roles.SelfService). */
-export type SignUpRole = 'Talent' | 'Recruiter'
+export type SignUpRole = 'Talent'
 
 /** Body of POST /api/auth/signup (Aufy SignUpRequest + SeraGo profile fields). */
 export interface SignUpRequest {
@@ -126,7 +126,6 @@ export interface ProfileResponse {
   /** True when the account has a password (Google-only accounts don't). */
   hasPassword: boolean
   talent: TalentProfileResponse | null
-  recruiter: RecruiterProfileResponse | null
   completion: ProfileCompletionResponse | null
 }
 
@@ -164,25 +163,6 @@ export interface TalentProfileResponse {
   skillVisibility: string
 }
 
-export interface RecruiterProfileResponse {
-  companyName: string
-  industry: string
-  companySize: string
-  websiteUrl: string
-  about: string
-  // New attributes
-  foundedYear: number | null
-  headquarters: string
-  phoneNumber: string
-  email: string
-  companyType: string | null  // PascalCase enum: Public | Private | NonProfit | …
-  linkedInUrl: string
-  twitterUrl: string
-  // Privacy
-  companyVisibility: string  // JSON object
-  isCompanyPrivate: boolean
-}
-
 export interface ProfileCompletionResponse {
   isComplete: boolean
   percentComplete: number
@@ -209,7 +189,6 @@ export interface UpdateProfileRequest {
   city?: string
   country?: string
   talent?: TalentProfileUpdate
-  recruiter?: RecruiterProfileUpdate
 }
 
 /** Talent section of PUT /api/account/profile. Enums are PascalCase names. */
@@ -309,26 +288,6 @@ export interface ResumeParseResponse {
   pagesRead: number
   fieldsFound: number
   profile: ParsedResumeProfile | null
-}
-
-/** Recruiter section of PUT /api/account/profile. CompanyName is required. */
-export interface RecruiterProfileUpdate {
-  companyName: string
-  industry?: string
-  companySize?: string
-  websiteUrl?: string
-  about?: string
-  // New attributes
-  foundedYear?: number | null
-  headquarters?: string
-  phoneNumber?: string
-  email?: string
-  companyType?: string | null  // PascalCase enum name
-  linkedInUrl?: string
-  twitterUrl?: string
-  // Privacy
-  companyVisibility?: string  // JSON object
-  isCompanyPrivate?: boolean
 }
 
 // ---------------------------------------------------------------- Jobs
@@ -469,18 +428,6 @@ export interface ForYouMatchResult {
   scored: number
   /** Jobs whose stored score was already current and simply reused. */
   cached?: number
-  total: number
-  message?: string | null
-}
-
-/** The `data` payload of POST /api/applications/job/{jobId}/match ("Run AI matching"). */
-export interface ApplicationsMatchResult {
-  /** Applications freshly scored this run. */
-  scored: number
-  /** Applications whose stored score was already current and reused. */
-  cached?: number
-  /** Applications that couldn't be scored (e.g. no shared profile data). */
-  failed?: number
   total: number
   message?: string | null
 }
@@ -672,28 +619,6 @@ export interface ApplyRequest {
   coverLetter?: string
   resumeUrl?: string
   shareProfile?: boolean
-}
-
-/** Body of PATCH /api/applications/{id}/status. */
-export interface UpdateApplicationStatusRequest {
-  status: ApplicationStatus
-  recruiterNotes?: string
-}
-
-/** Per-job stats for the recruiter applications dashboard. */
-export interface RecruiterJobStats {
-  jobId: string
-  jobTitle: string
-  jobCompany: string
-  jobLocation: string | null
-  jobType: string
-  viewCount: number
-  pendingCount: number
-  reviewedCount: number
-  interviewCount: number
-  hiredCount: number
-  rejectedCount: number
-  totalApplications: number
 }
 
 /** Result of GET /api/admin/stats/top — top sectors + websites for a period. */
@@ -893,23 +818,12 @@ export interface AdminUserActivity {
   activeDaysThisMonth: number
   lastActiveAt: string | null
   talent: AdminTalentActivity | null
-  recruiter: AdminRecruiterActivity | null
 }
 
 /** Job-seeking numbers — present only for Talent users. */
 export interface AdminTalentActivity {
   jobsViewed: number
   applicationsSubmitted: number
-}
-
-/** Hiring numbers — present only for Recruiter users. */
-export interface AdminRecruiterActivity {
-  jobsPosted: number
-  jobsDraft: number
-  jobsPendingApproval: number
-  jobsPublished: number
-  applicationsReceived: number
-  uniqueApplicants: number
 }
 
 export interface AdminUserListData {
@@ -1019,7 +933,7 @@ export interface AdminStatsOverviewResponse {
     newToday: number
     newThisWeek: number
     newThisMonth: number
-    byRole: { talent: number; recruiter: number; admin: number }
+    byRole: { talent: number; admin: number }
   }
   scraper: {
     day: string | null

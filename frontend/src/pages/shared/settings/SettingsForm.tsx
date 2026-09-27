@@ -16,10 +16,6 @@ interface SettingsFormProps {
 }
 
 const COPY: Record<RequiredRole, { title: string; blurb: string }> = {
-  Recruiter: {
-    title: 'Settings',
-    blurb: 'Manage your account preferences and notification settings.',
-  },
   Talent: {
     title: 'Settings',
     blurb: 'Manage your account preferences and notification settings.',

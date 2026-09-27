@@ -161,7 +161,6 @@ export default function AdminDashboardPage() {
                 <PieChart
                   slices={[
                     { label: 'Talent', value: overview.users.byRole.talent, color: '#6750A4' },
-                    { label: 'Recruiter', value: overview.users.byRole.recruiter, color: '#625B71' },
                     { label: 'Admin', value: overview.users.byRole.admin, color: '#7D5260' },
                   ]}
                   size={130}
@@ -369,7 +368,7 @@ export default function AdminDashboardPage() {
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                 <div className="w-full max-w-md rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
                   <h2 className="font-headline-md text-headline-md font-bold text-on-surface">Reject "{rejectModal.jobTitle}"</h2>
-                  <p className="mt-1 font-body-sm text-sm text-on-surface-variant">Optionally provide a reason — the recruiter will see it.</p>
+                  <p className="mt-1 font-body-sm text-sm text-on-surface-variant">Optionally provide a reason — it will be shown on the job.</p>
                   <textarea
                     value={rejectReason}
                     onChange={(e) => { if (e.target.value.length <= 500) setRejectReason(e.target.value) }}

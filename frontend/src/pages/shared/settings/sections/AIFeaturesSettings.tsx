@@ -57,10 +57,9 @@ function Divider() {
 
 export default function AIFeaturesSettings({ role, value, onChange }: AIFeaturesSettingsProps) {
   const isTalent = role === 'Talent'
-  const isRecruiter = role === 'Recruiter'
 
   const enabledCount = Object.values(value).filter(Boolean).length
-  const totalCount = isTalent ? 3 : isRecruiter ? 3 : 0
+  const totalCount = isTalent ? 3 : 0
 
   return (
     <AccordionSection
@@ -88,31 +87,6 @@ export default function AIFeaturesSettings({ role, value, onChange }: AIFeatures
           <Toggle
             label="AI resume parsing"
             description="Automatically extract skills and experience from your resume"
-            enabled={value.enableResumeParsing}
-            onToggle={() => onChange({ ...value, enableResumeParsing: !value.enableResumeParsing })}
-          />
-        </>
-      )}
-
-      {isRecruiter && (
-        <>
-          <Toggle
-            label="AI candidate matching"
-            description="Find the best candidates for your job posts using AI"
-            enabled={value.enableAiMatching}
-            onToggle={() => onChange({ ...value, enableAiMatching: !value.enableAiMatching })}
-          />
-          <Divider />
-          <Toggle
-            label="AI job enhancement"
-            description="Improve your job descriptions for clarity and appeal"
-            enabled={value.enableCoverLetter}
-            onToggle={() => onChange({ ...value, enableCoverLetter: !value.enableCoverLetter })}
-          />
-          <Divider />
-          <Toggle
-            label="AI resume parsing"
-            description="Automatically extract structured data from applicant resumes"
             enabled={value.enableResumeParsing}
             onToggle={() => onChange({ ...value, enableResumeParsing: !value.enableResumeParsing })}
           />

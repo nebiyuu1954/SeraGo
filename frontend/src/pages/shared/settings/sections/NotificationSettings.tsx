@@ -98,7 +98,6 @@ function Divider() {
 
 export default function NotificationSettings({ role, value, onChange }: NotificationSettingsProps) {
   const isTalent = role === 'Talent'
-  const isRecruiter = role === 'Recruiter'
   const isAdmin = role === 'Admin'
 
   const updateType = (
@@ -124,17 +123,12 @@ export default function NotificationSettings({ role, value, onChange }: Notifica
     enabledCount += countChannels(value.jobAlerts) + countChannels(value.applicationUpdates)
     totalToggles += 6
   }
-  if (isRecruiter) {
-    enabledCount += countChannels(value.newApplications) + countChannels(value.jobStatusChanges)
-    totalToggles += 6
-  }
   if (isAdmin) {
     enabledCount += countChannels(value.systemAlerts)
     totalToggles += 3
   }
   // Email-only extras count as 1 each
   if (isTalent) { enabledCount += value.weeklyDigest ? 1 : 0; totalToggles += 1 }
-  if (isRecruiter) { enabledCount += value.weeklySummary ? 1 : 0; totalToggles += 1 }
   if (isAdmin) { enabledCount += value.weeklyReport ? 1 : 0; totalToggles += 1 }
   enabledCount += value.marketing ? 1 : 0
   totalToggles += 1
@@ -208,80 +202,6 @@ export default function NotificationSettings({ role, value, onChange }: Notifica
                 role="switch"
                 aria-checked={value.marketing}
                 aria-label="Toggle saved search alerts"
-                onClick={() => updateEmailOnly({ marketing: !value.marketing })}
-                className={toggleClass(value.marketing)}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform mt-0.5 ${value.marketing ? 'translate-x-4' : 'translate-x-0.5'}`}
-                />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Recruiter notifications ── */}
-      {isRecruiter && (
-        <div className="md:col-span-2">
-          <h3 className="font-label-md text-label-md font-semibold text-on-surface mb-1">
-            Recruiter
-          </h3>
-          <p className="font-label-sm text-label-sm text-on-surface-variant/70 mb-2">
-            Notifications for your job posts and applications.
-          </p>
-
-          <NotificationTypeRow
-            label="New applications"
-            description="When someone applies to your job posts"
-            channels={value.newApplications}
-            onChange={(ch) => updateType('newApplications', ch)}
-          />
-          <Divider />
-          <NotificationTypeRow
-            label="Job status changes"
-            description="When your job post is approved, rejected, or expires"
-            channels={value.jobStatusChanges}
-            onChange={(ch) => updateType('jobStatusChanges', ch)}
-          />
-          <Divider />
-
-          {/* Email-only extras */}
-          <div className="py-3">
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <p className="font-label-md text-label-md text-on-surface">Weekly summary</p>
-                <p className="font-label-sm text-label-sm text-on-surface-variant/70">
-                  A summary of your posting activity each week
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={value.weeklySummary}
-                aria-label="Toggle weekly summary"
-                onClick={() => updateEmailOnly({ weeklySummary: !value.weeklySummary })}
-                className={toggleClass(value.weeklySummary)}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform mt-0.5 ${value.weeklySummary ? 'translate-x-4' : 'translate-x-0.5'}`}
-                />
-              </button>
-            </div>
-          </div>
-          <Divider />
-          <div className="py-3">
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <p className="font-label-md text-label-md text-on-surface">Marketing</p>
-                <p className="font-label-sm text-label-sm text-on-surface-variant/70">
-                  Product updates and tips
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={value.marketing}
-                aria-label="Toggle marketing"
                 onClick={() => updateEmailOnly({ marketing: !value.marketing })}
                 className={toggleClass(value.marketing)}
               >

@@ -44,33 +44,6 @@ const EDUCATION_LEVEL_LABELS: Record<string, string> = {
   PhD: 'PhD / Doctorate',
 }
 
-const COMPANY_TYPES = [
-  { value: 'Public', label: 'Public' },
-  { value: 'Private', label: 'Private' },
-  { value: 'NonProfit', label: 'Non-profit / NGO' },
-  { value: 'Government', label: 'Government' },
-  { value: 'Startup', label: 'Startup' },
-  { value: 'SoleProprietorship', label: 'Sole Proprietorship' },
-  { value: 'Partnership', label: 'Partnership' },
-]
-
-/** Default privacy for company profile: everything visible. */
-const DEFAULT_COMPANY_VISIBILITY: Record<string, boolean> = {
-  avatar: true,
-  companyName: true,
-  industry: true,
-  companySize: true,
-  websiteUrl: true,
-  about: true,
-  foundedYear: true,
-  headquarters: true,
-  phoneNumber: true,
-  email: true,
-  companyType: true,
-  linkedInUrl: true,
-  twitterUrl: true,
-}
-
 export interface WorkExperienceEntry {
   company: string
   title: string
@@ -155,19 +128,6 @@ const FIELD_LABELS: Record<string, string> = {
   preferredLocations: 'Preferred locations',
   profileVisibility: 'Profile visibility',
   skillVisibility: 'Skill visibility',
-  companyName: 'Company name',
-  industry: 'Industry',
-  companySize: 'Company size',
-  websiteUrl: 'Website',
-  foundedYear: 'Founded year',
-  headquarters: 'Headquarters',
-  companyPhoneNumber: 'Phone number',
-  companyEmail: 'Email',
-  companyType: 'Company type',
-  companyLinkedInUrl: 'LinkedIn',
-  companyTwitterUrl: 'Twitter',
-  companyVisibility: 'Company visibility',
-  isCompanyPrivate: 'Company privacy',
   // Work experience sub-fields
   company: 'Company',
   title: 'Job title',
@@ -192,15 +152,6 @@ const MISSING_LABELS: Record<string, string> = {
   desiredJobTypes: 'Desired job types',
   workMode: 'Work mode',
   availability: 'Availability',
-  companyName: 'Company name',
-  industry: 'Industry',
-  companySize: 'Company size',
-  websiteUrl: 'Website',
-  foundedYear: 'Founded year',
-  headquarters: 'Headquarters',
-  phoneNumber: 'Phone number',
-  email: 'Email',
-  companyType: 'Company type',
 }
 
 const inputClass =
@@ -348,27 +299,6 @@ const talentSchema = commonSchema
     return true
   })
 
-const recruiterSchema = commonSchema.concat(
-  object({
-    companyName: string().required('Company name is required.').max(255),
-    industry: string().max(120),
-    companySize: string().max(64),
-    websiteUrl: optionalUrl,
-    about: string().max(10000),
-    foundedYear: string().test(
-      'valid-year',
-      'Enter a valid year (e.g. 2015).',
-      (value) => !value || (/^\d{4}$/.test(value) && Number(value) >= 1800 && Number(value) <= 2100),
-    ),
-    headquarters: string().max(255),
-    companyPhoneNumber: string().max(32),
-    companyEmail: string().email('Enter a valid email address.'),
-    companyType: string(),
-    companyLinkedInUrl: optionalUrl,
-    companyTwitterUrl: optionalUrl,
-  }),
-)
-
 interface ProfileFormValues {
   // Common
   firstName: string
@@ -406,21 +336,6 @@ interface ProfileFormValues {
   // Privacy
   profileVisibility: Record<string, boolean>
   skillVisibility: Record<string, boolean>
-  // Recruiter
-  companyName: string
-  industry: string
-  companySize: string
-  websiteUrl: string
-  foundedYear: string
-  headquarters: string
-  companyPhoneNumber: string
-  companyEmail: string
-  companyType: string
-  companyLinkedInUrl: string
-  companyTwitterUrl: string
-  // Recruiter privacy
-  companyVisibility: Record<string, boolean>
-  isCompanyPrivate: boolean
 }
 
 const initialValues: ProfileFormValues = {
@@ -453,19 +368,6 @@ const initialValues: ProfileFormValues = {
   preferredLocations: [],
   profileVisibility: { ...DEFAULT_VISIBILITY },
   skillVisibility: {},
-  companyName: '',
-  industry: '',
-  companySize: '',
-  websiteUrl: '',
-  foundedYear: '',
-  headquarters: '',
-  companyPhoneNumber: '',
-  companyEmail: '',
-  companyType: '',
-  companyLinkedInUrl: '',
-  companyTwitterUrl: '',
-  companyVisibility: { ...DEFAULT_COMPANY_VISIBILITY },
-  isCompanyPrivate: false,
 }
 
 /* ------------------------------------------------------------ Field bits */
@@ -635,10 +537,6 @@ function SkillAddButton({ onAdd }: { onAdd: (skill: string) => void }) {
 /* -------------------------------------------------------------- The form */
 
 const COPY: Record<RequiredRole, { blurb: string }> = {
-  Recruiter: {
-    blurb:
-      'Your personal details and company information — shown on your job posts.',
-  },
   Talent: {
     blurb:
       'Your professional details — used to match you with the right roles.',
@@ -671,15 +569,8 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
   const resumeInputRef = useRef<HTMLInputElement>(null)
 
   const isTalent = role === 'Talent'
-  const isRecruiter = role === 'Recruiter'
 
-
-  const validationSchema =
-    role === 'Talent'
-      ? talentSchema
-      : role === 'Recruiter'
-        ? recruiterSchema
-        : commonSchema
+  const validationSchema = role === 'Talent' ? talentSchema : commonSchema
 
   const formik = useFormik<ProfileFormValues>({
     initialValues,
@@ -739,14 +630,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
           }
         } catch { /* keep empty */ }
 
-        // Parse company visibility JSON
-        let parsedCompanyVisibility = { ...DEFAULT_COMPANY_VISIBILITY }
-        try {
-          if (p.recruiter?.companyVisibility && p.recruiter.companyVisibility !== '{}') {
-            parsedCompanyVisibility = { ...DEFAULT_COMPANY_VISIBILITY, ...JSON.parse(p.recruiter.companyVisibility) }
-          }
-        } catch { /* keep defaults */ }
-
         formik.resetForm({
           values: {
             firstName: p.firstName,
@@ -755,9 +638,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
             avatarUrl: p.avatarUrl,
             city: p.city,
             country: p.country,
-            about: isTalent
-              ? (p.talent?.about ?? '')
-              : (p.recruiter?.about ?? ''),
+            about: p.talent?.about ?? '',
             experienceLevel: p.talent?.experienceLevel ?? '',
             yearsOfExperience:
               p.talent?.yearsOfExperience == null
@@ -783,19 +664,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
             preferredLocations: parsedLocations,
             profileVisibility: parsedVisibility,
             skillVisibility: parsedSkillVisibility,
-            companyName: p.recruiter?.companyName ?? '',
-            industry: p.recruiter?.industry ?? '',
-            companySize: p.recruiter?.companySize ?? '',
-            websiteUrl: p.recruiter?.websiteUrl ?? '',
-            foundedYear: p.recruiter?.foundedYear != null ? String(p.recruiter.foundedYear) : '',
-            headquarters: p.recruiter?.headquarters ?? '',
-            companyPhoneNumber: p.recruiter?.phoneNumber ?? '',
-            companyEmail: p.recruiter?.email ?? '',
-            companyType: p.recruiter?.companyType ?? '',
-            companyLinkedInUrl: p.recruiter?.linkedInUrl ?? '',
-            companyTwitterUrl: p.recruiter?.twitterUrl ?? '',
-            companyVisibility: parsedCompanyVisibility,
-            isCompanyPrivate: p.recruiter?.isCompanyPrivate ?? false,
           },
         })
       })
@@ -859,23 +727,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
         preferredLocations: JSON.stringify(values.preferredLocations),
         profileVisibility: JSON.stringify(values.profileVisibility),
         skillVisibility: JSON.stringify(values.skillVisibility),
-      }
-    } else if (isRecruiter) {
-      payload.recruiter = {
-        companyName: values.companyName.trim(),
-        industry: values.industry.trim(),
-        companySize: values.companySize.trim(),
-        websiteUrl: values.websiteUrl.trim(),
-        about: values.about.trim(),
-        foundedYear: values.foundedYear === '' ? null : Number(values.foundedYear),
-        headquarters: values.headquarters.trim() || '',
-        phoneNumber: values.companyPhoneNumber.trim() || '',
-        email: values.companyEmail.trim() || '',
-        companyType: values.companyType || null,
-        linkedInUrl: values.companyLinkedInUrl.trim() || '',
-        twitterUrl: values.companyTwitterUrl.trim() || '',
-        companyVisibility: JSON.stringify(values.companyVisibility),
-        isCompanyPrivate: values.isCompanyPrivate,
       }
     }
 
@@ -977,17 +828,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
       'skillVisibility',
       { ...formik.values.skillVisibility, [skill]: !(formik.values.skillVisibility[skill] ?? true) },
     )
-  }
-
-  const toggleCompanyVisibility = (key: string) => {
-    formik.setFieldValue(
-      'companyVisibility',
-      { ...formik.values.companyVisibility, [key]: !formik.values.companyVisibility[key] },
-    )
-  }
-
-  const toggleCompanyPrivate = () => {
-    formik.setFieldValue('isCompanyPrivate', !formik.values.isCompanyPrivate)
   }
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1189,29 +1029,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
     formik.values.portfolioUrl,
   ].filter(Boolean).length
 
-  /* ——— Recruiter: count fields filled per section for accordion badges ——— */
-  const recruiterPersonalFilled = [
-    formik.values.firstName,
-    formik.values.lastName,
-    formik.values.middleName,
-    formik.values.city,
-    formik.values.country,
-    formik.values.avatarUrl,
-  ].filter(Boolean).length
-
-  const recruiterCompanyFilled = [
-    formik.values.companyName,
-    formik.values.industry,
-    formik.values.companySize,
-    formik.values.websiteUrl,
-    formik.values.about,
-    formik.values.foundedYear,
-    formik.values.headquarters,
-    formik.values.companyPhoneNumber,
-    formik.values.companyEmail,
-    formik.values.companyType,
-  ].filter(Boolean).length
-
   const fullName = [formik.values.firstName, formik.values.middleName, formik.values.lastName]
     .filter(Boolean)
     .join(' ')
@@ -1328,7 +1145,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
             <div className="absolute top-0 right-0 w-64 h-full bg-gradient-to-l from-surface-container-low to-transparent opacity-50 z-0 pointer-events-none" />
           </section>
         </>
-      ) : role === 'Admin' ? (
+      ) : (
         <>
           <h1 className="font-headline-lg text-headline-lg font-bold tracking-tight text-primary">
             Profile
@@ -1336,83 +1153,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
           <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
             {COPY[role].blurb}
           </p>
-        </>
-      ) : (
-        /* ── Recruiter: profile preview header card (mirrors the talent one) ── */
-        <>
-          <section className="bg-surface-container-lowest border border-surface-variant rounded-xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden">
-            <div className="flex items-center gap-6 z-10">
-              {formik.values.avatarUrl ? (
-                <img
-                  className="w-20 h-20 rounded-full object-cover border border-surface-variant"
-                  src={formik.values.avatarUrl}
-                  alt={fullName}
-                />
-              ) : (
-                <span className="flex w-20 h-20 items-center justify-center rounded-full bg-primary-container/60 font-headline-lg text-headline-lg font-semibold text-primary">
-                  {avatarInitials || '?'}
-                </span>
-              )}
-              <div>
-                <h1 className="font-headline-lg text-headline-lg text-primary mb-1">
-                  {fullName || 'Your name'}
-                </h1>
-                {formik.values.companyName && (
-                  <p className="font-body-lg text-body-lg text-on-surface-variant mb-2">
-                    Hiring for {formik.values.companyName}
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="flex flex-col items-start gap-2 z-10">
-              <div className="flex items-center gap-2">
-                <input
-                  ref={avatarInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
-                  onChange={handleAvatarUpload}
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  onClick={() => avatarInputRef.current?.click()}
-                  disabled={avatarUploading}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low disabled:opacity-50"
-                >
-                  {avatarUploading ? (
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-                  ) : (
-                    <span className="material-symbols-outlined text-[18px]">upload</span>
-                  )}
-                  {formik.values.avatarUrl ? 'Change photo' : 'Upload photo'}
-                </button>
-                {formik.values.avatarUrl && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setPhotoModalOpen(true)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">visibility</span>
-                      View photo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => formik.setFieldValue('avatarUrl', '')}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-on-surface transition-colors hover:bg-error-container hover:text-error"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">person_remove</span>
-                      Remove
-                    </button>
-                  </>
-                )}
-              </div>
-              <p className="font-label-sm text-label-sm text-on-surface-variant/60 text-center w-full">
-                JPEG, PNG, WebP, or GIF · Max 5MB
-              </p>
-            </div>
-            <div className="absolute top-0 right-0 w-64 h-full bg-gradient-to-l from-surface-container-low to-transparent opacity-50 z-0 pointer-events-none" />
-          </section>
         </>
       )}
 
@@ -1753,11 +1493,11 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                     className={inputClass}
                   />
                 </Field>
-                <Field full label="About" hint="A short bio recruiters will see.">
+                <Field full label="About" hint="A short bio employers will see.">
                   <RichTextEditor
                     value={formik.values.about}
                     onChange={(v) => formik.setFieldValue('about', v)}
-                    placeholder="Tell recruiters about yourself…"
+                    placeholder="Tell employers about yourself…"
                   />
                 </Field>
               </AccordionSection>
@@ -1863,7 +1603,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
               {/* ── Section 4: Work experience ── */}
               <AccordionSection
                 title="Work experience"
-                description="Your work history — shown to recruiters when you apply."
+                description="Your work history — shown when you apply."
                 icon="work_history"
                 completion={{ filled: formik.values.workExperience.length > 0 ? 1 : 0, total: 1 }}
               >
@@ -2002,7 +1742,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
               {/* ── Section 5: Education ── */}
               <AccordionSection
                 title="Education"
-                description="Your educational background — shown to recruiters when you apply."
+                description="Your educational background — shown when you apply."
                 icon="school"
                 completion={{ filled: educationFilled, total: 2 }}
               >
@@ -2183,7 +1923,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
               {/* ── Section 6: Links & resume ── */}
               <AccordionSection
                 title="Links & resume"
-                description="Where recruiters can find you online."
+                description="Where employers can find you online."
                 icon="link"
                 completion={{ filled: linksFilled, total: 4 }}
               >
@@ -2313,315 +2053,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
             </>
           )}
 
-          {/* ═══════════════════════════ RECRUITER SECTIONS ═══════════════════════════ */}
-          {isRecruiter && (
-            <AccordionSection
-              title="Personal information"
-              description="Your name and location — shown across the platform."
-              icon="person"
-              defaultOpen
-              completion={{ filled: recruiterPersonalFilled, total: 6 }}
-            >
-                <Field
-                  label="First name *"
-                  error={formik.touched.firstName ? formik.errors.firstName : undefined}
-                >
-                  <input
-                    name="firstName"
-                    value={formik.values.firstName}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    placeholder="Jane"
-                    className={inputClass}
-                  />
-                </Field>
-                <Field
-                  label="Middle name *"
-                  error={formik.touched.middleName ? formik.errors.middleName : undefined}
-                >
-                  <input
-                    name="middleName"
-                    value={formik.values.middleName}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    placeholder="e.g. Kebede"
-                    className={inputClass}
-                  />
-                </Field>
-                <Field
-                  label="Last name *"
-                  error={formik.touched.lastName ? formik.errors.lastName : undefined}
-                >
-                  <input
-                    name="lastName"
-                    value={formik.values.lastName}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    placeholder="Doe"
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label="City">
-                  <input
-                    name="city"
-                    value={formik.values.city}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    placeholder="Addis Ababa"
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label="Country">
-                  <input
-                    name="country"
-                    value={formik.values.country}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    placeholder="Ethiopia"
-                    className={inputClass}
-                  />
-                </Field>
-            </AccordionSection>
-          )}
-
-          {isRecruiter && (
-            <AccordionSection
-              title="Company information"
-              description="Your company details — shown on every job post you publish."
-              icon="apartment"
-              completion={{ filled: recruiterCompanyFilled, total: 10 }}
-            >
-                {/* ── Master Private Toggle ── */}
-                <div className="md:col-span-2">
-                  <div className="flex items-center justify-between gap-4 rounded-lg border border-surface-variant bg-surface-container-low p-4">
-                    <div className="flex items-center gap-3">
-                      <span className="material-symbols-outlined text-xl text-primary">lock</span>
-                      <div>
-                        <p className="font-label-md text-label-md font-medium text-on-surface">
-                          Make company private
-                        </p>
-                        <p className="font-label-sm text-label-sm text-on-surface-variant">
-                          When enabled, talent will see "Confidential Recruiter" instead of your name, and "Confidential Company" instead of your company details.
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={formik.values.isCompanyPrivate}
-                      aria-label="Toggle company privacy"
-                      onClick={toggleCompanyPrivate}
-                      className={cn(
-                        'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors',
-                        formik.values.isCompanyPrivate ? 'bg-primary' : 'bg-surface-variant',
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          'inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform mt-0.5',
-                          formik.values.isCompanyPrivate ? 'translate-x-5' : 'translate-x-0.5',
-                        )}
-                      />
-                    </button>
-                  </div>
-                </div>
-
-                <Field
-                  label="Company name *"
-                  visibilityKey="companyName"
-                  visibility={formik.values.companyVisibility}
-                  onToggleVisibility={toggleCompanyVisibility}
-                  error={formik.touched.companyName ? formik.errors.companyName : undefined}
-                >
-                  <input
-                    name="companyName"
-                    value={formik.values.companyName}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    placeholder="SeraGo HR"
-                    className={inputClass}
-                  />
-                </Field>
-                <Field
-                  label="Industry"
-                  visibilityKey="industry"
-                  visibility={formik.values.companyVisibility}
-                  onToggleVisibility={toggleCompanyVisibility}
-                >
-                  <input
-                    name="industry"
-                    value={formik.values.industry}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    placeholder="Technology"
-                    className={inputClass}
-                  />
-                </Field>
-                <Field
-                  label="Company size"
-                  visibilityKey="companySize"
-                  visibility={formik.values.companyVisibility}
-                  onToggleVisibility={toggleCompanyVisibility}
-                >
-                  <input
-                    name="companySize"
-                    value={formik.values.companySize}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    placeholder="11–50 employees"
-                    className={inputClass}
-                  />
-                </Field>
-                <Field
-                  label="Website"
-                  visibilityKey="websiteUrl"
-                  visibility={formik.values.companyVisibility}
-                  onToggleVisibility={toggleCompanyVisibility}
-                  error={formik.touched.websiteUrl ? formik.errors.websiteUrl : undefined}
-                >
-                  <input
-                    name="websiteUrl"
-                    value={formik.values.websiteUrl}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    placeholder="https://company.com"
-                    className={inputClass}
-                  />
-                </Field>
-                <Field
-                  label="Company type"
-                  visibilityKey="companyType"
-                  visibility={formik.values.companyVisibility}
-                  onToggleVisibility={toggleCompanyVisibility}
-                >
-                  <select
-                    name="companyType"
-                    value={formik.values.companyType}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    className={inputClass}
-                  >
-                    <option value="">Not specified</option>
-                    {COMPANY_TYPES.map((ct) => (
-                      <option key={ct.value} value={ct.value}>{ct.label}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field
-                  label="Founded year"
-                  visibilityKey="foundedYear"
-                  visibility={formik.values.companyVisibility}
-                  onToggleVisibility={toggleCompanyVisibility}
-                  error={formik.touched.foundedYear ? formik.errors.foundedYear : undefined}
-                >
-                  <input
-                    name="foundedYear"
-                    type="number"
-                    min={1800}
-                    max={2100}
-                    value={formik.values.foundedYear}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    placeholder="e.g. 2015"
-                    className={inputClass}
-                  />
-                </Field>
-                <Field
-                  label="Headquarters"
-                  visibilityKey="headquarters"
-                  visibility={formik.values.companyVisibility}
-                  onToggleVisibility={toggleCompanyVisibility}
-                >
-                  <input
-                    name="headquarters"
-                    value={formik.values.headquarters}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    placeholder="e.g. Addis Ababa, Ethiopia"
-                    className={inputClass}
-                  />
-                </Field>
-                <Field
-                  label="Phone number"
-                  visibilityKey="phoneNumber"
-                  visibility={formik.values.companyVisibility}
-                  onToggleVisibility={toggleCompanyVisibility}
-                >
-                  <input
-                    name="companyPhoneNumber"
-                    value={formik.values.companyPhoneNumber}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    placeholder="+251 91 123 4567"
-                    className={inputClass}
-                  />
-                </Field>
-                <Field
-                  label="Email"
-                  visibilityKey="email"
-                  visibility={formik.values.companyVisibility}
-                  onToggleVisibility={toggleCompanyVisibility}
-                  error={formik.touched.companyEmail ? formik.errors.companyEmail : undefined}
-                >
-                  <input
-                    name="companyEmail"
-                    type="email"
-                    value={formik.values.companyEmail}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    placeholder="contact@company.com"
-                    className={inputClass}
-                  />
-                </Field>
-                <Field
-                  label="LinkedIn URL"
-                  visibilityKey="linkedInUrl"
-                  visibility={formik.values.companyVisibility}
-                  onToggleVisibility={toggleCompanyVisibility}
-                  error={formik.touched.companyLinkedInUrl ? formik.errors.companyLinkedInUrl : undefined}
-                >
-                  <input
-                    name="companyLinkedInUrl"
-                    value={formik.values.companyLinkedInUrl}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    placeholder="https://linkedin.com/company/…"
-                    className={inputClass}
-                  />
-                </Field>
-                <Field
-                  label="Twitter / X URL"
-                  visibilityKey="twitterUrl"
-                  visibility={formik.values.companyVisibility}
-                  onToggleVisibility={toggleCompanyVisibility}
-                  error={formik.touched.companyTwitterUrl ? formik.errors.companyTwitterUrl : undefined}
-                >
-                  <input
-                    name="companyTwitterUrl"
-                    value={formik.values.companyTwitterUrl}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    placeholder="https://x.com/…"
-                    className={inputClass}
-                  />
-                </Field>
-                <Field
-                  full
-                  label="About the company"
-                  visibilityKey="about"
-                  visibility={formik.values.companyVisibility}
-                  onToggleVisibility={toggleCompanyVisibility}
-                  hint="Shown on your profile and every job post."
-                >
-                  <RichTextEditor
-                    value={formik.values.about}
-                    onChange={(v) => formik.setFieldValue('about', v)}
-                    placeholder="What does your company do?"
-                  />
-                </Field>
-            </AccordionSection>
-          )}
-
           {/* ═══════════════════════════ ADMIN ═══════════════════════════ */}
           {role === 'Admin' && (
             <p className="font-label-sm text-label-sm text-on-surface-variant">
@@ -2631,16 +2062,10 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
           )}
 
           {/* ═══════════════════════════ ACTION BUTTONS ═══════════════════════════ */}            <div className="flex items-center justify-end gap-3 pt-2">
-            {(isTalent || isRecruiter) && (
+            {isTalent && (
               <button
                 type="button"
-                onClick={() =>
-                  navigate(
-                    isTalent
-                      ? '/dashboard/talent/profile/preview'
-                      : '/dashboard/recruiter/profile/preview',
-                  )
-                }
+                onClick={() => navigate('/dashboard/talent/profile/preview')}
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-outline-variant px-6 py-3 font-label-md text-label-md font-medium text-on-surface transition-colors hover:bg-surface-container-low"
               >
                 <span className="material-symbols-outlined text-[18px]">visibility</span>

@@ -13,10 +13,9 @@ import type { AdminStatsOverviewResponse, AdminUserResponse } from '../../../typ
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import { cn } from '../../../lib/cn.ts'
 
-const ROLE_OPTIONS = ['Talent', 'Recruiter', 'Admin']
+const ROLE_OPTIONS = ['Talent', 'Admin']
 const ROLE_COLORS: Record<string, string> = {
   Talent: 'bg-blue-100 text-blue-800',
-  Recruiter: 'bg-green-100 text-green-800',
   Admin: 'bg-purple-100 text-purple-800',
 }
 
@@ -116,7 +115,7 @@ export default function UsersPage() {
           {/* Row 2 — totals */}
           <StatCard icon="group" label="Total users" value={stats.total} accent="text-on-surface" />
           <StatCard icon="person" label="Total talent" value={stats.byRole.talent} accent="text-blue-600" />
-          <StatCard icon="business_center" label="Total recruiter" value={stats.byRole.recruiter} accent="text-green-600" />
+          <StatCard icon="admin_panel_settings" label="Total admin" value={stats.byRole.admin} accent="text-purple-600" />
 
           {/* Row 3 — new sign-ups */}
           <StatCard icon="today" label="New today" value={stats.newToday} accent="text-accent" />

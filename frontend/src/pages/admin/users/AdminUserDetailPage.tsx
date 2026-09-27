@@ -38,62 +38,34 @@ import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import { JOB_TYPE_LABELS } from '../../../components/dashboard/jobOptions.ts'
 import { cn } from '../../../lib/cn.ts'
 
-const ROLE_OPTIONS = ['Talent', 'Recruiter', 'Admin']
+const ROLE_OPTIONS = ['Talent', 'Admin']
 const ROLE_COLORS: Record<string, string> = {
   Talent: 'bg-blue-100 text-blue-800',
-  Recruiter: 'bg-green-100 text-green-800',
   Admin: 'bg-purple-100 text-purple-800',
 }
 
 /**
- * Role-specific engagement summary. Recruiters see their hiring numbers;
- * talents see their job-hunting numbers. Both see activity days, last-seen and
- * profile completion.
+ * Role-specific engagement summary. Talents see their job-hunting numbers,
+ * plus activity days, last-seen and profile completion.
  */
 function ActivitySection({ activity }: { activity: AdminUserActivity }) {
   const isTalent = activity.role === 'Talent'
-  const isRecruiter = activity.role === 'Recruiter'
 
   // Admins have no role profile and no role activity to report.
-  if (!isTalent && !isRecruiter) return null
+  if (!isTalent) return null
 
-  const roleTiles = isTalent
-    ? [
-        {
-          icon: 'visibility',
-          label: 'Jobs viewed',
-          value: activity.talent?.jobsViewed ?? 0,
-        },
-        {
-          icon: 'send',
-          label: 'Applications submitted',
-          value: activity.talent?.applicationsSubmitted ?? 0,
-        },
-      ]
-    : [
-        { icon: 'work', label: 'Jobs posted', value: activity.recruiter?.jobsPosted ?? 0 },
-        { icon: 'edit_note', label: 'Drafts', value: activity.recruiter?.jobsDraft ?? 0 },
-        {
-          icon: 'hourglass_top',
-          label: 'Pending review',
-          value: activity.recruiter?.jobsPendingApproval ?? 0,
-        },
-        {
-          icon: 'check_circle',
-          label: 'Published',
-          value: activity.recruiter?.jobsPublished ?? 0,
-        },
-        {
-          icon: 'inbox',
-          label: 'Applications received',
-          value: activity.recruiter?.applicationsReceived ?? 0,
-        },
-        {
-          icon: 'groups',
-          label: 'Unique applicants',
-          value: activity.recruiter?.uniqueApplicants ?? 0,
-        },
-      ]
+  const roleTiles = [
+    {
+      icon: 'visibility',
+      label: 'Jobs viewed',
+      value: activity.talent?.jobsViewed ?? 0,
+    },
+    {
+      icon: 'send',
+      label: 'Applications submitted',
+      value: activity.talent?.applicationsSubmitted ?? 0,
+    },
+  ]
 
   const missingLabels = activity.missingProfileFields.map(
     (field) => PROFILE_FIELD_LABELS[field] ?? field,
@@ -103,9 +75,7 @@ function ActivitySection({ activity }: { activity: AdminUserActivity }) {
     <div className="mt-6 rounded-xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm">
       <h2 className="font-label-md text-label-md font-semibold text-on-surface">Activity</h2>
       <p className="mt-1 font-label-sm text-label-sm text-on-surface-variant">
-        {isTalent
-          ? 'What this talent has been doing on SeraGo.'
-          : 'What this recruiter has been doing on SeraGo.'}
+        What this talent has been doing on SeraGo.
       </p>
 
       {/* Role numbers */}
@@ -236,10 +206,9 @@ export default function AdminUserDetailPage() {
       const userData = await fetchAdminUser(userId, tokens.accessToken)
       setUser(userData)
 
-      // Only recruiters (and admins who have posted) can own jobs — fetching
-      // this for a talent user just returned an empty list and rendered a
-      // misleading "Posted jobs (0)" card.
-      if (userData.userType === 'Recruiter' || userData.userType === 'Admin') {
+      // Only admins can own jobs — fetching this for a talent user just
+      // returned an empty list and rendered a misleading "Posted jobs (0)" card.
+      if (userData.userType === 'Admin') {
         const jobsData = await fetchJobs(
           { postedBy: userId, pageSize: 50 },
           tokens.accessToken,
@@ -461,9 +430,9 @@ export default function AdminUserDetailPage() {
           {/* Engagement — role-specific */}
           {user.activity && <ActivitySection activity={user.activity} />}
 
-          {/* Posted jobs — recruiters only (talents and admins never own jobs,
-              so an empty "Posted jobs (0)" card was just noise) */}
-          {(user.userType === 'Recruiter' || user.userType === 'Admin') && (
+          {/* Posted jobs — admins only (talents never own jobs, so an empty
+              "Posted jobs (0)" card was just noise) */}
+          {user.userType === 'Admin' && (
           <div className="mt-6 rounded-xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm">
             <h2 className="font-label-md text-label-md font-semibold text-on-surface">
               Posted jobs ({jobs.length})

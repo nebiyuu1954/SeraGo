@@ -1,19 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useFormik } from 'formik'
 import { object, string } from 'yup'
 import {
   approveJob,
-  createJob,
   fetchJob,
   fetchSectors,
   getApiErrorMessage,
   getStoredAuthTokens,
   rejectJob,
-  submitJob,
   updateJob,
 } from '../../../api'
-import { useRequireRoleAny } from '../../../hooks'
+import { useRequireRole } from '../../../hooks'
 import type {
   JobResponse,
   JobType,
@@ -101,21 +99,17 @@ function Field({
 }
 
 /**
- * Create / edit job form. Two submit modes — "Save draft" keeps the job
- * hidden (resumable later); "Submit for review" sends it to the admin queue
- * (create) or saves then submits (edit). Editing a rejected job resets it to
- * draft, exactly like the API.
+ * Admin-only job editor. Jobs are sourced from the scraper pipeline; admins
+ * review, edit, publish/unpublish and moderate them here. Job creation is not
+ * available — the scraper is the only source of new jobs.
  */
 export default function JobFormPage() {
   const { jobId } = useParams<{ jobId: string }>()
-  const isEdit = Boolean(jobId)
-  const auth = useRequireRoleAny(['Recruiter', 'Admin'])
+  const auth = useRequireRole('Admin')
   const navigate = useNavigate()
 
-  const submitMode = useRef<'draft' | 'submit'>('draft')
-
   const [loadedJob, setLoadedJob] = useState<JobResponse | null>(null)
-  const [loading, setLoading] = useState(isEdit)
+  const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [rejection, setRejection] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -128,8 +122,13 @@ export default function JobFormPage() {
     enableReinitialize: true,
     validateOnBlur: true,
     validateOnChange: true,
-    onSubmit: (values) => handleSubmit(values, submitMode.current),
+    onSubmit: (values) => handleSubmit(values),
   })
+
+  // Editing requires a job id — without one there is nothing to do here.
+  useEffect(() => {
+    if (!jobId) navigate('/dashboard/admin/jobs', { replace: true })
+  }, [jobId, navigate])
 
   // Fetch available sectors for the picker
   useEffect(() => {
@@ -147,13 +146,13 @@ export default function JobFormPage() {
     return () => clearTimeout(t)
   }, [toast])
 
-  // Load the job when editing (prefill + status banners).
+  // Load the job (prefill + status banners).
   useEffect(() => {
-    if (!isEdit || auth.status !== 'authenticated') return
+    if (!jobId || auth.status !== 'authenticated') return
     const tokens = getStoredAuthTokens()
     if (!tokens) return
     let cancelled = false
-    fetchJob(jobId as string, tokens.accessToken)
+    fetchJob(jobId, tokens.accessToken)
       .then((job) => {
         if (cancelled) return
         setLoadedJob(job)
@@ -191,17 +190,15 @@ export default function JobFormPage() {
     }
     // formik.setValues is stable enough here; the load only needs jobId/auth.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEdit, jobId, auth.status])
+  }, [jobId, auth.status])
 
-  const handleSubmit = async (
-    values: typeof initialValues,
-    mode: 'draft' | 'submit',
-  ) => {
+  const handleSubmit = async (values: typeof initialValues) => {
     const tokens = getStoredAuthTokens()
     if (!tokens) {
       setSubmitError('You are not signed in.')
       return
     }
+    if (!jobId) return
     setSubmitError(null)
 
     const payload: JobWriteRequest = {
@@ -228,52 +225,27 @@ export default function JobFormPage() {
     }
 
     try {
-      if (isEdit) {
-        await updateJob(jobId as string, payload, tokens.accessToken)
-        if (mode === 'submit') {
-          await submitJob(jobId as string, tokens.accessToken)
-        }
-        navigate('/dashboard/recruiter', {
-          state: {
-            toast:
-              mode === 'submit'
-                ? 'Job submitted for review.'
-                : 'Changes saved.',
-          },
-        })
-      } else {
-        const job = await createJob(
-          { ...payload, saveAsDraft: mode === 'draft' },
-          tokens.accessToken,
-        )
-        navigate('/dashboard/recruiter', {
-          state: {
-            toast:
-              mode === 'draft'
-                ? 'Draft saved — you can finish it later.'
-                : job.status === 'published'
-                  ? 'Job published.'
-                  : 'Job submitted for review.',
-          },
-        })
-      }
+      await updateJob(jobId, payload, tokens.accessToken)
+      navigate('/dashboard/admin/jobs', {
+        state: { toast: 'Changes saved.' },
+      })
     } catch (err) {
       setSubmitError(getApiErrorMessage(err))
     }
   }
 
-  // Admin-only: publish / unpublish the job without leaving the edit page.
+  // Publish / unpublish the job without leaving the edit page.
   const [adminActionLoading, setAdminActionLoading] = useState(false)
 
   const handleApprove = async () => {
-    if (!jobId || !isAdmin) return
+    if (!jobId) return
     setAdminActionLoading(true)
     const tokens = getStoredAuthTokens()
     if (!tokens) return
     try {
       await approveJob(jobId, tokens.accessToken)
       setToast('Job published.')
-      navigate('/dashboard/admin', {
+      navigate('/dashboard/admin/jobs', {
         state: { toast: 'Job published.' },
       })
     } catch (err) {
@@ -284,14 +256,14 @@ export default function JobFormPage() {
   }
 
   const handleUnpublish = async () => {
-    if (!jobId || !isAdmin) return
+    if (!jobId) return
     setAdminActionLoading(true)
     const tokens = getStoredAuthTokens()
     if (!tokens) return
     try {
       await rejectJob(jobId, 'Unpublished by admin', tokens.accessToken)
       setToast('Job unpublished.')
-      navigate('/dashboard/admin', {
+      navigate('/dashboard/admin/jobs', {
         state: { toast: 'Job unpublished.' },
       })
     } catch (err) {
@@ -312,34 +284,13 @@ export default function JobFormPage() {
     )
   }
 
-  const isPending = isEdit && loadedJob?.status === 'pendingApproval'
-  // Admins can edit any job (including published); recruiters can only edit
-  // their own non-published jobs (the backend enforces the same rules).
-  const isAdmin =
-    auth.status === 'authenticated' && auth.user.roles.includes('Admin')
-  const canEdit =
-    !loading &&
-    !loadError &&
-    (isAdmin || (loadedJob?.isOwner && loadedJob.status !== 'published'))
-  // Create → the primary CTA submits for review. Edit → save & submit, unless
-  // the job is already pending (then saving is all there is to do).
-  const primaryMode: 'draft' | 'submit' = isEdit
-    ? isPending || isAdmin
-      ? 'draft'
-      : 'submit'
-    : 'submit'
-  const primaryLabel = isEdit
-    ? isPending || isAdmin
-      ? 'Save changes'
-      : 'Save & submit for review'
-    : 'Submit for review'
-  const secondaryLabel = 'Save as draft'
+  const canEdit = !loading && !loadError
   const submitting = formik.isSubmitting
 
   return (
-    <DashboardShell role={isAdmin ? 'Admin' : 'Recruiter'} authUser={auth.user}>
+    <DashboardShell role="Admin" authUser={auth.user}>
       <Link
-        to={isAdmin ? '/dashboard/admin/jobs' : '/dashboard/recruiter'}
+        to="/dashboard/admin/jobs"
         className="inline-flex items-center gap-1.5 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
       >
         <span className="material-symbols-outlined text-lg">arrow_back</span>
@@ -357,12 +308,11 @@ export default function JobFormPage() {
       )}
 
       <h1 className="mt-4 font-headline-lg text-headline-lg font-bold tracking-tight text-primary">
-        {isEdit ? 'Edit job' : 'Create job'}
+        Edit job
       </h1>
       <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
-        {isEdit
-          ? 'Update the details below. Changes stay hidden until you submit for review.'
-          : 'Post a job opening — save it as a draft and finish later, or submit it for review now.'}
+        Update the details below, then save. Use the status controls to publish
+        or unpublish the job.
       </p>
 
       {loading && (
@@ -400,23 +350,7 @@ export default function JobFormPage() {
                 <div>
                   <p className="font-semibold">This job was rejected</p>
                   <p className="mt-0.5">{rejection}</p>
-                  <p className="mt-0.5 text-amber-800">
-                    Fix the issues below and submit again — saving will reset it
-                    to a draft.
-                  </p>
                 </div>
-              </div>
-            )}
-
-            {!canEdit && !isAdmin && (
-              <div className="mx-6 mt-6 flex items-start gap-3 rounded-xl border border-error/30 bg-error-container px-4 py-3.5 font-label-md text-label-md text-on-error-container">
-                <span className="material-symbols-outlined mt-0.5 text-lg">
-                  lock
-                </span>
-                <span>
-                  This job is published and can't be edited. Contact an admin to
-                  make changes.
-                </span>
               </div>
             )}
 
@@ -695,52 +629,34 @@ export default function JobFormPage() {
 
             <div className="flex flex-col-reverse gap-3 border-t border-surface-variant px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
               <Link
-                to="/dashboard/recruiter"
+                to="/dashboard/admin/jobs"
                 className="inline-flex items-center justify-center rounded-lg border border-outline-variant bg-surface-container-lowest px-6 py-3 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low"
               >
                 Cancel
               </Link>
-              <div className="flex flex-col-reverse gap-3 sm:flex-row">
-                {!(isEdit && isPending) && (
-                  <button
-                    type="button"
-                    disabled={submitting || !canEdit}
-                    onClick={() => {
-                      submitMode.current = 'draft'
-                      formik.submitForm()
-                    }}
-                    className="rounded-lg border border-outline-variant bg-surface-container-lowest px-6 py-3 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low disabled:pointer-events-none disabled:opacity-60"
-                  >
-                    {secondaryLabel}
-                  </button>
+              <button
+                type="button"
+                disabled={submitting || !canEdit}
+                onClick={() => formik.submitForm()}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-6 py-3 font-label-md text-label-md font-medium text-on-accent shadow-sm transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-60"
+              >
+                {submitting ? (
+                  <>
+                    <span
+                      aria-hidden="true"
+                      className="h-4 w-4 animate-spin rounded-full border-2 border-on-accent/40 border-t-on-accent"
+                    />
+                    Saving…
+                  </>
+                ) : (
+                  'Save changes'
                 )}
-                <button
-                  type="button"
-                  disabled={submitting || !canEdit}
-                  onClick={() => {
-                    submitMode.current = primaryMode
-                    formik.submitForm()
-                  }}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-6 py-3 font-label-md text-label-md font-medium text-on-accent shadow-sm transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-60"
-                >
-                  {submitting ? (
-                    <>
-                      <span
-                        aria-hidden="true"
-                        className="h-4 w-4 animate-spin rounded-full border-2 border-on-accent/40 border-t-on-accent"
-                      />
-                      Saving…
-                    </>
-                  ) : (
-                    primaryLabel
-                  )}
-                </button>
-              </div>
+              </button>
             </div>
           </div>
 
-          {/* Admin: publish / unpublish controls */}
-          {isAdmin && loadedJob && (
+          {/* Publish / unpublish controls */}
+          {loadedJob && (
             <div className="mt-4 flex flex-wrap gap-3 rounded-xl border border-surface-variant bg-surface-container-lowest px-6 py-4 shadow-sm">
               <span className="font-label-sm text-label-sm font-medium text-on-surface-variant">Status:</span>
               <span className="rounded-full bg-amber-100 px-3 py-1 font-label-sm text-amber-900">

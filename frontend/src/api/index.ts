@@ -11,11 +11,6 @@ export {
   applyToJob,
   fetchApplication,
   fetchMyApplications,
-  fetchRecruiterJobStats,
-  fetchAllRecruiterApplications,
-  fetchJobApplications,
-  runApplicationsMatching,
-  updateApplicationStatus,
 } from './applications.ts'
 export { fetchProfile, parseResume, setPassword, updateProfile } from './profile.ts'
 export {

@@ -8,7 +8,7 @@ export type AuthUserState =
   | { status: 'unauthenticated' }
   | { status: 'authenticated'; user: WhoAmIResponse }
 
-export type RequiredRole = 'Talent' | 'Recruiter' | 'Admin'
+export type RequiredRole = 'Talent' | 'Admin'
 export type RequiredRoleSet = RequiredRole[]
 
 /**
