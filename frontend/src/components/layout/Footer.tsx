@@ -29,12 +29,6 @@ const sharedColumns = [
 
 /** The role-specific first column — each role sees its own footer. */
 const roleColumns: Record<RequiredRole, { title: string; links: string[] }[]> = {
-  Recruiter: [
-    {
-      title: 'For recruiters',
-      links: ['Post a job', 'Manage applications', 'Recruiter pricing', 'Help center'],
-    },
-  ],
   Talent: [
     {
       title: 'For talent',
@@ -49,8 +43,15 @@ const roleColumns: Record<RequiredRole, { title: string; links: string[] }[]> = 
   ],
 }
 
+/** Real destinations for footer links; the rest are placeholders. */
+const LINK_ROUTES: Record<string, string> = {
+  About: '/about',
+  Privacy: '/privacy',
+  Terms: '/terms',
+}
+
 function linkTo(link: string): string {
-  return link === 'About' ? '/about' : '#'
+  return LINK_ROUTES[link] ?? '#'
 }
 
 /**
@@ -108,12 +109,18 @@ export default function Footer() {
             All rights reserved.
           </p>
           <div className="flex gap-6">
-            <a href="#" className="transition-colors hover:text-on-surface">
+            <Link
+              to="/privacy"
+              className="transition-colors hover:text-on-surface"
+            >
               Privacy
-            </a>
-            <a href="#" className="transition-colors hover:text-on-surface">
+            </Link>
+            <Link
+              to="/terms"
+              className="transition-colors hover:text-on-surface"
+            >
               Terms
-            </a>
+            </Link>
           </div>
         </div>
       </Container>
