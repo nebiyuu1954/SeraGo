@@ -10,6 +10,7 @@ import PasswordInput from '../../../components/auth/PasswordInput.tsx'
 import SubmitButton from '../../../components/auth/SubmitButton.tsx'
 import Divider from '../../../components/auth/Divider.tsx'
 import GoogleButton from '../../../components/auth/GoogleButton.tsx'
+import { trackEvent } from '../../../lib/analytics'
 
 interface LoginValues {
   email: string
@@ -55,6 +56,7 @@ export default function LoginPage() {
           password: values.password,
         })
         storeAuthTokens(tokens)
+        trackEvent('login', { method: 'email' })
         // /dashboard resolves the user's role and lands them on their page.
         navigate('/dashboard')
       } catch (err) {

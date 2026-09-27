@@ -33,6 +33,7 @@ import { initialsOf } from '../../../lib/initials.ts'
 import { sourceLogo } from '../../../lib/sourceLogos.ts'
 import { parseSkills } from '../../../lib/sourceCapabilities.ts'
 import { saveJob, unsaveJob, runForYouMatching } from '../../../api'
+import { trackEvent } from '../../../lib/analytics'
 
 function jobTypeLabel(job: JobResponse): string {
   return JOB_TYPE_LABELS[job.jobType as JobType] ?? 'Other'
@@ -112,6 +113,13 @@ export default function JobsPage() {
     }, 350)
     return () => clearTimeout(t)
   }, [searchInput])
+
+  // GA4: report the applied (debounced) search term once per query, not on
+  // every keystroke. Cleared searches aren't tracked.
+  useEffect(() => {
+    if (!appliedQ) return
+    trackEvent('search', { search_term: appliedQ })
+  }, [appliedQ])
 
   // --- SWR job list queries ---
   // Both views fire as soon as auth is ready, so switching tabs is instant.
@@ -1130,6 +1138,7 @@ function useSavedJobsToggle() {
       else await saveJob(jobId, tokens.accessToken)
       // Revalidate the saved jobs cache so all bookmark buttons reflect the change.
       refresh()
+      trackEvent(wasSaved ? 'unsave_job' : 'save_job', { job_id: jobId })
       return wasSaved ? 'removed' : 'saved'
     } catch {
       return null

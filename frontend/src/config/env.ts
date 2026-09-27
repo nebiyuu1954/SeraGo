@@ -18,6 +18,13 @@ export const config = {
    * HTTPS is required for Google sign-in: Aufy's OAuth cookie is Secure-only.
    */
   apiBaseUrl: env.VITE_API_BASE_URL ?? 'https://localhost:5191/api',
+  /**
+   * Google Analytics 4 measurement ID (`G-XXXXXXXXXX`).
+   *
+   * Left empty in dev/staging on purpose — the app only initialises analytics
+   * when this is set AND it's a production build (see `src/lib/analytics.ts`).
+   */
+  gaMeasurementId: env.VITE_GA_MEASUREMENT_ID ?? '',
   isDev: import.meta.env.DEV,
   isProd: import.meta.env.PROD,
 } as const

@@ -28,6 +28,7 @@ import { initialsOf } from '../../../lib/initials.ts'
 import { sourceLogo } from '../../../lib/sourceLogos.ts'
 import { parseSkills } from '../../../lib/sourceCapabilities.ts'
 import { saveJob, unsaveJob } from '../../../api'
+import { trackEvent } from '../../../lib/analytics'
 
 const DAY_MS = 86_400_000
 
@@ -370,6 +371,7 @@ export default function JobDetailPage() {
     try {
       if (wasSaved) await unsaveJob(job.id, tokens.accessToken)
       else await saveJob(job.id, tokens.accessToken)
+      trackEvent(wasSaved ? 'unsave_job' : 'save_job', { job_id: job.id })
       refreshSaved()
       showToast(wasSaved ? 'Removed from saved jobs' : 'Job saved for later')
     } catch {
@@ -408,6 +410,7 @@ export default function JobDetailPage() {
         payload.shareProfile = true
       }
       await applyToJob(payload, tokens.accessToken)
+      trackEvent('apply_job', { job_id: job.id })
       setApplySuccess(true)
       setShowApplyForm(false)
       setApplyMode('coverletter')
@@ -887,7 +890,7 @@ export default function JobDetailPage() {
                   <RichTextEditor
                     value={coverLetter}
                     onChange={setCoverLetter}
-                    placeholder="Tell the recruiter why you're a great fit for this role..."
+                    placeholder="Tell the employer why you're a great fit for this role..."
                   />
                 </div>
               </div>
@@ -899,7 +902,7 @@ export default function JobDetailPage() {
                     <span className="material-symbols-outlined mt-0.5 text-lg text-primary">badge</span>
                     <div className="flex-1">
                       <p className="font-label-md text-label-md font-medium text-on-surface">
-                        Your profile will be shared with the recruiter
+                        Your profile will be shared with the employer
                       </p>
                       <p className="mt-1 font-body-sm text-body-sm text-on-surface-variant">
                         {talent.skills.length > 0
@@ -1003,7 +1006,7 @@ export default function JobDetailPage() {
                     </button>
                   </div>
                   <p className="mt-1 font-body-sm text-body-sm text-on-surface-variant">
-                    Toggle fields on/off to control what the recruiter sees.
+                    Toggle fields on/off to control what the employer sees.
                   </p>
 
                   <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -3,8 +3,13 @@ import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { ThemeProvider } from './context'
 import { Toaster } from 'sonner'
+import { initAnalytics } from './lib/analytics'
 import './index.css'
 import App from './App.tsx'
+
+// Initialise GA4 before the first render (no-op unless a production build has
+// a measurement ID configured). Page views are sent per route by AnalyticsTracker.
+initAnalytics()
 
 const router = createBrowserRouter([{ path: '*', element: <App /> }])
 
