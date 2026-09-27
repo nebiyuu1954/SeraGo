@@ -22,7 +22,9 @@ import applicant3 from '../../../assets/steps/applicant3.png'
 const SECTION_TOP_PAD_PX = 58
 const HEADING_MB_PX = 24
 const SUBTITLE_MB_PX = 48
-const TOGGLE_MB_PX = 56
+// Audience toggle is hidden for now (SeraGo is talent-only). Uncomment this
+// together with the toggle block below to restore it.
+// const TOGGLE_MB_PX = 56
 
 /**
  * ★ MONITOR KNOBS ★
@@ -234,7 +236,11 @@ function ModeSection({ mode }: { mode: Mode }) {
 }
 
 export default function HowItWorks() {
-  const [mode, setMode] = useState<Mode>('employers')
+  // Audience toggle is hidden — job seekers is the only view shown. The
+  // original state with its setter is kept (commented) below for when the
+  // employer side returns.
+  // const [mode, setMode] = useState<Mode>('employers')
+  const [mode] = useState<Mode>('seekers')
 
   return (
     <section className="overflow-hidden bg-surface">
@@ -260,7 +266,15 @@ export default function HowItWorks() {
           </p>
         </div>
 
-        {/* Audience toggle */}
+        {/*
+          Audience toggle — hidden for now: SeraGo is talent-only (no
+          employers), so only the "For Job Seekers" view is shown. Kept here,
+          commented out, in case the employer side returns later.
+
+          To restore: uncomment this block, restore TOGGLE_MB_PX above and the
+          original `const [mode, setMode] = useState<Mode>('employers')`.
+        */}
+        {/**
         <div
           className="flex justify-center"
           style={{ marginBottom: TOGGLE_MB_PX }}
@@ -284,6 +298,7 @@ export default function HowItWorks() {
             ))}
           </div>
         </div>
+        **/}
 
         {/* Main content — remounted on toggle so the slideshow restarts */}
         <ModeSection key={mode} mode={mode} />
