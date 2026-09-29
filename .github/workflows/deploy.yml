@@ -1,0 +1,148 @@
+name: Deploy
+
+on:
+  workflow_dispatch:   # Manual trigger for now — we'll add push trigger after testing
+
+jobs:
+  # ─────────────────────────────────────────────────────
+  # 1. Build React frontend
+  # ─────────────────────────────────────────────────────
+  build-frontend:
+    name: Build frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Create build .env
+        run: |
+          echo "VITE_APP_NAME=SeraGo" > .env
+          echo "VITE_APP_VERSION=0.1.0" >> .env
+          echo "VITE_API_BASE_URL=https://api.serago.pro.et/api" >> .env
+
+      - run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────
+  # 2. Build .NET API
+  # ─────────────────────────────────────────────────────
+  build-dotnet:
+    name: Build .NET API
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - run: dotnet restore SeraGo.API/SeraGo.API.csproj
+
+      - run: dotnet publish SeraGo.API/SeraGo.API.csproj -c Release -o publish
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-publish
+          path: backend/publish
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────
+  # 3. Deploy to VPS
+  # ─────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to VPS
+    needs: [build-frontend, build-dotnet]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: ./frontend-dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dotnet-publish
+          path: ./dotnet-publish
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy frontend
+        run: |
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            ./frontend-dist/ \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/web_app/frontend/dist/
+
+      - name: Upload .NET publish to staging
+        run: |
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            ./dotnet-publish/ \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/web_app/dotnet-api/publish.new/
+
+      - name: Atomic swap + restart .NET API
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} '
+            set -e
+            cd /web_app/dotnet-api
+
+            # Preserve current publish as backup
+            if [ -d publish ]; then
+              rm -rf publish.old
+              mv publish publish.old
+            fi
+
+            # Swap in the new build
+            mv publish.new publish
+
+            # Restart the service
+            sudo systemctl restart serago-api
+
+            # Wait for health check
+            echo "Waiting for API to become healthy..."
+            for i in {1..20}; do
+              if curl -sf http://127.0.0.1:5000/health > /dev/null 2>&1; then
+                echo "✓ API healthy after $((i*2)) seconds"
+                rm -rf publish.old
+                exit 0
+              fi
+              sleep 2
+            done
+
+            # Health check failed — roll back
+            echo "✗ API health check failed. Rolling back..."
+            sudo systemctl stop serago-api || true
+            rm -rf publish
+            mv publish.old publish
+            sudo systemctl start serago-api
+            exit 1
+          '
+
+      - name: Reload Nginx
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} '
+            sudo nginx -t && sudo systemctl reload nginx
+          '
