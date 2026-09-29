@@ -1,7 +1,9 @@
 name: Deploy
 
 on:
-  workflow_dispatch:   # Manual trigger for now — we'll add push trigger after testing
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   # ─────────────────────────────────────────────────────
