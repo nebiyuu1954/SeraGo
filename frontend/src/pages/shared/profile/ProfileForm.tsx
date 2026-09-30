@@ -1307,6 +1307,15 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
           noValidate
           className="mt-8 flex flex-col gap-4"
         >
+          {/* Hidden file input for resume parsing/uploading. Must be outside accordions so it always exists in the DOM. */}
+          <input
+            ref={resumeInputRef}
+            type="file"
+            accept="application/pdf"
+            onChange={handleResumeUpload}
+            className="hidden"
+          />
+
           {/* ═══════════════════════════ TALENT SECTIONS ═══════════════════════════ */}
           {isTalent && (
             <>
@@ -1931,13 +1940,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                   <label className="font-label-sm text-label-sm font-medium text-on-surface mb-2 block">
                     Resume (PDF)
                   </label>
-                  <input
-                    ref={resumeInputRef}
-                    type="file"
-                    accept="application/pdf"
-                    onChange={handleResumeUpload}
-                    className="hidden"
-                  />
                   {formik.values.resumeUrl ? (
                     <div className="flex flex-col sm:flex-row sm:items-center gap-4 rounded-lg border border-surface-variant bg-surface-container-low p-4">
                       <div className="flex items-center gap-3 min-w-0 flex-1">
