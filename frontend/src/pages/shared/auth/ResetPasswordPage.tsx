@@ -17,12 +17,6 @@ interface ResetValues {
   confirmPassword: string
 }
 
-const initialValues: ResetValues = {
-  email: '',
-  password: '',
-  confirmPassword: '',
-}
-
 const validationSchema = object<ResetValues>({
   email: string()
     .trim()
@@ -54,14 +48,19 @@ const footer = (
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams()
-  // The emailed link carries only the token: /reset-password?code=…
+  // The emailed link carries the token and email: /reset-password?code=…&email=…
   const code = searchParams.get('code') ?? ''
+  const emailParam = searchParams.get('email') ?? ''
 
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
   const formik = useFormik<ResetValues>({
-    initialValues,
+    initialValues: {
+      email: emailParam,
+      password: '',
+      confirmPassword: '',
+    },
     validationSchema,
     validateOnBlur: true,
     validateOnChange: true,
@@ -134,19 +133,30 @@ export default function ResetPasswordPage() {
         <>
           {error && <ErrorBanner message={error} />}
           <form onSubmit={formik.handleSubmit} noValidate className="space-y-5">
-            <TextInput
-              id="email"
-              name="email"
-              label="Email address"
-              icon="mail"
-              type="email"
-              autoComplete="email"
-              placeholder="you@company.com"
-              value={formik.values.email}
-              onChange={formik.handleChange}
-              onBlur={formik.handleBlur}
-              error={fieldError('email')}
-            />
+            {emailParam ? (
+              <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 text-center">
+                <p className="font-label-sm text-label-sm text-on-surface-variant">
+                  Resetting password for
+                </p>
+                <p className="mt-1 font-label-md text-label-md font-semibold text-on-surface">
+                  {emailParam}
+                </p>
+              </div>
+            ) : (
+              <TextInput
+                id="email"
+                name="email"
+                label="Email address"
+                icon="mail"
+                type="email"
+                autoComplete="email"
+                placeholder="you@company.com"
+                value={formik.values.email}
+                onChange={formik.handleChange}
+                onBlur={formik.handleBlur}
+                error={fieldError('email')}
+              />
+            )}
 
             <PasswordInput
               id="password"

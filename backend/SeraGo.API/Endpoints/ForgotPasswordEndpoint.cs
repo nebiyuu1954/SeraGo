@@ -70,7 +70,7 @@ public static class ForgotPasswordEndpoint
                 var baseUri = new Uri(
                     new Uri(options.Value.ClientApp.BaseUrl ?? $"{httpRequest.Scheme}://{httpRequest.Host}"),
                     options.Value.ClientApp.PasswordResetPath);
-                var link = new Uri(baseUri, $"?code={code}");
+                var link = new Uri(baseUri, $"?code={code}&email={Uri.EscapeDataString(user.Email)}");
                 // Note: Aufy 1.0.0 names this SendPasswordForgotAsync (renamed
                 // to SendPasswordResetAsync on GitHub main).
                 await emailSender.SendPasswordForgotAsync(user, link.ToString());

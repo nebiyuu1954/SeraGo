@@ -245,7 +245,7 @@ public static class AdminUserEndpoints
         var baseUri = new Uri(
             new Uri(aufyOptions.Value.ClientApp.BaseUrl ?? $"{httpRequest.Scheme}://{httpRequest.Host}"),
             aufyOptions.Value.ClientApp.PasswordResetPath);
-        var link = new Uri(baseUri, $"?code={code}");
+        var link = new Uri(baseUri, $"?code={code}&email={Uri.EscapeDataString(user.Email!)}");
         await emailSender.SendPasswordForgotAsync(user, link.ToString());
 
         var logger = loggerFactory.CreateLogger("SeraGo.AdminUserEndpoints");
