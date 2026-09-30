@@ -167,12 +167,9 @@ public class ResponseEnvelopeMiddleware
             using var doc = JsonDocument.Parse(buffer);
             var root = doc.RootElement;
 
-            var message = GetString(root, "message")
-                ?? GetString(root, "detail")
-                ?? GetString(root, "title");
+            string? message = null;
 
-            if (message is null
-                && root.TryGetProperty("errors", out var errors)
+            if (root.TryGetProperty("errors", out var errors)
                 && errors.ValueKind == JsonValueKind.Object)
             {
                 var parts = new List<string>();
@@ -191,6 +188,10 @@ public class ResponseEnvelopeMiddleware
                     message = string.Join(" ", parts);
                 }
             }
+
+            message ??= GetString(root, "message")
+                ?? GetString(root, "detail")
+                ?? GetString(root, "title");
 
             return message;
         }
