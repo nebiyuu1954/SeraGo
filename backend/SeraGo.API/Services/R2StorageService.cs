@@ -139,7 +139,7 @@ public class R2StorageService
         var dateStamp = date.ToString("yyyyMMdd");
         var amzDate = date.ToString("yyyyMMdd'T'HHmmss'Z'");
         var endpoint = $"https://{_accountId}.r2.cloudflarestorage.com";
-        var canonicalUri = $"/{_bucketName}/{key}";
+        var canonicalUri = string.Join("/", $"/{_bucketName}/{key}".Split('/').Select(Uri.EscapeDataString));
         var payloadHash = "UNSIGNED-PAYLOAD";
 
         // Credential scope
@@ -200,7 +200,7 @@ public class R2StorageService
         var dateStamp = date.ToString("yyyyMMdd");
         var amzDate = date.ToString("yyyyMMdd'T'HHmmss'Z'");
         var endpoint = $"https://{_accountId}.r2.cloudflarestorage.com";
-        var canonicalUri = $"/{_bucketName}/{key}";
+        var canonicalUri = string.Join("/", $"/{_bucketName}/{key}".Split('/').Select(Uri.EscapeDataString));
         var payloadHash = "UNSIGNED-PAYLOAD";
 
         var signedHeaders = "host";
@@ -251,7 +251,7 @@ public class R2StorageService
         var dateStamp = date.ToString("yyyyMMdd");
         var amzDate = date.ToString("yyyyMMdd'T'HHmmss'Z'");
         var endpoint = $"https://{_accountId}.r2.cloudflarestorage.com";
-        var canonicalUri = $"/{_bucketName}/{key}";
+        var canonicalUri = string.Join("/", $"/{_bucketName}/{key}".Split('/').Select(Uri.EscapeDataString));
 
         // SHA256 of body
         var payloadHash = ToHexLower(

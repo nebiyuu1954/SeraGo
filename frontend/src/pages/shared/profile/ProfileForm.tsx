@@ -22,6 +22,7 @@ import AccordionSection from '../../../components/ui/AccordionSection.tsx'
 import RichTextEditor from '../../../components/ui/RichTextEditor.tsx'
 import PasswordSetupCard from '../../../components/dashboard/PasswordSetupCard.tsx'
 import { useToast } from '../../../components/dashboard/Toast.tsx'
+import ResumeReviewModal from './ResumeReviewModal.tsx'
 import { cn } from '../../../lib/cn.ts'
 
 /* ------------------------------------------------------- Backend constants */
@@ -562,6 +563,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
     message: string
   } | null>(null)
   const [resumeCtaDismissed, setResumeCtaDismissed] = useState(false)
+  const [reviewProfileData, setReviewProfileData] = useState<{ profile: ParsedResumeProfile; fieldsFound: number } | null>(null)
   const { showToast } = useToast()
   const [validationModalOpen, setValidationModalOpen] = useState(false)
   const [validationErrors, setValidationErrors] = useState<{ field: string; message: string }[]>([])
@@ -908,13 +910,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
       const result = await parseResume(tokens.accessToken, resumeKey)
       const parsed = result.profile
       if (result.success && parsed && result.fieldsFound > 0) {
-        applyParsedResume(parsed)
-        setResumeNotice({
-          kind: 'filled',
-          message: `We read your resume and pre-filled ${result.fieldsFound} section${
-            result.fieldsFound === 1 ? '' : 's'
-          }. Nothing is saved yet — review the fields below, then press Save profile.`,
-        })
+        setReviewProfileData({ profile: parsed, fieldsFound: result.fieldsFound })
       } else {
         setResumeNotice({
           kind: 'empty',
@@ -2175,6 +2171,29 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
           </div>
         </div>
       )}
+
+      <ResumeReviewModal
+        open={!!reviewProfileData}
+        profile={reviewProfileData?.profile ?? null}
+        onApply={() => {
+          if (!reviewProfileData) return
+          applyParsedResume(reviewProfileData.profile)
+          setResumeNotice({
+            kind: 'filled',
+            message: `We read your resume and pre-filled ${reviewProfileData.fieldsFound} section${
+              reviewProfileData.fieldsFound === 1 ? '' : 's'
+            }. Nothing is saved yet — review the fields below, then press Save profile.`,
+          })
+          setReviewProfileData(null)
+        }}
+        onCancel={() => {
+          setReviewProfileData(null)
+          setResumeNotice({
+            kind: 'empty',
+            message: "Resume parsing cancelled. You can fill your profile manually.",
+          })
+        }}
+      />
     </DashboardShell>
   )
 }
