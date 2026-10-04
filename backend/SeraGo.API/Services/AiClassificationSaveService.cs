@@ -41,13 +41,14 @@ public sealed class AiClassificationSaveService
         CancellationToken ct = default)
     {
         var outcomes = new List<ApplyClassificationOutcome>(jobs.Count);
+        var newlyAdded = new HashSet<(Guid SectorId, string Alias)>();
         var byId = jobs.ToDictionary(j => j.Id.ToString(), j => j);
 
         foreach (var result in results)
         {
             if (byId.TryGetValue(result.JobId, out var job))
             {
-                outcomes.Add(await ApplyOneAsync(job, result, ct));
+                outcomes.Add(await ApplyOneAsync(job, result, newlyAdded, ct));
             }
             else
             {
@@ -64,6 +65,7 @@ public sealed class AiClassificationSaveService
     private async Task<ApplyClassificationOutcome> ApplyOneAsync(
         Job job,
         AiClassificationResult result,
+        HashSet<(Guid SectorId, string Alias)> newlyAdded,
         CancellationToken ct)
     {
         // ── LLM classified successfully ────────────────────────────────────
@@ -90,7 +92,7 @@ public sealed class AiClassificationSaveService
                     : null);
 
             var sectorLabelRecorded = await EnsureSectorLabelMappingRowAsync(
-                sectorId, sectorName, alias, job.Id, ct);
+                sectorId, sectorName, alias, job.Id, newlyAdded, ct);
 
             return ApplyClassificationOutcome.Success(
                 jobId: job.Id.ToString(),
@@ -118,7 +120,7 @@ public sealed class AiClassificationSaveService
                     : null);
 
             await EnsureSectorLabelMappingRowAsync(
-                fallback.SectorId, fallback.SectorName ?? "", alias, job.Id, ct);
+                fallback.SectorId, fallback.SectorName ?? "", alias, job.Id, newlyAdded, ct);
 
             return ApplyClassificationOutcome.Success(
                 jobId: job.Id.ToString(),
@@ -151,6 +153,7 @@ public sealed class AiClassificationSaveService
         string sectorName,
         string? alias,
         Guid jobId,
+        HashSet<(Guid SectorId, string Alias)> newlyAdded,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(alias))
@@ -164,6 +167,11 @@ public sealed class AiClassificationSaveService
             return false;
         }
 
+        if (sectorId.HasValue && newlyAdded.Contains((sectorId.Value, normalizedAlias)))
+        {
+            return false;
+        }
+
         // Fast check via the unique (SectorId, Alias) index.
         var existing = await _db.SectorLabelMappings
             .AsNoTracking()
@@ -172,6 +180,11 @@ public sealed class AiClassificationSaveService
         if (existing is not null)
         {
             return false;
+        }
+
+        if (sectorId.HasValue)
+        {
+            newlyAdded.Add((sectorId.Value, normalizedAlias));
         }
 
         _db.SectorLabelMappings.Add(new SectorLabelMapping
