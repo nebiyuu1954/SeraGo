@@ -1,4 +1,4 @@
-using Aufy.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SeraGo.Core.Domain.Entities;
@@ -14,8 +14,9 @@ namespace SeraGo.Infrastructure.Context;
 /// Jobs is SeraGo's own table (fully owned by EF migrations) — it has no
 /// relationship to the scraper's models.
 /// </summary>
-public class ApplicationDbContext : AufyDbContext<ApplicationUser>
+public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
 {
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<TalentProfile> TalentProfiles => Set<TalentProfile>();
     public DbSet<RecruiterProfile> RecruiterProfiles => Set<RecruiterProfile>();
     public DbSet<Job> Jobs => Set<Job>();
@@ -45,6 +46,13 @@ public class ApplicationDbContext : AufyDbContext<ApplicationUser>
                 .WithOne(u => u.TalentProfile)
                 .HasForeignKey<TalentProfile>(p => p.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Map custom RefreshToken to the old Aufy table name
+        modelBuilder.Entity<RefreshToken>(entity =>
+        {
+            entity.ToTable("AufyRefreshTokens");
+            entity.HasKey(rt => rt.UserId);
         });
 
         modelBuilder.Entity<RecruiterProfile>(entity =>
