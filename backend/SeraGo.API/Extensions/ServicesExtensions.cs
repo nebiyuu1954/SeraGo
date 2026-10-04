@@ -1,10 +1,7 @@
-using Aufy.Core;
-using Aufy.Core.AuthSchemes;
-using Aufy.Core.Endpoints;
-using Aufy.EntityFrameworkCore;
-using Aufy.FluentEmail;
 using FluentEmail.Core.Interfaces;
 using FluentEmail.SendGrid;
+using Microsoft.AspNetCore.Identity;
+using SeraGo.API.Auth;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Hosting;
@@ -13,7 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Hangfire;
 using Hangfire.PostgreSql;
-using SeraGo.API.Auth;
+
 using Telegram.Bot;
 using SeraGo.API.Email;
 using SeraGo.API.Services;
@@ -36,7 +33,7 @@ public static class ServicesExtensions
     /// blank ClientId/ClientSecret the provider stays disabled and the app
     /// behaves as before.
     /// </summary>
-    public static IServiceCollection SetupAufy(
+    public static IServiceCollection SetupIdentity(
         this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
         // Surface Google OAuth gaps in Production: with empty ClientId/Secret the
@@ -51,107 +48,40 @@ public static class ServicesExtensions
                 + "Set Aufy__Providers__Google__ClientId and ClientSecret.");
         }
 
-        services.AddAufy<ApplicationUser>(configuration)
-            .UseSignUpModel<SeraGoSignUpRequest>()
-            // Custom external signup: new Google users must pick a role and
-            // display name once, then POST /api/auth/signup/external.
-            .UseExternalSignUpModel<SeraGoSignUpExternalRequest>()
-            .AddProvider("Google", (auth, options) =>
+        services.AddIdentity<ApplicationUser, Microsoft.AspNetCore.Identity.IdentityRole>(options =>
+        {
+            options.SignIn.RequireConfirmedAccount = false;
+        })
+        .AddEntityFrameworkStores<ApplicationDbContext>()
+        .AddDefaultTokenProviders();
+
+        var jwtKey = configuration["Aufy:JwtBearer:SigningKey"];
+        if (!string.IsNullOrEmpty(jwtKey))
+        {
+            var keyBytes = System.Text.Encoding.UTF8.GetBytes(jwtKey);
+            services.AddAuthentication(options =>
             {
-                auth.AddGoogle(o => o.Configure("Google", options));
+                options.DefaultAuthenticateScheme = Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme;
+                options.DefaultChallengeScheme = Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme;
+                options.DefaultScheme = Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme;
             })
-            .AddEntityFrameworkStore<ApplicationDbContext, ApplicationUser>()
-            .AddFluentEmail(registerMailKitSender: false);
-
-        services.AddScoped<ISignUpEndpointEvents<ApplicationUser, SeraGoSignUpRequest>, SeraGoSignUpExtension>();
-        services.AddScoped<ISignUpExternalEndpointEvents<ApplicationUser, SeraGoSignUpExternalRequest>, SeraGoSignUpExternalExtension>();
-
-        // Aufy 1.0.0's RefreshTokenStore has a bug: SaveAsync passes the
-        // CancellationToken as a second key to FindAsync (the AufyRefreshTokens
-        // PK is UserId alone), so the existing row is never found and every
-        // sign-in INSERTs a duplicate -> UNIQUE constraint failure on the
-        // second login. Swap in a corrected store that rotates the token in
-        // place instead (see SeraGoRefreshTokenStore). RemoveAll is defensive:
-        // ours is registered last either way, so it wins constructor injection.
-        services.RemoveAll<IRefreshTokenStore>();
-        services.AddScoped<IRefreshTokenStore, SeraGoRefreshTokenStore>();
-
-        // Aufy 1.0.0's PasswordForgotEndpoint 500s on unknown emails (missing
-        // null guard before GeneratePasswordResetTokenAsync). Remove it from DI
-        // so MapAufyEndpoints skips it; the fixed replacement is mapped in
-        // Program.cs (ForgotPasswordEndpoint.cs).
-        var forgotDescriptor = services.FirstOrDefault(d =>
-            d.ServiceType == typeof(IAccountEndpoint) &&
-            d.ImplementationType == typeof(PasswordForgotEndpoint<ApplicationUser>));
-        if (forgotDescriptor is not null)
-        {
-            services.Remove(forgotDescriptor);
-        }
-
-        // Replace Aufy's TokenEndpoint: the shipped one returns the same
-        // "Invalid email or password" for lockouts too. Our replacement
-        // (SeraGoTokenEndpoint) keeps the identical sign-in flow but explains
-        // lockout / deactivated states. Remove from DI so MapAufyEndpoints
-        // skips it; the replacement is mapped in Program.cs. Matched on the
-        // open generic so the removal can't silently miss if the closed type
-        // ever changes (a miss would map both endpoints -> ambiguous route).
-        var tokenDescriptor = services.FirstOrDefault(d =>
-            d.ServiceType == typeof(IAuthEndpoint) &&
-            d.ImplementationType?.GetGenericTypeDefinition() == typeof(TokenEndpoint<>));
-        if (tokenDescriptor is not null)
-        {
-            services.Remove(tokenDescriptor);
-        }
-
-        // Replace Aufy's SignUpExternalEndpoint: the shipped one doesn't check
-        // whether the account's EMAIL already exists, so "Continue with Google"
-        // on an email/password account errors with a duplicate-account failure.
-        // Our replacement (SeraGoExternalSignUpEndpoint) links the Google login
-        // to the existing account and signs it in. Remove from DI so
-        // MapAufyEndpoints skips it; the replacement is mapped in Program.cs.
-        var externalSignUpDescriptor = services.FirstOrDefault(d =>
-            d.ServiceType == typeof(IAuthEndpoint) &&
-            d.ImplementationType?.GetGenericTypeDefinition() == typeof(SignUpExternalEndpoint<,>));
-        if (externalSignUpDescriptor is not null)
-        {
-            services.Remove(externalSignUpDescriptor);
-        }
-
-        // Replace Aufy's WhoAmIEndpoint: the shipped one builds its response
-        // from JWT claims only, so it can't report emailConfirmed — needed to
-        // keep unconfirmed users out of the dashboards. Our replacement
-        // (SeraGoWhoAmIEndpoint) loads the user row and adds that flag.
-        var whoAmIDescriptor = services.FirstOrDefault(d =>
-            d.ServiceType == typeof(IAuthEndpoint) &&
-            d.ImplementationType?.GetGenericTypeDefinition() == typeof(WhoAmIEndpoint<>));
-        if (whoAmIDescriptor is not null)
-        {
-            services.Remove(whoAmIDescriptor);
-        }
-
-        // Replace Aufy's EmailConfirmationResendEndpoint: the shipped one
-        // always returns 200 with no body, so the UI can't tell users whether
-        // the account exists or is already verified. Our replacement
-        // (SeraGoEmailConfirmationResendEndpoint) surfaces 404/409/200.
-        var resendDescriptor = services.FirstOrDefault(d =>
-            d.ServiceType == typeof(IAccountEndpoint) &&
-            d.ImplementationType?.GetGenericTypeDefinition() == typeof(EmailConfirmationResendEndpoint<>));
-        if (resendDescriptor is not null)
-        {
-            services.Remove(resendDescriptor);
-        }
-
-        // Replace Aufy's EmailConfirmEndpoint: the shipped one returns 404 for
-        // ALREADY-confirmed emails too, so re-clicking a confirmation link
-        // shows the same misleading "invalid or expired" screen as a bad code.
-        // Our replacement (SeraGoEmailConfirmEndpoint) treats already-confirmed
-        // as an idempotent 200 success.
-        var confirmDescriptor = services.FirstOrDefault(d =>
-            d.ServiceType == typeof(IAccountEndpoint) &&
-            d.ImplementationType?.GetGenericTypeDefinition() == typeof(EmailConfirmEndpoint<>));
-        if (confirmDescriptor is not null)
-        {
-            services.Remove(confirmDescriptor);
+            .AddJwtBearer(options =>
+            {
+                options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+                {
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(keyBytes),
+                    ValidateIssuer = false,
+                    ValidateAudience = false,
+                    ClockSkew = TimeSpan.Zero
+                };
+            })
+            .AddGoogle(options =>
+            {
+                options.ClientId = configuration["Aufy:Providers:Google:ClientId"] ?? "";
+                options.ClientSecret = configuration["Aufy:Providers:Google:ClientSecret"] ?? "";
+                options.SignInScheme = IdentityConstants.ExternalScheme;
+            });
         }
 
         // CORS for the frontend. Always registers a policy so app.UseCors() can never
