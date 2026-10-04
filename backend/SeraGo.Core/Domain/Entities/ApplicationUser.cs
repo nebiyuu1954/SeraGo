@@ -1,4 +1,4 @@
-using Aufy.Core;
+using Microsoft.AspNetCore.Identity;
 using SeraGo.Core.Domain.Enums;
 
 namespace SeraGo.Core.Domain.Entities;
@@ -7,7 +7,7 @@ namespace SeraGo.Core.Domain.Entities;
 /// SeraGo user. Built on ASP.NET Core Identity (via Aufy) so roles,
 /// password hashing, lockout and email confirmation come for free.
 /// </summary>
-public class ApplicationUser : AufyUser
+public class ApplicationUser : IdentityUser
 {
     public string FirstName { get; set; } = string.Empty;
     public string MiddleName { get; set; } = string.Empty;
