@@ -217,9 +217,7 @@ public static class AdminUserEndpoints
     private static async Task<IResult> SendResetEmailAsync(
         string id,
         UserManager<ApplicationUser> userManager,
-        IAufyEmailSenderManager<ApplicationUser> emailSender,
         IOptions<IdentityOptions> identityOptions,
-        IOptions<Aufy.Core.AufyOptions> aufyOptions,
         ILoggerFactory loggerFactory,
         EmailThrottleService throttle,
         HttpRequest httpRequest)
@@ -241,12 +239,6 @@ public static class AdminUserEndpoints
 
         var code = await userManager.GeneratePasswordResetTokenAsync(user);
         code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-
-        var baseUri = new Uri(
-            new Uri(aufyOptions.Value.ClientApp.BaseUrl ?? $"{httpRequest.Scheme}://{httpRequest.Host}"),
-            aufyOptions.Value.ClientApp.PasswordResetPath);
-        var link = new Uri(baseUri, $"?code={code}&email={Uri.EscapeDataString(user.Email!)}");
-        await emailSender.SendPasswordForgotAsync(user, link.ToString());
 
         var logger = loggerFactory.CreateLogger("SeraGo.AdminUserEndpoints");
         logger.LogInformation("Admin triggered password reset for {Email}", user.Email);
