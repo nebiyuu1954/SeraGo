@@ -21,11 +21,14 @@ public static class SectorSeedData
             "IT Support", "Computer Science and Information Technology",
             "IT, Computer Science and Software Engineering", "Software Design & Development",
             "Data Science & Analytics", "Software", "Computer Science",
+            "Software Engineering", "Frontend", "Backend", "CS", "DevOps",
+            "Web Development", "Network Administration", "System Administration",
+            "Database Administration", "Cybersecurity", "Machine Learning", "Artificial Intelligence"
         ]),
         new("a0000000-0000-0000-0000-000000000002", "Accounting & Finance", "accounting-finance",
         [
             "Accounting & Finance", "Accounting", "Finance", "Accounting and Finance",
-            "Economics", "Tax", "Audit", "Bookkeeping",
+            "Economics", "Tax", "Audit", "Bookkeeping", "Accountant", "Financial Analysis"
         ]),
         new("a0000000-0000-0000-0000-000000000003", "Banking & Insurance", "banking-insurance",
         [
@@ -41,6 +44,7 @@ public static class SectorSeedData
         [
             "Healthcare", "Health Care", "Health Care Management", "Public Health",
             "Nursing", "Pharmaceutical", "Pharmacy", "Medicine", "Medical",
+            "Psychiatry, Psychology & Social Work",
         ]),
         new("a0000000-0000-0000-0000-000000000006", "Education & Training", "education-training",
         [
@@ -55,7 +59,7 @@ public static class SectorSeedData
             "Architectural Engineering", "Automotive Engineering", "Sanitary Engineering",
             "Biomedical Engineering", "Electrical Engineering", "Architecture & Urban Planning",
             "Construction Skilled Worker", "Mechanical Engineering", "Planning",
-            "Water and Sanitation", "Automotive",
+            "Water and Sanitation", "Automotive", "Aeronautics & Aerospace",
         ]),
         new("a0000000-0000-0000-0000-000000000008", "Human Resources", "human-resources",
         [
@@ -69,7 +73,8 @@ public static class SectorSeedData
             "Business and Administration", "Secretarial, Admin and Clerical",
             "Secretarial & Office Management", "Management", "Development and Project Management",
             "Advisory & Consultancy", "Brokerage & Case Closing", "Business Management",
-            "Administration", "Office Management", "Secretarial",
+            "Administration", "Office Management", "Secretarial", "Event Management & Organization",
+            "Research Services",
         ]),
         new("a0000000-0000-0000-0000-00000000000a", "Manufacturing & Production", "manufacturing-production",
         [
@@ -91,7 +96,7 @@ public static class SectorSeedData
         [
             "Media & Entertainment", "Media and Communication", "Multimedia Content Production",
             "Documentation & Writing", "Translation & Transcription", "Media",
-            "Journalism", "Communication", "Writing",
+            "Journalism & Communication", "Journalism", "Communication", "Writing",
         ]),
         new("a0000000-0000-0000-0000-00000000000e", "Design & Creative", "design-creative",
         [
@@ -113,6 +118,7 @@ public static class SectorSeedData
         [
             "Agriculture", "Agricultural Science", "Natural Science", "Natural Sciences",
             "Chemistry", "Physics", "Microbiology", "Mathematics", "Nutrition", "Biology",
+            "Veterinary", "Gardening & Landscaping", "Horticulture", "Livestock & Animal Husbandry",
         ]),
         new("a0000000-0000-0000-0000-000000000012", "Legal", "legal",
         [
@@ -125,12 +131,17 @@ public static class SectorSeedData
         ]),
         new("a0000000-0000-0000-0000-000000000014", "Security & Protection", "security-protection",
         [
-            "Security", "Protection", "Guard", "Safety",
+            "Security & Safety", "Security", "Protection", "Guard", "Safety",
         ]),
         new("a0000000-0000-0000-0000-000000000015", "Skilled & General Labor", "skilled-general-labor",
         [
             "Low and Medium Skilled Worker", "Service Industry Skilled Worker",
             "Janitorial & Office Services", "General Labor", "Cleaner", "Maintenance",
+            "Installation & Maintenance", "Labor & Masonry",
+        ]),
+        new("a0000000-0000-0000-0000-000000000016", "Beauty & Grooming", "beauty-grooming",
+        [
+            "Beauty & Grooming", "Cosmetics", "Salon", "Hairdresser", "Barber"
         ]),
     ];
 
