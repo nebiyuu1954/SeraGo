@@ -37,9 +37,10 @@ const AVAILABILITIES = [
   'MoreThanOneMonth',
 ]
 
-const EDUCATION_LEVELS = ['HighSchool', 'Bachelors', 'Masters', 'PhD']
+const EDUCATION_LEVELS = ['HighSchool', 'Certificate', 'Bachelors', 'Masters', 'PhD']
 const EDUCATION_LEVEL_LABELS: Record<string, string> = {
   HighSchool: 'High School',
+  Certificate: 'Certificate / Online Course',
   Bachelors: "Bachelor's Degree",
   Masters: "Master's Degree",
   PhD: 'PhD / Doctorate',
@@ -77,7 +78,6 @@ const DEFAULT_VISIBILITY: Record<string, boolean> = {
   avatar: true,
   middleName: true,
   city: true,
-  country: true,
   currentIndustry: true,
   currentProfession: true,
   preferredLocations: true,
@@ -105,7 +105,6 @@ const FIELD_LABELS: Record<string, string> = {
   lastName: 'Last name',
   avatarUrl: 'Profile photo',
   city: 'City',
-  country: 'Country',
   about: 'About',
   experienceLevel: 'Experience level',
   yearsOfExperience: 'Years of experience',
@@ -119,7 +118,6 @@ const FIELD_LABELS: Record<string, string> = {
   githubUrl: 'GitHub',
   portfolioUrl: 'Portfolio',
   phoneNumber: 'Phone number',
-  dateOfBirth: 'Date of birth',
   address: 'Address',
   workExperience: 'Work experience',
   educationLevel: 'Education level',
@@ -226,14 +224,12 @@ const commonSchema = object({
   lastName: string().required('Last name is required.').max(120),
   avatarUrl: optionalUrl,
   city: string().required('City is required.').max(120),
-  country: string().required('Country is required.').max(120),
 })
 
 const talentSchema = commonSchema
   .concat(
     object({
       phoneNumber: string().required('Phone number is required.').max(32),
-      dateOfBirth: string().required('Date of birth is required.'),
       about: string().max(10000),
       experienceLevel: string().required('Experience level is required.'),
       yearsOfExperience: string()
@@ -307,7 +303,6 @@ interface ProfileFormValues {
   lastName: string
   avatarUrl: string
   city: string
-  country: string
   // Talent
   about: string
   experienceLevel: string
@@ -323,7 +318,6 @@ interface ProfileFormValues {
   portfolioUrl: string
   // Identity / personal
   phoneNumber: string
-  dateOfBirth: string
   address: string
   // Work experience
   workExperience: WorkExperienceEntry[]
@@ -345,7 +339,6 @@ const initialValues: ProfileFormValues = {
   lastName: '',
   avatarUrl: '',
   city: '',
-  country: '',
   about: '',
   experienceLevel: '',
   yearsOfExperience: '',
@@ -359,7 +352,6 @@ const initialValues: ProfileFormValues = {
   githubUrl: '',
   portfolioUrl: '',
   phoneNumber: '',
-  dateOfBirth: '',
   address: '',
   workExperience: [],
   educationLevel: '',
@@ -639,7 +631,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
             lastName: p.lastName,
             avatarUrl: p.avatarUrl,
             city: p.city,
-            country: p.country,
             about: p.talent?.about ?? '',
             experienceLevel: p.talent?.experienceLevel ?? '',
             yearsOfExperience:
@@ -656,7 +647,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
             githubUrl: p.talent?.githubUrl ?? '',
             portfolioUrl: p.talent?.portfolioUrl ?? '',
             phoneNumber: p.talent?.phoneNumber ?? '',
-            dateOfBirth: p.talent?.dateOfBirth ?? '',
             address: p.talent?.address ?? '',
             workExperience: parsedWorkExperience,
             educationLevel: p.talent?.educationLevel ?? '',
@@ -699,7 +689,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
       lastName: values.lastName.trim(),
       avatarUrl: values.avatarUrl.trim(),
       city: values.city.trim(),
-      country: values.country.trim(),
     }
     if (isTalent) {
       payload.talent = {
@@ -719,7 +708,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
         githubUrl: values.githubUrl.trim(),
         portfolioUrl: values.portfolioUrl.trim(),
         phoneNumber: values.phoneNumber.trim() || '',
-        dateOfBirth: values.dateOfBirth || '',
         address: values.address.trim() || '',
         workExperience: JSON.stringify(values.workExperience),
         educationLevel: values.educationLevel || '',
@@ -989,9 +977,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
     formik.values.firstName,
     formik.values.lastName,
     formik.values.city,
-    formik.values.country,
     formik.values.phoneNumber,
-    formik.values.dateOfBirth,
     formik.values.avatarUrl,
     formik.values.middleName,
     formik.values.address,
@@ -1321,7 +1307,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                 description="Your name and location — shown across the platform."
                 icon="person"
                 defaultOpen
-                completion={{ filled: personalFilled, total: 9 }}
+                completion={{ filled: personalFilled, total: 7 }}
               >
                 <Field
                   label="First name *"
@@ -1372,16 +1358,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                     className={inputClass}
                   />
                 </Field>
-                <Field label="Date of birth *" visibilityKey="dateOfBirth" visibility={formik.values.profileVisibility} onToggleVisibility={toggleVisibility}>
-                  <input
-                    type="date"
-                    name="dateOfBirth"
-                    value={formik.values.dateOfBirth}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    className={inputClass}
-                  />
-                </Field>
+
                 <Field label="City *">
                   <input
                     name="city"
@@ -1392,16 +1369,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                     className={inputClass}
                   />
                 </Field>
-                <Field label="Country *">
-                  <input
-                    name="country"
-                    value={formik.values.country}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    placeholder="Ethiopia"
-                    className={inputClass}
-                  />
-                </Field>
+
                 <Field label="Street address" visibilityKey="address" visibility={formik.values.profileVisibility} onToggleVisibility={toggleVisibility}>
                   <input
                     name="address"
@@ -1919,7 +1887,13 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                       className="flex items-center gap-1.5 rounded-lg border border-dashed border-outline-variant px-4 py-2.5 font-label-md text-label-md text-primary transition-colors hover:bg-primary-container/20"
                     >
                       <span className="material-symbols-outlined text-lg">add</span>
-                      Add degree
+                      {formik.values.educationLevel === 'PhD'
+                        ? 'Add PhD degree'
+                        : formik.values.educationLevel === 'Masters'
+                        ? "Add Master's degree"
+                        : formik.values.educationLevel === 'Bachelors'
+                        ? "Add Bachelor's degree"
+                        : 'Add degree'}
                     </button>
                   </div>
                 </Field>
