@@ -23,23 +23,6 @@ namespace SeraGo.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Aufy.Core.AufyRefreshToken", b =>
-                {
-                    b.Property<string>("UserId")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("RefreshToken")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("UserId");
-
-                    b.ToTable("AufyRefreshTokens", (string)null);
-                });
-
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
                 {
                     b.Property<string>("Id")
@@ -706,6 +689,23 @@ namespace SeraGo.Infrastructure.Migrations
                     b.ToTable("RecruiterProfiles");
                 });
 
+            modelBuilder.Entity("SeraGo.Core.Domain.Entities.RefreshToken", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("AufyRefreshTokens", (string)null);
+                });
+
             modelBuilder.Entity("SeraGo.Core.Domain.Entities.SavedJob", b =>
                 {
                     b.Property<Guid>("Id")
@@ -790,191 +790,200 @@ namespace SeraGo.Infrastructure.Migrations
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000001"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3047),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5803),
                             IsActive = true,
                             Name = "Technology & IT",
                             Slug = "technology-it",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3054)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5807)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000002"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3100),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5834),
                             IsActive = true,
                             Name = "Accounting & Finance",
                             Slug = "accounting-finance",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3101)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5834)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000003"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3110),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5838),
                             IsActive = true,
                             Name = "Banking & Insurance",
                             Slug = "banking-insurance",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3111)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5839)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000004"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3121),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5840),
                             IsActive = true,
                             Name = "Sales & Marketing",
                             Slug = "sales-marketing",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3122)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5840)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000005"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3130),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5842),
                             IsActive = true,
                             Name = "Healthcare",
                             Slug = "healthcare",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3131)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5843)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000006"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3139),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5844),
                             IsActive = true,
                             Name = "Education & Training",
                             Slug = "education-training",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3140)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5844)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000007"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3149),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5846),
                             IsActive = true,
                             Name = "Engineering & Construction",
                             Slug = "engineering-construction",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3150)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5846)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000008"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3157),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5848),
                             IsActive = true,
                             Name = "Human Resources",
                             Slug = "human-resources",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3158)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5848)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000009"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3168),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5850),
                             IsActive = true,
                             Name = "Business & Administration",
                             Slug = "business-administration",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3169)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5851)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-00000000000a"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3177),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5852),
                             IsActive = true,
                             Name = "Manufacturing & Production",
                             Slug = "manufacturing-production",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3178)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5853)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-00000000000b"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3186),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5855),
                             IsActive = true,
                             Name = "Logistics & Transportation",
                             Slug = "logistics-transportation",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3187)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5856)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-00000000000c"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3195),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5857),
                             IsActive = true,
                             Name = "Procurement & Supply Chain",
                             Slug = "procurement-supply-chain",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3196)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5857)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-00000000000d"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3205),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5890),
                             IsActive = true,
                             Name = "Media & Communication",
                             Slug = "media-communication",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3206)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5890)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-00000000000e"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3214),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5893),
                             IsActive = true,
                             Name = "Design & Creative",
                             Slug = "design-creative",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3215)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5893)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-00000000000f"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3223),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5896),
                             IsActive = true,
                             Name = "Customer Service & Support",
                             Slug = "customer-service-support",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3235)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5897)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000010"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3243),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5903),
                             IsActive = true,
                             Name = "Hospitality & Tourism",
                             Slug = "hospitality-tourism",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3245)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5903)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000011"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3253),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5905),
                             IsActive = true,
                             Name = "Agriculture & Natural Science",
                             Slug = "agriculture-natural-science",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3255)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5906)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000012"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3262),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5908),
                             IsActive = true,
                             Name = "Legal",
                             Slug = "legal",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3263)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5908)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000013"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3272),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5911),
                             IsActive = true,
                             Name = "Social Science & Community",
                             Slug = "social-science-community",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3273)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5911)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000014"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3281),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5913),
                             IsActive = true,
                             Name = "Security & Protection",
                             Slug = "security-protection",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3282)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5913)
                         },
                         new
                         {
                             Id = new Guid("a0000000-0000-0000-0000-000000000015"),
-                            CreatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3289),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5915),
                             IsActive = true,
                             Name = "Skilled & General Labor",
                             Slug = "skilled-general-labor",
-                            UpdatedAt = new DateTime(2026, 9, 10, 20, 42, 58, 914, DateTimeKind.Utc).AddTicks(3290)
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5915)
+                        },
+                        new
+                        {
+                            Id = new Guid("a0000000-0000-0000-0000-000000000016"),
+                            CreatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5917),
+                            IsActive = true,
+                            Name = "Beauty & Grooming",
+                            Slug = "beauty-grooming",
+                            UpdatedAt = new DateTime(2026, 10, 4, 17, 32, 21, 797, DateTimeKind.Utc).AddTicks(5917)
                         });
                 });
 
@@ -1076,956 +1085,1142 @@ namespace SeraGo.Infrastructure.Migrations
                         new
                         {
                             Id = new Guid("b0000000-0000-0000-0000-00000000000c"),
+                            Alias = "software engineering",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-00000000000d"),
+                            Alias = "frontend",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-00000000000e"),
+                            Alias = "backend",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-00000000000f"),
+                            Alias = "cs",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-000000000010"),
+                            Alias = "devops",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-000000000011"),
+                            Alias = "web development",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-000000000012"),
+                            Alias = "network administration",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-000000000013"),
+                            Alias = "system administration",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-000000000014"),
+                            Alias = "database administration",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-000000000015"),
+                            Alias = "cybersecurity",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-000000000016"),
+                            Alias = "machine learning",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-000000000017"),
+                            Alias = "artificial intelligence",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-000000000018"),
                             Alias = "accounting & finance",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000002")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000000d"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000019"),
                             Alias = "accounting",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000002")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000000e"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000001a"),
                             Alias = "finance",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000002")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000000f"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000001b"),
                             Alias = "accounting and finance",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000002")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000010"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000001c"),
                             Alias = "economics",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000002")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000011"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000001d"),
                             Alias = "tax",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000002")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000012"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000001e"),
                             Alias = "audit",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000002")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000013"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000001f"),
                             Alias = "bookkeeping",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000002")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000014"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000020"),
+                            Alias = "accountant",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000002")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-000000000021"),
+                            Alias = "financial analysis",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000002")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-000000000022"),
                             Alias = "banking and insurance",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000003")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000015"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000023"),
                             Alias = "banking",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000003")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000016"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000024"),
                             Alias = "insurance",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000003")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000017"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000025"),
                             Alias = "insurance and investment",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000003")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000018"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000026"),
                             Alias = "sales & promotion",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000004")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000019"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000027"),
                             Alias = "sales",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000004")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000001a"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000028"),
                             Alias = "marketing",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000004")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000001b"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000029"),
                             Alias = "sales and marketing",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000004")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000001c"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000002a"),
                             Alias = "business sales and marketing",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000004")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000001d"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000002b"),
                             Alias = "marketing management",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000004")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000001e"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000002c"),
                             Alias = "digital marketing",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000004")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000001f"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000002d"),
                             Alias = "promotion",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000004")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000020"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000002e"),
                             Alias = "healthcare",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000005")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000021"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000002f"),
                             Alias = "health care",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000005")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000022"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000030"),
                             Alias = "health care management",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000005")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000023"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000031"),
                             Alias = "public health",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000005")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000024"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000032"),
                             Alias = "nursing",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000005")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000025"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000033"),
                             Alias = "pharmaceutical",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000005")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000026"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000034"),
                             Alias = "pharmacy",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000005")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000027"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000035"),
                             Alias = "medicine",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000005")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000028"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000036"),
                             Alias = "medical",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000005")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000029"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000037"),
+                            Alias = "psychiatry, psychology & social work",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000005")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-000000000038"),
                             Alias = "teaching & education",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000006")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000002a"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000039"),
                             Alias = "education",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000006")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000002b"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000003a"),
                             Alias = "teaching",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000006")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000002c"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000003b"),
                             Alias = "tutoring, training & mentorship",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000006")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000002d"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000003c"),
                             Alias = "language and literature",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000006")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000002e"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000003d"),
                             Alias = "education management",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000006")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000002f"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000003e"),
                             Alias = "tutoring",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000006")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000030"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000003f"),
                             Alias = "training",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000006")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000031"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000040"),
                             Alias = "engineering",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000032"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000041"),
                             Alias = "construction & civil engineering",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000033"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000042"),
                             Alias = "civil engineering",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000034"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000043"),
                             Alias = "mechanical & electrical engineering",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000035"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000044"),
                             Alias = "chemical & biomedical engineering",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000036"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000045"),
                             Alias = "environmental, mining & energy engineering",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000037"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000046"),
                             Alias = "manufacturing engineering",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000038"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000047"),
                             Alias = "architectural engineering",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000039"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000048"),
                             Alias = "automotive engineering",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000003a"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000049"),
                             Alias = "sanitary engineering",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000003b"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000004a"),
                             Alias = "biomedical engineering",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000003c"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000004b"),
                             Alias = "electrical engineering",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000003d"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000004c"),
                             Alias = "architecture & urban planning",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000003e"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000004d"),
                             Alias = "construction skilled worker",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000003f"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000004e"),
                             Alias = "mechanical engineering",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000040"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000004f"),
                             Alias = "planning",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000041"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000050"),
                             Alias = "water and sanitation",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000042"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000051"),
                             Alias = "automotive",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000043"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000052"),
+                            Alias = "aeronautics & aerospace",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000007")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-000000000053"),
                             Alias = "human resource & talent management",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000008")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000044"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000054"),
                             Alias = "human resource and recruitment",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000008")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000045"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000055"),
                             Alias = "human resource administration",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000008")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000046"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000056"),
                             Alias = "human resources",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000008")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000047"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000057"),
                             Alias = "hr",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000008")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000048"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000058"),
                             Alias = "recruitment",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000008")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000049"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000059"),
                             Alias = "human resource",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000008")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000004a"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000005a"),
                             Alias = "talent management",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000008")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000004b"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000005b"),
                             Alias = "business",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000009")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000004c"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000005c"),
                             Alias = "business administration",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000009")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000004d"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000005d"),
                             Alias = "business administration & operations",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000009")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000004e"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000005e"),
                             Alias = "business and administration",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000009")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000004f"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000005f"),
                             Alias = "secretarial, admin and clerical",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000009")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000050"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000060"),
                             Alias = "secretarial & office management",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000009")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000051"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000061"),
                             Alias = "management",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000009")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000052"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000062"),
                             Alias = "development and project management",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000009")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000053"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000063"),
                             Alias = "advisory & consultancy",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000009")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000054"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000064"),
                             Alias = "brokerage & case closing",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000009")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000055"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000065"),
                             Alias = "business management",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000009")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000056"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000066"),
                             Alias = "administration",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000009")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000057"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000067"),
                             Alias = "office management",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000009")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000058"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000068"),
                             Alias = "secretarial",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000009")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000059"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000069"),
+                            Alias = "event management & organization",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000009")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-00000000006a"),
+                            Alias = "research services",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000009")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-00000000006b"),
                             Alias = "manufacturing & production",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000a")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000005a"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000006c"),
                             Alias = "manufacturing",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000a")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000005b"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000006d"),
                             Alias = "manufacturing management",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000a")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000005c"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000006e"),
                             Alias = "fmcg and manufacturing",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000a")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000005d"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000006f"),
                             Alias = "woodwork & carpentry",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000a")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000005e"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000070"),
                             Alias = "production",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000a")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000005f"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000071"),
                             Alias = "transportation & delivery",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000b")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000060"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000072"),
                             Alias = "transportation & logistics",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000b")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000061"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000073"),
                             Alias = "transportation management",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000b")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000062"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000074"),
                             Alias = "transportation",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000b")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000063"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000075"),
                             Alias = "logistics & supply chain",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000b")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000064"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000076"),
                             Alias = "logistics, transport and supply chain",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000b")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000065"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000077"),
                             Alias = "logistics",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000b")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000066"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000078"),
                             Alias = "warehouse, supply chain and distribution",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000b")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000067"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000079"),
                             Alias = "purchasing & procurement",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000c")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000068"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000007a"),
                             Alias = "supply chain & purchasing management",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000c")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000069"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000007b"),
                             Alias = "procurement",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000c")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000006a"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000007c"),
                             Alias = "supply chain",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000c")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000006b"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000007d"),
                             Alias = "purchasing",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000c")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000006c"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000007e"),
                             Alias = "media & entertainment",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000d")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000006d"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000007f"),
                             Alias = "media and communication",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000d")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000006e"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000080"),
                             Alias = "multimedia content production",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000d")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000006f"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000081"),
                             Alias = "documentation & writing",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000d")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000070"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000082"),
                             Alias = "translation & transcription",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000d")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000071"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000083"),
                             Alias = "media",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000d")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000072"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000084"),
+                            Alias = "journalism & communication",
+                            SectorId = new Guid("a0000000-0000-0000-0000-00000000000d")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-000000000085"),
                             Alias = "journalism",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000d")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000073"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000086"),
                             Alias = "communication",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000d")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000074"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000087"),
                             Alias = "writing",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000d")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000075"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000088"),
                             Alias = "creative art & design",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000e")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000076"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000089"),
                             Alias = "fashion / clothing & textile design",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000e")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000077"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000008a"),
                             Alias = "design",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000e")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000078"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000008b"),
                             Alias = "graphic design",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000e")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000079"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000008c"),
                             Alias = "creative",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000e")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000007a"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000008d"),
                             Alias = "fashion design",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000e")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000007b"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000008e"),
                             Alias = "creative arts",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000e")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000007c"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000008f"),
                             Alias = "ui/ux design",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000e")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000007d"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000090"),
                             Alias = "fashion",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000e")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000007e"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000091"),
                             Alias = "customer service & care",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000f")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000007f"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000092"),
                             Alias = "retail & office support",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000f")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000080"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000093"),
                             Alias = "customer service",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000f")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000081"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000094"),
                             Alias = "support",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000f")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000082"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000095"),
                             Alias = "call center",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000f")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000083"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000096"),
                             Alias = "reception",
                             SectorId = new Guid("a0000000-0000-0000-0000-00000000000f")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000084"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000097"),
                             Alias = "hospitality & tourism",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000010")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000085"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000098"),
                             Alias = "food & drink preparation / service",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000010")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000086"),
+                            Id = new Guid("b0000000-0000-0000-0000-000000000099"),
                             Alias = "hospitality",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000010")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000087"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000009a"),
                             Alias = "tourism",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000010")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000088"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000009b"),
                             Alias = "chef",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000010")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000089"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000009c"),
                             Alias = "catering",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000010")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000008a"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000009d"),
                             Alias = "hotel",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000010")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000008b"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000009e"),
                             Alias = "agriculture",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000011")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000008c"),
+                            Id = new Guid("b0000000-0000-0000-0000-00000000009f"),
                             Alias = "agricultural science",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000011")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000008d"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000a0"),
                             Alias = "natural science",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000011")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000008e"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000a1"),
                             Alias = "natural sciences",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000011")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000008f"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000a2"),
                             Alias = "chemistry",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000011")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000090"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000a3"),
                             Alias = "physics",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000011")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000091"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000a4"),
                             Alias = "microbiology",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000011")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000092"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000a5"),
                             Alias = "mathematics",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000011")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000093"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000a6"),
                             Alias = "nutrition",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000011")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000094"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000a7"),
                             Alias = "biology",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000011")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000095"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000a8"),
+                            Alias = "veterinary",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000011")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000a9"),
+                            Alias = "gardening & landscaping",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000011")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000aa"),
+                            Alias = "horticulture",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000011")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000ab"),
+                            Alias = "livestock & animal husbandry",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000011")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000ac"),
                             Alias = "law & legal advocacy",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000012")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000096"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000ad"),
                             Alias = "legal services",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000012")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000097"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000ae"),
                             Alias = "legal",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000012")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000098"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000af"),
                             Alias = "law",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000012")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-000000000099"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000b0"),
                             Alias = "advocacy",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000012")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000009a"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000b1"),
                             Alias = "social sciences and community service",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000013")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000009b"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000b2"),
                             Alias = "social science",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000013")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000009c"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000b3"),
                             Alias = "social work",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000013")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000009d"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000b4"),
                             Alias = "community service",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000013")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000009e"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000b5"),
                             Alias = "history",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000013")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-00000000009f"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000b6"),
                             Alias = "sociology",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000013")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-0000000000a0"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000b7"),
                             Alias = "psychology",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000013")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-0000000000a1"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000b8"),
+                            Alias = "security & safety",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000014")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000b9"),
                             Alias = "security",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000014")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-0000000000a2"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000ba"),
                             Alias = "protection",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000014")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-0000000000a3"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000bb"),
                             Alias = "guard",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000014")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-0000000000a4"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000bc"),
                             Alias = "safety",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000014")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-0000000000a5"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000bd"),
                             Alias = "low and medium skilled worker",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000015")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-0000000000a6"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000be"),
                             Alias = "service industry skilled worker",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000015")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-0000000000a7"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000bf"),
                             Alias = "janitorial & office services",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000015")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-0000000000a8"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000c0"),
                             Alias = "general labor",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000015")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-0000000000a9"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000c1"),
                             Alias = "cleaner",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000015")
                         },
                         new
                         {
-                            Id = new Guid("b0000000-0000-0000-0000-0000000000aa"),
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000c2"),
                             Alias = "maintenance",
                             SectorId = new Guid("a0000000-0000-0000-0000-000000000015")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000c3"),
+                            Alias = "installation & maintenance",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000015")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000c4"),
+                            Alias = "labor & masonry",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000015")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000c5"),
+                            Alias = "beauty & grooming",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000016")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000c6"),
+                            Alias = "cosmetics",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000016")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000c7"),
+                            Alias = "salon",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000016")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000c8"),
+                            Alias = "hairdresser",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000016")
+                        },
+                        new
+                        {
+                            Id = new Guid("b0000000-0000-0000-0000-0000000000c9"),
+                            Alias = "barber",
+                            SectorId = new Guid("a0000000-0000-0000-0000-000000000016")
                         });
                 });
 
