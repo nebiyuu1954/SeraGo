@@ -284,9 +284,9 @@ public class MatchingClient
         try
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            // 30s download + extraction on the AI side; 60s matches the
-            // service's own budget for the whole request.
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(60));
+            // 30s download + extraction on the AI side; 180s accommodates
+            // local LLM parsing inference via Ollama.
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(180));
 
             var payload = new { resumeUrl = presignedResumeUrl };
             var response = await SendJsonAsync("api/matching/parse-resume", payload, timeoutCts.Token);
