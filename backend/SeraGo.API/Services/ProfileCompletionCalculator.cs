@@ -16,7 +16,6 @@ public static class ProfileCompletionCalculator
     public static Result ForTalent(TalentProfile profile)
     {
         var missing = new List<string>();
-        if (string.IsNullOrWhiteSpace(profile.Headline)) missing.Add("headline");
         if (string.IsNullOrWhiteSpace(profile.About)) missing.Add("about");
         if (profile.ExperienceLevel is null) missing.Add("experienceLevel");
         if (profile.YearsOfExperience is null) missing.Add("yearsOfExperience");
@@ -26,7 +25,7 @@ public static class ProfileCompletionCalculator
         if (profile.WorkMode is null) missing.Add("workMode");
         if (profile.Availability is null) missing.Add("availability");
 
-        const int total = 9;
+        const int total = 8;
         return Build(missing, total);
     }
 
