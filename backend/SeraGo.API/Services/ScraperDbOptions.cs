@@ -21,5 +21,5 @@ public sealed class ScraperDbOptions
 
     public string ConnectionString =>
         $"Host={Host};Port={Port};Database={Database};Username={User};Password={Password};"
-        + "SSL Mode=Require;Trust Server Certificate=true";
+        + "Trust Server Certificate=true";
 }
