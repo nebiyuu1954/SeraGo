@@ -1,4 +1,4 @@
-using Aufy.Core;
+
 using Hangfire;
 using Hangfire.Dashboard;
 using Hangfire.PostgreSql;
@@ -133,13 +133,14 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerWithJwt();
 builder.Services.AddHttpClient(); // HttpClient factory for the EmailJS relay
-builder.Services.AddHttpClient<MatchingClient>(); // AI matching engine client
+builder.Services.AddHttpClient<MatchingClient>(c => c.Timeout = System.Threading.Timeout.InfiniteTimeSpan); // AI matching engine client
 builder.Services.AddSingleton<EmailThrottleService>(); // per-email throttle for email-sending flows
 builder.Services.AddRateLimiting(builder.Configuration); // API throttling (fixed-window per IP)
 builder.Services.AddMemoryCache(); // short-TTL cache for expensive aggregate stats
 
 builder.Services.AddInfrastructure(builder.Configuration); // PostgreSQL DbContext + AuthSeeder
-builder.Services.SetupAufy(builder.Configuration, builder.Environment); // Aufy: Identity + JWT + custom signup
+builder.Services.SetupIdentity(builder.Configuration, builder.Environment); // Identity + JWT
+builder.Services.AddControllers(); // Add API Controllers
 builder.Services.AddNotificationInfrastructure(builder.Configuration); // Hangfire + Redis + SignalR + NotificationService
 
 // All three pools draw on DefaultConnection but share nothing — count them
@@ -335,17 +336,10 @@ app.UseAuthorization();
 var adminApiForMiddleware = app.Services.GetRequiredService<AdminApiOptions>();
 app.UseMiddleware<AdminApiGateMiddleware>(adminApiForMiddleware.Enabled);
 
-app.MapAufyEndpoints();      // /api/auth/* and /api/account/* (login, signup, refresh, me, ...)
+app.MapControllers();
+
 app.MapProfileEndpoints();   // GET/PUT /api/account/profile — the user's own profile
 app.MapAccountEndpoints();   // POST /api/account/deactivate, DELETE /api/account
-app.MapForgotPasswordEndpoint(); // POST /api/account/password/forgot — fixed replacement for Aufy 1.0.0's (500s on unknown emails)
-
-// Replacements for Aufy endpoints removed from DI in ServicesExtensions.
-app.MapSeraGoTokenEndpoint();          // POST /api/auth/token — lockout-aware sign-in errors
-app.MapSeraGoExternalSignUpEndpoint(); // POST /api/auth/signup/external — links Google to existing email accounts
-app.MapSeraGoWhoAmIEndpoint();         // GET /api/auth/whoami — adds emailConfirmed for the dashboard guard
-app.MapSeraGoEmailConfirmationResendEndpoint(); // POST /api/account/email/confirm/resend — surfaces 404/409/200
-app.MapSeraGoEmailConfirmEndpoint();             // GET /api/account/email/confirm — already-confirmed is a 200, not a 404
 
 app.MapJobEndpoints();   // /api/jobs — browse, search, post (draft flow), moderate
 app.MapSavedJobEndpoints(); // /api/saved-jobs — save/unsave/list with lifecycle status
