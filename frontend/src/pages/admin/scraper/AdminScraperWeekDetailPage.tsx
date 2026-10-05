@@ -245,8 +245,8 @@ export default function AdminScraperWeekDetailPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-variant">
-                    {detail.days.map((day) =>
-                      day.runs.map((run) => (
+                    {[...detail.days].reverse().map((day) =>
+                      [...day.runs].reverse().map((run) => (
                         <tr key={`${day.day}-run-${run.run}`} className="transition-colors hover:bg-surface-container-low/50">
                           <td className="px-4 py-3 font-body-sm text-sm text-on-surface">
                             {new Date(day.day + 'T00:00:00Z').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
