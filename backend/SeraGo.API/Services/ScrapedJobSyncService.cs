@@ -568,6 +568,25 @@ public sealed class ScrapedJobSyncService
         _logger.LogInformation(
             "Post-sync AI classification: {Jobs} jobs sent, {Assigned} assigned a sector",
             jobs.Count, assigned);
+
+        var unassigned = outcomes.Where(o => !o.Assigned).ToList();
+        if (unassigned.Count > 0)
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var telegramService = scope.ServiceProvider.GetService<TelegramBotService>();
+            if (telegramService != null)
+            {
+                var msg = $"⚠️ <b>{unassigned.Count} Jobs Uncategorized</b>\n\n";
+                foreach (var o in unassigned.Take(10))
+                {
+                    var j = jobs.First(x => x.Id.ToString() == o.JobId);
+                    msg += $"• {j.Title} (<i>{j.CompanyName}</i>)\n";
+                }
+                if (unassigned.Count > 10) msg += $"...and {unassigned.Count - 10} more.\n";
+                msg += "\n<a href=\"https://serago.pro.et/dashboard/admin/sectors\">Review & Sync</a>";
+                await telegramService.SendAdminAlertAsync(msg);
+            }
+        }
     }
 
     // --------------------------------------------------------------- Helpers

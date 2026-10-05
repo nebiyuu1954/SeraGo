@@ -47,6 +47,30 @@ public sealed class TelegramBotService
     }
 
     /// <summary>
+    /// Sends a direct alert to the system admin's Telegram chat.
+    /// Uses TELEGRAM_CHAT_ID from the environment variables.
+    /// </summary>
+    public async Task SendAdminAlertAsync(string message)
+    {
+        if (_botClient is null) return;
+        var adminChatIdEnv = Environment.GetEnvironmentVariable("TELEGRAM_CHAT_ID");
+        if (string.IsNullOrWhiteSpace(adminChatIdEnv) || !long.TryParse(adminChatIdEnv, out var chatId))
+        {
+            _logger.LogWarning("Cannot send admin alert: TELEGRAM_CHAT_ID is missing or invalid in environment.");
+            return;
+        }
+
+        try
+        {
+            await _botClient.SendMessage(chatId, message, parseMode: ParseMode.Html);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send Telegram admin alert.");
+        }
+    }
+
+    /// <summary>
     /// Validates a linking token and returns the user ID if valid.
     /// </summary>
     public string? ValidateLinkingToken(string token)
