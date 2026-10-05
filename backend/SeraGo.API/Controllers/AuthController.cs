@@ -10,6 +10,8 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using SeraGo.API.Services;
+using Microsoft.AspNetCore.WebUtilities;
+using FluentEmail.Core;
 
 namespace SeraGo.API.Controllers;
 
@@ -21,17 +23,20 @@ public class AuthController : ControllerBase
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly IConfiguration _config;
     private readonly ApplicationDbContext _db;
+    private readonly IFluentEmailFactory _emailFactory;
 
     public AuthController(
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
         IConfiguration config,
-        ApplicationDbContext db)
+        ApplicationDbContext db,
+        IFluentEmailFactory emailFactory)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _config = config;
         _db = db;
+        _emailFactory = emailFactory;
     }
 
     [HttpPost("token")]
@@ -91,7 +96,21 @@ public class AuthController : ControllerBase
         // Add default role if needed, e.g. "Talent"
         await _userManager.AddToRoleAsync(user, "Talent");
 
-        return Ok(new { message = "Account created successfully." });
+        // Generate and send confirmation email
+        var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+        code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+
+        var baseUrl = _config["Aufy:ClientApp:BaseUrl"] ?? $"{Request.Scheme}://{Request.Host}";
+        var confirmPath = _config["Aufy:ClientApp:EmailConfirmationPath"] ?? "/confirm-email";
+        var link = $"{baseUrl}{confirmPath}?code={code}&userId={user.Id}";
+
+        await _emailFactory.Create()
+            .To(user.Email)
+            .Subject("Welcome! Please confirm your email")
+            .Body($"Thank you for joining SeraGo! Please confirm your email by clicking here: {link}")
+            .SendAsync();
+
+        return Ok(new { message = "Account created successfully. Please check your email to confirm your account." });
     }
 
     [HttpGet("whoami")]
