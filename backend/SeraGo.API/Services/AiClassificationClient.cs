@@ -161,12 +161,18 @@ public sealed record AiClassificationResult(
     [property: JsonPropertyName("reasoning")] string? Reasoning,
     [property: JsonPropertyName("uncategorized")] bool Uncategorized,
     [property: JsonPropertyName("error")] string? Error,
+    [property: JsonPropertyName("suggestedSectors")] List<SuggestedSector>? SuggestedSectors,
     /// <summary>
     /// Id of the AiClassificationLog row created for this attempt on the Django side.
     /// .NET stores this on Jobs.ClassificationId so it can point at the latest classify record.
     /// </summary>
     [property: JsonPropertyName("logId")]
     Guid? LogId = null);
+
+public sealed record SuggestedSector(
+    [property: JsonPropertyName("sectorId")] string SectorId,
+    [property: JsonPropertyName("sectorName")] string SectorName,
+    [property: JsonPropertyName("sectorSlug")] string SectorSlug);
 
 public sealed record AiLogResponse(
     [property: JsonPropertyName("id")] string Id,

@@ -181,6 +181,10 @@ public static class AdminJobClassificationEndpoints
             // Surface the fields that matter: the assigned sector plus the
             // LLM's confidence and reasoning (when the LLM ran). The error
             // (LLM failure / AI service unreachable) is reported separately.
+            var suggested = ai?.SuggestedSectors?
+                .Select(s => new SuggestedSectorDto(s.SectorId, s.SectorName, s.SectorSlug))
+                .ToList();
+
             results.Add(new ClassificationResultDto(
                 job.Id,
                 outcome.SectorId is not null ? job.Sector?.Slug : null,
@@ -188,7 +192,8 @@ public static class AdminJobClassificationEndpoints
                 ai?.Confidence,
                 ai?.Reasoning,
                 !outcome.Assigned,
-                outcome.LlmError));
+                outcome.LlmError,
+                suggested));
 
             if (outcome.Assigned)
             {
@@ -259,7 +264,13 @@ public static class AdminJobClassificationEndpoints
         double? Confidence,
         string? Reasoning,
         bool Uncategorized,
-        string? Error);
+        string? Error,
+        List<SuggestedSectorDto>? SuggestedSectors = null);
+
+    public sealed record SuggestedSectorDto(
+        string SectorId,
+        string SectorName,
+        string SectorSlug);
 
     private static async Task<IResult> GetClassificationLogAsync(
         Guid id,
