@@ -110,7 +110,10 @@ public class AuthController : ControllerBase
             .Body($"Thank you for joining SeraGo! Please confirm your email by clicking here: {link}")
             .SendAsync();
 
-        return Ok(new { message = "Account created successfully. Please check your email to confirm your account." });
+        return Ok(new { 
+            message = "Account created successfully. Please check your email to confirm your account.",
+            requiresEmailConfirmation = true 
+        });
     }
 
     [HttpGet("whoami")]
