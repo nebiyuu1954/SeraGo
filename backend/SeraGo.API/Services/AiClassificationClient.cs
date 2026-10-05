@@ -40,7 +40,7 @@ public sealed class AiClassificationClient
 
         var http = factory.CreateClient("SeraGoAiClassify");
         http.BaseAddress = new Uri(_baseUrl);
-        http.Timeout = TimeSpan.FromSeconds(120);
+        http.Timeout = TimeSpan.FromSeconds(300);
         if (!string.IsNullOrWhiteSpace(_apiKey))
         {
             http.DefaultRequestHeaders.Add("X-Api-Key", _apiKey);
