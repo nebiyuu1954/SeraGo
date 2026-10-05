@@ -40,6 +40,7 @@ public static class AdminJobClassificationEndpoints
             .RequireAuthorization("Admin");
 
         group.MapPost("/classify", ClassifyJobsAsync).WithOpenApi();
+        group.MapGet("/{id:guid}/classification-log", GetClassificationLogAsync).WithOpenApi();
 
         return app;
     }
@@ -259,4 +260,19 @@ public static class AdminJobClassificationEndpoints
         string? Reasoning,
         bool Uncategorized,
         string? Error);
+
+    private static async Task<IResult> GetClassificationLogAsync(
+        Guid id,
+        ApplicationDbContext db,
+        AiClassificationClient aiClient)
+    {
+        var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == id);
+        if (job == null) return Results.NotFound("Job not found.");
+        if (job.ClassificationId == null) return Results.NotFound("No AI classification log found for this job.");
+
+        var log = await aiClient.GetClassificationLogAsync(job.ClassificationId.Value);
+        if (log == null) return Results.NotFound("Classification log not found in AI service.");
+
+        return Results.Ok(log);
+    }
 }

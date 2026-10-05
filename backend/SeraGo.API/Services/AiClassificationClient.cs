@@ -103,6 +103,28 @@ public sealed class AiClassificationClient
         }
     }
 
+    /// <summary>
+    /// Fetch the AI classification log details (reasoning, error) from the SeraGo-AI service.
+    /// </summary>
+    public async Task<AiLogResponse?> GetClassificationLogAsync(Guid logId, CancellationToken ct = default)
+    {
+        try
+        {
+            using var response = await _http.GetAsync($"api/ai/classify/log/{logId}", ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+            var responseBody = await response.Content.ReadAsStringAsync(ct);
+            return JsonSerializer.Deserialize<AiLogResponse>(responseBody, JsonOpts);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to fetch classification log {LogId} from SeraGo-AI.", logId);
+            return null;
+        }
+    }
+
     private static string Truncate(string value, int max) =>
         value.Length <= max ? value : value[..max] + "…";
 }
@@ -145,6 +167,17 @@ public sealed record AiClassificationResult(
     /// </summary>
     [property: JsonPropertyName("logId")]
     Guid? LogId = null);
+
+public sealed record AiLogResponse(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("jobId")] string JobId,
+    [property: JsonPropertyName("jobTitle")] string JobTitle,
+    [property: JsonPropertyName("reasoning")] string? Reasoning,
+    [property: JsonPropertyName("error")] string? Error,
+    [property: JsonPropertyName("uncategorized")] bool Uncategorized,
+    [property: JsonPropertyName("sectorSlug")] string? SectorSlug,
+    [property: JsonPropertyName("createdAt")] string CreatedAt);
+
 
 // ── Config ────────────────────────────────────────────────────────────
 
