@@ -122,6 +122,26 @@ public class AccountController : ControllerBase
         _logger.LogInformation("Password reset email sent to {Email}", user.Email);
         return Ok();
     }
+
+    [HttpPost("password/reset")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ResetPassword([FromBody] PasswordResetRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Code) || string.IsNullOrWhiteSpace(req.Password))
+            return BadRequest();
+
+        var user = await _userManager.FindByEmailAsync(req.Email);
+        if (user == null)
+            return NotFound(new { message = "No account found with this email address." });
+
+        var decodedCode = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(req.Code));
+        var result = await _userManager.ResetPasswordAsync(user, decodedCode, req.Password);
+
+        if (!result.Succeeded)
+            return BadRequest(new { message = string.Join(" ", result.Errors.Select(e => e.Description)) });
+
+        return Ok(new { message = "Password reset successfully." });
+    }
 }
 
 public class ResendConfirmationRequest
@@ -134,4 +154,14 @@ public class PasswordForgotRequest
 {
     [Required, EmailAddress]
     public string Email { get; set; } = string.Empty;
+}
+
+public class PasswordResetRequest
+{
+    [Required, EmailAddress]
+    public string Email { get; set; } = string.Empty;
+    [Required]
+    public string Code { get; set; } = string.Empty;
+    [Required]
+    public string Password { get; set; } = string.Empty;
 }

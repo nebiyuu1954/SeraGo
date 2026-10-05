@@ -167,9 +167,13 @@ public class ResponseEnvelopeMiddleware
             using var doc = JsonDocument.Parse(buffer);
             var root = doc.RootElement;
 
+            if (root.ValueKind == JsonValueKind.String)
+                return root.GetString();
+
             string? message = null;
 
-            if (root.TryGetProperty("errors", out var errors)
+            if (root.ValueKind == JsonValueKind.Object &&
+                root.TryGetProperty("errors", out var errors)
                 && errors.ValueKind == JsonValueKind.Object)
             {
                 var parts = new List<string>();
@@ -202,7 +206,7 @@ public class ResponseEnvelopeMiddleware
     }
 
     private static string? GetString(JsonElement root, string property) =>
-        root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+        root.ValueKind == JsonValueKind.Object && root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
 
