@@ -183,6 +183,20 @@ export function setJobSector(
   })
 }
 
+/**
+ * POST /api/admin/jobs/classify
+ */
+export function classifyJobs(
+  jobIds: string[],
+  accessToken: string,
+): Promise<any> {
+  return request<any>('/api/admin/jobs/classify', {
+    method: 'POST',
+    body: { jobIds },
+    headers: auth(accessToken),
+  })
+}
+
 /** GET /api/admin/jobs/views — admin paginated list of jobs by view count. */
 export function fetchJobViews(
   params: {

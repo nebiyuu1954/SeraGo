@@ -9,6 +9,7 @@ import {
   getStoredAuthTokens,
   removeSectorAlias,
   setJobSector,
+  classifyJobs,
   syncScrapedJobs,
   updateSector,
 } from '../../../api'
@@ -518,6 +519,38 @@ function ReviewTab() {
   const [error, setError] = useState<string | null>(null)
   const [assignments, setAssignments] = useState<Record<string, string>>({})
   const [refreshKey, setRefreshKey] = useState(0)
+  
+  const [classifying, setClassifying] = useState(false)
+  const [aiSuggestions, setAiSuggestions] = useState<Record<string, any[]>>({})
+
+  const runAiClassification = async () => {
+    if (!token || classifying || uncategorized.length === 0) return
+    setClassifying(true)
+    setError(null)
+    try {
+      const jobIds = uncategorized.map((j) => j.id)
+      const res = await classifyJobs(jobIds, token)
+      
+      // The API returns a 'results' array
+      if (res && res.results) {
+        const newSuggestions: Record<string, any[]> = { ...aiSuggestions }
+        
+        res.results.forEach((r: any) => {
+          if (r.uncategorized && r.suggestedSectors) {
+            newSuggestions[r.jobId] = r.suggestedSectors
+          }
+        })
+        
+        setAiSuggestions(newSuggestions)
+        // Refresh the list to remove jobs that were auto-assigned!
+        setRefreshKey((k) => k + 1)
+      }
+    } catch (err) {
+      setError(getApiErrorMessage(err))
+    } finally {
+      setClassifying(false)
+    }
+  }
 
   const loadUncategorized = useCallback(async () => {
     if (!token) return
@@ -583,24 +616,44 @@ function ReviewTab() {
             Safe to run repeatedly.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={runSync}
-          disabled={syncing}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-6 py-3 font-label-md text-label-md font-medium text-on-accent transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-60"
-        >
-          {syncing ? (
-            <>
-              <span
-                aria-hidden="true"
-                className="h-4 w-4 animate-spin rounded-full border-2 border-on-accent/40 border-t-on-accent"
-              />
-              Syncing…
-            </>
-          ) : (
-            'Sync scraped jobs'
-          )}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={runAiClassification}
+            disabled={classifying || uncategorized.length === 0}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-surface-container-high px-6 py-3 font-label-md text-label-md font-medium text-on-surface transition-colors hover:bg-surface-container-highest disabled:pointer-events-none disabled:opacity-50"
+          >
+            {classifying ? (
+              <>
+                <span
+                  aria-hidden="true"
+                  className="h-4 w-4 animate-spin rounded-full border-2 border-on-surface/40 border-t-on-surface"
+                />
+                Classifying…
+              </>
+            ) : (
+              'Classify with AI'
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={runSync}
+            disabled={syncing}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-6 py-3 font-label-md text-label-md font-medium text-on-accent transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-60"
+          >
+            {syncing ? (
+              <>
+                <span
+                  aria-hidden="true"
+                  className="h-4 w-4 animate-spin rounded-full border-2 border-on-accent/40 border-t-on-accent"
+                />
+                Syncing…
+              </>
+            ) : (
+              'Sync scraped jobs'
+            )}
+          </button>
+        </div>
       </div>
 
       {syncResult && (
@@ -700,14 +753,19 @@ function ReviewTab() {
                     }))
                   }
                   aria-label={`Assign sector to ${job.title}`}
-                  className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="max-w-[200px] truncate rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary sm:max-w-none"
                 >
                   <option value="">Uncategorized</option>
-                  {sectors.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
+                  {sectors.map((s) => {
+                    const isSuggested = aiSuggestions[job.id]?.some(
+                      (ai) => ai.sectorId === s.id || ai.sectorSlug === s.slug
+                    )
+                    return (
+                      <option key={s.id} value={s.id}>
+                        {isSuggested ? `✨ ${s.name}` : s.name}
+                      </option>
+                    )
+                  })}
                 </select>
                 <button
                   type="button"
