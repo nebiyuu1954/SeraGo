@@ -161,7 +161,7 @@ public sealed record AiClassificationResult(
     [property: JsonPropertyName("reasoning")] string? Reasoning,
     [property: JsonPropertyName("uncategorized")] bool Uncategorized,
     [property: JsonPropertyName("error")] string? Error,
-    [property: JsonPropertyName("suggestedSectors")] List<SuggestedSector>? SuggestedSectors,
+    [property: JsonPropertyName("suggestedSectors")] List<SuggestedSector>? SuggestedSectors = null,
     /// <summary>
     /// Id of the AiClassificationLog row created for this attempt on the Django side.
     /// .NET stores this on Jobs.ClassificationId so it can point at the latest classify record.

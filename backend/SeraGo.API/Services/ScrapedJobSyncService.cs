@@ -580,7 +580,7 @@ public sealed class ScrapedJobSyncService
                 foreach (var o in unassigned.Take(10))
                 {
                     var j = jobs.First(x => x.Id.ToString() == o.JobId);
-                    msg += $"• {j.Title} (<i>{j.CompanyName}</i>)\n";
+                    msg += $"• {j.Title} (<i>{j.Company}</i>)\n";
                 }
                 if (unassigned.Count > 10) msg += $"...and {unassigned.Count - 10} more.\n";
                 msg += "\n<a href=\"https://serago.pro.et/dashboard/admin/sectors\">Review & Sync</a>";
