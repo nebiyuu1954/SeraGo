@@ -190,7 +190,7 @@ export function classifyJobs(
   jobIds: string[],
   accessToken: string,
 ): Promise<any> {
-  return request<any>('/api/admin/jobs/classify', {
+  return request<any>('/admin/jobs/classify', {
     method: 'POST',
     body: { jobIds },
     headers: auth(accessToken),
