@@ -85,7 +85,7 @@ public class AuthController : ControllerBase
         
         if (!result.Succeeded)
         {
-            return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
+            return BadRequest(new { message = string.Join(" ", result.Errors.Select(e => e.Description)) });
         }
 
         // Add default role if needed, e.g. "Talent"
