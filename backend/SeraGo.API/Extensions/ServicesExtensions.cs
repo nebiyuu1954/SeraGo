@@ -51,7 +51,10 @@ public static class ServicesExtensions
         services.AddIdentity<ApplicationUser, Microsoft.AspNetCore.Identity.IdentityRole>(options =>
         {
             options.SignIn.RequireConfirmedAccount = false;
+            options.Password.RequireNonAlphanumeric = false;
+            options.Password.RequireDigit = false;
         })
+        .AddPasswordValidator<CustomPasswordValidator>()
         .AddEntityFrameworkStores<ApplicationDbContext>()
         .AddDefaultTokenProviders();
 
@@ -612,4 +615,24 @@ public sealed class RateLimitPolicyOptions
 
     /// <summary>Window length in minutes.</summary>
     public int WindowMinutes { get; set; } = 1;
+}
+
+public class CustomPasswordValidator : IPasswordValidator<ApplicationUser>
+{
+    public Task<IdentityResult> ValidateAsync(UserManager<ApplicationUser> manager, ApplicationUser user, string password)
+    {
+        var hasNumber = password.Any(char.IsDigit);
+        var hasSymbol = password.Any(c => !char.IsLetterOrDigit(c));
+        
+        if (!hasNumber && !hasSymbol)
+        {
+            return Task.FromResult(IdentityResult.Failed(new IdentityError 
+            { 
+                Code = "PasswordRequiresDigitOrSymbol", 
+                Description = "Passwords must have at least one number or symbol." 
+            }));
+        }
+        
+        return Task.FromResult(IdentityResult.Success);
+    }
 }

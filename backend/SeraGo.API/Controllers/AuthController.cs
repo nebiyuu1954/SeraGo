@@ -48,7 +48,7 @@ public class AuthController : ControllerBase
 
         var user = await _userManager.FindByEmailAsync(req.Email);
         if (user == null)
-            return Unauthorized(new { message = "Invalid email or password." });
+            return NotFound(new { message = "Invalid email or password." });
 
         var result = await _signInManager.CheckPasswordSignInAsync(user, req.Password, true);
 
@@ -57,7 +57,7 @@ public class AuthController : ControllerBase
             if (result.IsLockedOut)
                 return Unauthorized(new { message = "Account locked out." });
             if (result.IsNotAllowed)
-                return Unauthorized(new { message = "Account not allowed." });
+                return StatusCode(403, new { message = "Please confirm your email before signing in." });
                 
             return Unauthorized(new { message = "Invalid email or password." });
         }
@@ -90,6 +90,10 @@ public class AuthController : ControllerBase
         
         if (!result.Succeeded)
         {
+            if (result.Errors.Any(e => e.Code == "DuplicateEmail" || e.Code == "DuplicateUserName"))
+            {
+                return BadRequest(new { message = "Account with this email already exists" });
+            }
             return BadRequest(new { message = string.Join(" ", result.Errors.Select(e => e.Description)) });
         }
 
