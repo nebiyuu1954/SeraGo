@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { clearStoredAuthTokens, getStoredAuthTokens, signOut } from '../api'
+import { setUserId } from '../lib/analytics'
 
 /**
  * Signs the current user out: revokes the refresh token server-side
@@ -20,6 +21,7 @@ export function useSignOut(): () => void {
       })
     }
     clearStoredAuthTokens()
+    setUserId(undefined)
     navigate('/login', { replace: true })
   }, [navigate])
 }

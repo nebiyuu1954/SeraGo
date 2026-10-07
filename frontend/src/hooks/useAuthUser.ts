@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchWhoAmI, getStoredAuthTokens } from '../api'
 import type { WhoAmIResponse } from '../types'
+import { setUserId } from '../lib/analytics'
 
 export type AuthUserState =
   | { status: 'loading' }
@@ -33,11 +34,17 @@ export function useAuthUser(): AuthUserState {
     let cancelled = false
     fetchWhoAmI(tokens.accessToken)
       .then((user) => {
-        if (!cancelled) setState({ status: 'authenticated', user })
+        if (!cancelled) {
+          setState({ status: 'authenticated', user })
+          setUserId(user.id)
+        }
       })
       .catch(() => {
         // Expired or invalid token — treat as signed out.
-        if (!cancelled) setState({ status: 'unauthenticated' })
+        if (!cancelled) {
+          setState({ status: 'unauthenticated' })
+          setUserId(undefined)
+        }
       })
     return () => {
       cancelled = true

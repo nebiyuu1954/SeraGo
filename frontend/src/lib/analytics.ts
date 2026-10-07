@@ -27,6 +27,12 @@ export function initAnalytics(): void {
   ready = true
 }
 
+/** Set a stable User ID to track authenticated users across devices. */
+export function setUserId(userId: string | undefined): void {
+  if (!ready) return
+  ReactGA.set({ userId: userId })
+}
+
 /** Send a single page view for an SPA navigation. */
 export function trackPageView(path: string, title?: string): void {
   if (!ready) return
@@ -40,4 +46,10 @@ export function trackEvent(
 ): void {
   if (!ready) return
   ReactGA.event(name, params)
+}
+
+/** Track client-side exceptions or form errors. */
+export function trackException(description: string, fatal = false): void {
+  if (!ready) return
+  ReactGA.send({ hitType: 'exception', exDescription: description, exFatal: fatal })
 }
