@@ -131,6 +131,7 @@ public class AuthController : ControllerBase
 
         return Ok(new
         {
+            id = user.Id,
             username = User.Identity?.Name,
             email = user.Email,
             roles = roles.ToArray(),

@@ -104,6 +104,7 @@ export interface SignInRequest {
 
 /** Response of GET /api/auth/whoami. */
 export interface WhoAmIResponse {
+  id: string
   username: string | null
   email: string | null
   roles: string[]
