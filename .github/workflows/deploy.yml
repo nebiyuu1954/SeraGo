@@ -31,6 +31,7 @@ jobs:
           echo "VITE_APP_NAME=SeraGo" > .env
           echo "VITE_APP_VERSION=0.1.0" >> .env
           echo "VITE_API_BASE_URL=https://api.serago.pro.et/api" >> .env
+          echo "VITE_GA_MEASUREMENT_ID=G-B7Q4PN2T60" >> .env
 
       - run: npm run build
 
