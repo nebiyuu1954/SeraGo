@@ -2,9 +2,9 @@
 *.md
 
 # Architecture docs — any file/folder with 'architect' in the name
-*architect*
-*Architect*
-*ARCHITECT*
+*architect*.md
+*Architect*.md
+*ARCHITECT*.md
 
 # Environment variables (never commit secrets)
 .env
