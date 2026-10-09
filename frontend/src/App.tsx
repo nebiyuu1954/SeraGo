@@ -5,6 +5,8 @@ import LandingPage from './pages/shared/landing/LandingPage.tsx'
 import AboutPage from './pages/shared/generic/AboutPage.tsx'
 import PrivacyPage from './pages/shared/generic/PrivacyPage.tsx'
 import TermsPage from './pages/shared/generic/TermsPage.tsx'
+import ArchitecturePage from './pages/shared/generic/ArchitecturePage.tsx'
+import ArchitectureSystemPage from './pages/shared/generic/ArchitectureSystemPage.tsx'
 import SignupPage from './pages/shared/auth/SignupPage.tsx'
 import LoginPage from './pages/shared/auth/LoginPage.tsx'
 import ForgotPasswordPage from './pages/shared/auth/ForgotPasswordPage.tsx'
@@ -44,6 +46,10 @@ function App() {
           <Route path="about" element={<AboutPage />} />
           <Route path="privacy" element={<PrivacyPage />} />
           <Route path="terms" element={<TermsPage />} />
+          <Route path="architecture">
+            <Route index element={<ArchitecturePage />} />
+            <Route path=":systemId" element={<ArchitectureSystemPage />} />
+          </Route>
           {/* Signed-in role dashboards — resolve the user's role from whoami */}
           <Route path="dashboard" element={<DashboardRedirect />} />
           <Route path="dashboard/talent" element={<TalentJobsPage />} />

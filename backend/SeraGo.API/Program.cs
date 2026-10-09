@@ -345,6 +345,7 @@ app.MapJobEndpoints();   // /api/jobs — browse, search, post (draft flow), mod
 app.MapSavedJobEndpoints(); // /api/saved-jobs — save/unsave/list with lifecycle status
 app.MapApplicationEndpoints(); // /api/applications — talent apply, recruiter manage
 app.MapSectorEndpoints(); // /api/sectors (public list only — admin routes gated below)
+app.MapArchitectureDataEndpoint(); // /api/architecture/stats — system architecture data
 
 // Admin endpoints — behind the kill switch. When ADMIN_API_ENABLED is off,
 // none of these route groups are registered AND the gate middleware 404s

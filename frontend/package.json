@@ -20,6 +20,7 @@
     "@tiptap/starter-kit": "^3.30.5",
     "clsx": "^2.1.1",
     "formik": "^2.4.9",
+    "framer-motion": "^14.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-ga4": "^3.0.1",

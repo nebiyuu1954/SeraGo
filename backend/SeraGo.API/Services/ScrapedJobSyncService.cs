@@ -797,8 +797,8 @@ public sealed class ScrapedJobSyncService
             i.job_type, i.url, i.salary, i.published_at, i.deadline,
             i.is_active, i.updated_at, s.slug AS source_slug,
             -- Universal enriched fields
-            i.company_logo_url, i.work_mode, i.experience_level,
-            i.sector_name, i.skills,
+            NULL AS company_logo_url, NULL AS work_mode, NULL AS experience_level,
+            NULL AS sector_name, NULL AS skills,
             -- Afriwork-specific
             a.sectors::text AS afriwork_sectors,
             a.compensation_amount_cents, a.compensation_type,
