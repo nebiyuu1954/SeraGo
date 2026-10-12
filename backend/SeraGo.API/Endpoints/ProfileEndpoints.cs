@@ -386,6 +386,29 @@ public static class ProfileEndpoints
                 TryAddSector(found);
             }
 
+            // 4. Validate and calculate years of experience strictly from work experience (never education)
+            if (result.Profile.Experience is { Count: > 0 })
+            {
+                int totalMonths = 0;
+                foreach (var exp in result.Profile.Experience)
+                {
+                    if (DateTime.TryParse(exp.StartDate, out var s) && DateTime.TryParse(exp.EndDate, out var e) && e >= s)
+                    {
+                        totalMonths += ((e.Year - s.Year) * 12) + (e.Month - s.Month);
+                    }
+                }
+                int computedYears = totalMonths >= 12 ? totalMonths / 12 : (totalMonths >= 6 ? 1 : 0);
+                if (result.Profile.YearsOfExperience == null || result.Profile.YearsOfExperience > computedYears + 1)
+                {
+                    result.Profile.YearsOfExperience = computedYears;
+                    result.Profile.ExperienceLevel = computedYears < 1 ? "Entry"
+                        : computedYears < 2 ? "Junior"
+                        : computedYears < 5 ? "Mid"
+                        : computedYears < 8 ? "Senior"
+                        : "Lead";
+                }
+            }
+
             result.Profile.SuggestedSectorIds = matchedIds.Take(1).ToList();
             result.Profile.SuggestedSectors = matchedNames.Take(1).ToList();
         }
