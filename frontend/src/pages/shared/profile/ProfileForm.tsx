@@ -1983,10 +1983,10 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                       {formik.values.educationLevel === 'PhD'
                         ? 'Add PhD degree'
                         : formik.values.educationLevel === 'Masters'
-                        ? "Add Master's degree"
-                        : formik.values.educationLevel === 'Bachelors'
-                        ? "Add Bachelor's degree"
-                        : 'Add degree'}
+                          ? "Add Master's degree"
+                          : formik.values.educationLevel === 'Bachelors'
+                            ? "Add Bachelor's degree"
+                            : 'Add degree'}
                     </button>
                   </div>
                 </Field>
@@ -2251,9 +2251,8 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
             : ''
           setResumeNotice({
             kind: 'filled',
-            message: `We read your resume and pre-filled ${reviewProfileData.fieldsFound} section${
-              reviewProfileData.fieldsFound === 1 ? '' : 's'
-            }${feedMsg}. Nothing is saved yet — review the fields below, then press Save profile.`,
+            message: `We read your resume and pre-filled ${reviewProfileData.fieldsFound} section${reviewProfileData.fieldsFound === 1 ? '' : 's'
+              }${feedMsg}. Nothing is saved yet — review the fields below, then press Save profile.`,
           })
           showToast(
             `Pre-filled profile${feedMsg}. Remember to review and save!`,
