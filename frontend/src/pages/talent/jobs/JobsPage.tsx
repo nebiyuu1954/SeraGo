@@ -50,6 +50,60 @@ function jobDetailPath(job: JobResponse): string {
  * Talent's post-login landing: browse every published job on the platform
  * with search, filters, sorting, and pagination — wired to SWR-cached queries.
  */
+interface ViewFilterState {
+  searchInput: string
+  appliedQ: string
+  jobType: JobType | ''
+  location: string
+  sectorId: string
+  sources: string[]
+  experience: string
+  workArrangement: string
+  postedWithin: string
+  closingWithin: string
+  salaryMin: string
+  salaryMax: string
+  sort: string
+  page: number
+  draftJobType: JobType | ''
+  draftLocation: string
+  draftSector: string
+  draftSources: string[]
+  draftExperience: string
+  draftWorkArrangement: string
+  draftPostedWithin: string
+  draftClosingWithin: string
+  draftSalaryMin: string
+  draftSalaryMax: string
+}
+
+const DEFAULT_FILTER_STATE: ViewFilterState = {
+  searchInput: '',
+  appliedQ: '',
+  jobType: '',
+  location: '',
+  sectorId: '',
+  sources: [],
+  experience: '',
+  workArrangement: '',
+  postedWithin: '',
+  closingWithin: '',
+  salaryMin: '',
+  salaryMax: '',
+  sort: 'newest',
+  page: 1,
+  draftJobType: '',
+  draftLocation: '',
+  draftSector: '',
+  draftSources: [],
+  draftExperience: '',
+  draftWorkArrangement: '',
+  draftPostedWithin: '',
+  draftClosingWithin: '',
+  draftSalaryMin: '',
+  draftSalaryMax: '',
+}
+
 export default function JobsPage() {
   const auth = useRequireRole('Talent')
 
@@ -58,36 +112,29 @@ export default function JobsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const view = searchParams.get('view') === 'all' ? 'all' : 'forYou'
 
-  const [searchInput, setSearchInput] = useState('')
-  const [appliedQ, setAppliedQ] = useState('')
-  const [jobType, setJobType] = useState<JobType | ''>('')
-  const [locationFilter, setLocationFilter] = useState('')
-  const [sectorFilter, setSectorFilter] = useState('')
-  const [sourceFilters, setSourceFilters] = useState<string[]>([])
-  const [experienceFilter, setExperienceFilter] = useState('')
-  const [workArrangementFilter, setWorkArrangementFilter] = useState('')
-  const [postedWithin, setPostedWithin] = useState('')
-  const [closingWithin, setClosingWithin] = useState('')
-  const [salaryMin, setSalaryMin] = useState('')
-  const [salaryMax, setSalaryMax] = useState('')
-  // The For You feed defaults to "Best match" (falls back to newest until
-  // the AI service has stored scores).
-  const [sort, setSort] = useState(view === 'all' ? 'newest' : 'match')
+  // Independent filter state for "For you" and "All jobs" views:
+  const [forYouFilters, setForYouFilters] = useState<ViewFilterState>(() => ({
+    ...DEFAULT_FILTER_STATE,
+    sort: 'match',
+  }))
+
+  const [allJobsFilters, setAllJobsFilters] = useState<ViewFilterState>(() => ({
+    ...DEFAULT_FILTER_STATE,
+    sort: 'newest',
+  }))
+
+  const currentFilters = view === 'forYou' ? forYouFilters : allJobsFilters
+  const setCurrentFilters = (updater: (prev: ViewFilterState) => ViewFilterState) => {
+    if (view === 'forYou') {
+      setForYouFilters(updater)
+    } else {
+      setAllJobsFilters(updater)
+    }
+  }
+
   const [pageSize, setPageSize] = useState(10)
   // The right-hand filter panel is a collapsible sidebar, expanded by default.
   const [filtersOpen, setFiltersOpen] = useState(true)
-  // Draft copies of the filters edited inside the panel — nothing is applied
-  // (or refetched) until the user hits Apply.
-  const [draftJobType, setDraftJobType] = useState<JobType | ''>('')
-  const [draftLocation, setDraftLocation] = useState('')
-  const [draftSector, setDraftSector] = useState('')
-  const [draftSources, setDraftSources] = useState<string[]>([])
-  const [draftExperience, setDraftExperience] = useState('')
-  const [draftWorkArrangement, setDraftWorkArrangement] = useState('')
-  const [draftPostedWithin, setDraftPostedWithin] = useState('')
-  const [draftClosingWithin, setDraftClosingWithin] = useState('')
-  const [draftSalaryMin, setDraftSalaryMin] = useState('')
-  const [draftSalaryMax, setDraftSalaryMax] = useState('')
 
   // --- SWR-cached data (shared across all mounted instances) ---
 
@@ -132,8 +179,6 @@ export default function JobsPage() {
   const { sectors } = useSectorsQuery(auth.status === 'authenticated')
   const { locations } = useJobLocationsQuery(auth.status === 'authenticated')
 
-  const [page, setPage] = useState(1)
-
   // "Best match" ranks the feed by AI match score — the For You view's
   // default sort (falls back to newest until scores exist).
   const sortOptions =
@@ -141,50 +186,82 @@ export default function JobsPage() {
       ? [{ value: 'match', label: 'Best match' }, ...SORT_OPTIONS]
       : SORT_OPTIONS
 
-  // Debounced search input → applied query.
+  // Debounced search input → applied query for "For you" feed
   useEffect(() => {
     const t = setTimeout(() => {
-      setAppliedQ(searchInput.trim())
-      setPage(1)
+      setForYouFilters((prev) => {
+        const trimmed = prev.searchInput.trim()
+        if (prev.appliedQ === trimmed) return prev
+        return { ...prev, appliedQ: trimmed, page: 1 }
+      })
     }, 350)
     return () => clearTimeout(t)
-  }, [searchInput])
+  }, [forYouFilters.searchInput])
 
-  // GA4: report the applied (debounced) search term once per query, not on
-  // every keystroke. Cleared searches aren't tracked.
+  // Debounced search input → applied query for "All jobs" feed
   useEffect(() => {
-    if (!appliedQ) return
-    trackEvent('search', { search_term: appliedQ })
-  }, [appliedQ])
+    const t = setTimeout(() => {
+      setAllJobsFilters((prev) => {
+        const trimmed = prev.searchInput.trim()
+        if (prev.appliedQ === trimmed) return prev
+        return { ...prev, appliedQ: trimmed, page: 1 }
+      })
+    }, 350)
+    return () => clearTimeout(t)
+  }, [allJobsFilters.searchInput])
+
+  // GA4: report the applied (debounced) search term once per query
+  useEffect(() => {
+    if (!currentFilters.appliedQ) return
+    trackEvent('search', { search_term: currentFilters.appliedQ, view })
+  }, [currentFilters.appliedQ, view])
 
   // --- SWR job list queries ---
-  // Both views fire as soon as auth is ready, so switching tabs is instant.
+  // Both views fire as soon as auth is ready, using their own independent parameters.
   const authReady = auth.status === 'authenticated'
-  const baseParams = {
-    sort,
-    page,
+
+  const forYouParams = {
+    sort: forYouFilters.sort,
+    page: forYouFilters.page,
     pageSize,
-    q: appliedQ || undefined,
-    jobType: jobType || undefined,
-    location: locationFilter.trim() || undefined,
-    sectorId: sectorFilter || undefined,
-    source: sourceFilters.length > 0 ? sourceFilters.join(',') : undefined,
-    experienceLevel: experienceFilter || undefined,
-    workMode: workArrangementFilter || undefined,
-    postedWithin: postedWithin ? Number(postedWithin) : undefined,
-    closingWithin: closingWithin ? Number(closingWithin) : undefined,
-    salaryMin: salaryMin ? Number(salaryMin) : undefined,
-    salaryMax: salaryMax ? Number(salaryMax) : undefined,
+    q: forYouFilters.appliedQ || undefined,
+    jobType: forYouFilters.jobType || undefined,
+    location: forYouFilters.location.trim() || undefined,
+    sectorId: forYouFilters.sectorId || undefined,
+    source: forYouFilters.sources.length > 0 ? forYouFilters.sources.join(',') : undefined,
+    experienceLevel: forYouFilters.experience || undefined,
+    workMode: forYouFilters.workArrangement || undefined,
+    postedWithin: forYouFilters.postedWithin ? Number(forYouFilters.postedWithin) : undefined,
+    closingWithin: forYouFilters.closingWithin ? Number(forYouFilters.closingWithin) : undefined,
+    salaryMin: forYouFilters.salaryMin ? Number(forYouFilters.salaryMin) : undefined,
+    salaryMax: forYouFilters.salaryMax ? Number(forYouFilters.salaryMax) : undefined,
+  }
+
+  const allJobsParams = {
+    sort: allJobsFilters.sort,
+    page: allJobsFilters.page,
+    pageSize,
+    q: allJobsFilters.appliedQ || undefined,
+    jobType: allJobsFilters.jobType || undefined,
+    location: allJobsFilters.location.trim() || undefined,
+    sectorId: allJobsFilters.sectorId || undefined,
+    source: allJobsFilters.sources.length > 0 ? allJobsFilters.sources.join(',') : undefined,
+    experienceLevel: allJobsFilters.experience || undefined,
+    workMode: allJobsFilters.workArrangement || undefined,
+    postedWithin: allJobsFilters.postedWithin ? Number(allJobsFilters.postedWithin) : undefined,
+    closingWithin: allJobsFilters.closingWithin ? Number(allJobsFilters.closingWithin) : undefined,
+    salaryMin: allJobsFilters.salaryMin ? Number(allJobsFilters.salaryMin) : undefined,
+    salaryMax: allJobsFilters.salaryMax ? Number(allJobsFilters.salaryMax) : undefined,
   }
 
   // "For you" — preference-filtered feed (enabled once profile loads)
   const forYouQuery = useJobsQuery(
-    { ...baseParams, forMe: true },
+    { ...forYouParams, forMe: true },
     authReady && prefSectorIds.length > 0,
   )
   // "All jobs" — always fires on login so tab switching is instant
   const allJobsQuery = useJobsQuery(
-    { ...baseParams, forMe: undefined },
+    { ...allJobsParams, forMe: undefined },
     authReady,
   )
 
@@ -202,61 +279,76 @@ export default function JobsPage() {
   const { showToast } = useToast()
 
   const filtersDirty =
-    appliedQ !== '' ||
-    jobType !== '' ||
-    locationFilter.trim() !== '' ||
-    sectorFilter !== '' ||
-    sourceFilters.length > 0 ||
-    experienceFilter !== '' ||
-    workArrangementFilter !== '' ||
-    postedWithin !== '' ||
-    closingWithin !== '' ||
-    salaryMin !== '' ||
-    salaryMax !== ''
+    currentFilters.appliedQ !== '' ||
+    currentFilters.jobType !== '' ||
+    currentFilters.location.trim() !== '' ||
+    currentFilters.sectorId !== '' ||
+    currentFilters.sources.length > 0 ||
+    currentFilters.experience !== '' ||
+    currentFilters.workArrangement !== '' ||
+    currentFilters.postedWithin !== '' ||
+    currentFilters.closingWithin !== '' ||
+    currentFilters.salaryMin !== '' ||
+    currentFilters.salaryMax !== '' ||
+    currentFilters.draftJobType !== '' ||
+    currentFilters.draftLocation.trim() !== '' ||
+    currentFilters.draftSector !== '' ||
+    currentFilters.draftSources.length > 0 ||
+    currentFilters.draftExperience !== '' ||
+    currentFilters.draftWorkArrangement !== '' ||
+    currentFilters.draftPostedWithin !== '' ||
+    currentFilters.draftClosingWithin !== '' ||
+    currentFilters.draftSalaryMin !== '' ||
+    currentFilters.draftSalaryMax !== ''
 
   const setView = (next: 'forYou' | 'all') => {
     setSearchParams(next === 'forYou' ? {} : { view: 'all' }, { replace: true })
-    setPage(1)
   }
 
   const applyFilters = () => {
-    setJobType(draftJobType)
-    setLocationFilter(draftLocation)
-    setSectorFilter(draftSector)
-    setSourceFilters(draftSources)
-    setExperienceFilter(draftExperience)
-    setWorkArrangementFilter(draftWorkArrangement)
-    setPostedWithin(draftPostedWithin)
-    setClosingWithin(draftClosingWithin)
-    setSalaryMin(draftSalaryMin)
-    setSalaryMax(draftSalaryMax)
-    setPage(1)
+    setCurrentFilters((prev) => ({
+      ...prev,
+      jobType: prev.draftJobType,
+      location: prev.draftLocation,
+      sectorId: prev.draftSector,
+      sources: prev.draftSources,
+      experience: prev.draftExperience,
+      workArrangement: prev.draftWorkArrangement,
+      postedWithin: prev.draftPostedWithin,
+      closingWithin: prev.draftClosingWithin,
+      salaryMin: prev.draftSalaryMin,
+      salaryMax: prev.draftSalaryMax,
+      page: 1,
+    }))
   }
 
   const clearFilters = () => {
-    setSearchInput('')
-    setAppliedQ('')
-    setJobType('')
-    setLocationFilter('')
-    setSectorFilter('')
-    setSourceFilters([])
-    setExperienceFilter('')
-    setWorkArrangementFilter('')
-    setPostedWithin('')
-    setClosingWithin('')
-    setSalaryMin('')
-    setSalaryMax('')
-    setDraftJobType('')
-    setDraftLocation('')
-    setDraftSector('')
-    setDraftSources([])
-    setDraftExperience('')
-    setDraftWorkArrangement('')
-    setDraftPostedWithin('')
-    setDraftClosingWithin('')
-    setDraftSalaryMin('')
-    setDraftSalaryMax('')
-    setPage(1)
+    setCurrentFilters((prev) => ({
+      ...prev,
+      searchInput: '',
+      appliedQ: '',
+      jobType: '',
+      location: '',
+      sectorId: '',
+      sources: [],
+      experience: '',
+      workArrangement: '',
+      postedWithin: '',
+      closingWithin: '',
+      salaryMin: '',
+      salaryMax: '',
+      draftJobType: '',
+      draftLocation: '',
+      draftSector: '',
+      draftSources: [],
+      draftExperience: '',
+      draftWorkArrangement: '',
+      draftPostedWithin: '',
+      draftClosingWithin: '',
+      draftSalaryMin: '',
+      draftSalaryMax: '',
+      page: 1,
+    }))
   }
 
   // --- "Run AI matching" (For You view) ---
@@ -280,11 +372,10 @@ export default function JobsPage() {
         )
         // Rank the feed best-match-first: the list endpoint annotates each
         // job with its now-stored score and orders by it (highest first).
-        if (sort === 'match') {
+        if (currentFilters.sort === 'match') {
           await refreshJobs()
         } else {
-          setSort('match')
-          setPage(1)
+          setCurrentFilters((prev) => ({ ...prev, sort: 'match', page: 1 }))
         }
       } else {
         showToast(
@@ -313,10 +404,10 @@ export default function JobsPage() {
 
   const from =
     pagination && pagination.totalCount > 0
-      ? (page - 1) * pagination.pageSize + 1
+      ? (currentFilters.page - 1) * pagination.pageSize + 1
       : 0
   const to = pagination
-    ? Math.min(page * pagination.pageSize, pagination.totalCount)
+    ? Math.min(currentFilters.page * pagination.pageSize, pagination.totalCount)
     : 0
 
   return (
@@ -413,9 +504,18 @@ export default function JobsPage() {
           </span>
           <input
             type="search"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search job titles, companies, or keywords..."
+            value={currentFilters.searchInput}
+            onChange={(e) =>
+              setCurrentFilters((prev) => ({
+                ...prev,
+                searchInput: e.target.value,
+              }))
+            }
+            placeholder={
+              view === 'forYou'
+                ? 'Search within your For You feed...'
+                : 'Search all job titles, companies, or keywords...'
+            }
             className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest py-2 pl-10 pr-4 font-body-md text-body-md text-on-surface transition-colors placeholder:text-on-surface-variant/60 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
@@ -432,10 +532,13 @@ export default function JobsPage() {
           <label className="flex items-center gap-2 font-label-md text-label-md text-on-surface-variant">
             Sort by
             <select
-              value={sort}
+              value={currentFilters.sort}
               onChange={(e) => {
-                setSort(e.target.value)
-                setPage(1)
+                setCurrentFilters((prev) => ({
+                  ...prev,
+                  sort: e.target.value,
+                  page: 1,
+                }))
               }}
               aria-label="Sort jobs"
               className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-label-md text-label-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
@@ -447,12 +550,15 @@ export default function JobsPage() {
               ))}
             </select>
           </label>
-          {sort !== 'newest' && (
+          {currentFilters.sort !== (view === 'forYou' ? 'match' : 'newest') && (
             <button
               type="button"
               onClick={() => {
-                setSort('newest')
-                setPage(1)
+                setCurrentFilters((prev) => ({
+                  ...prev,
+                  sort: view === 'forYou' ? 'match' : 'newest',
+                  page: 1,
+                }))
               }}
               className="font-label-md text-label-md text-on-surface-variant transition-colors hover:text-on-surface"
             >
@@ -546,7 +652,7 @@ export default function JobsPage() {
                     value={pageSize}
                     onChange={(e) => {
                       setPageSize(Number(e.target.value))
-                      setPage(1)
+                      setCurrentFilters((prev) => ({ ...prev, page: 1 }))
                     }}
                     aria-label="Jobs per page"
                     className="rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-1.5 font-label-md text-label-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
@@ -561,8 +667,13 @@ export default function JobsPage() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    disabled={page <= 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={currentFilters.page <= 1}
+                    onClick={() =>
+                      setCurrentFilters((prev) => ({
+                        ...prev,
+                        page: Math.max(1, prev.page - 1),
+                      }))
+                    }
                     aria-label="Previous page"
                     className="flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant text-on-surface-variant transition-colors hover:bg-surface-container-low disabled:pointer-events-none disabled:opacity-40"
                   >
@@ -576,7 +687,12 @@ export default function JobsPage() {
                   <button
                     type="button"
                     disabled={!pagination.hasNextPage}
-                    onClick={() => setPage((p) => p + 1)}
+                    onClick={() =>
+                      setCurrentFilters((prev) => ({
+                        ...prev,
+                        page: prev.page + 1,
+                      }))
+                    }
                     aria-label="Next page"
                     className="flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant text-on-surface-variant transition-colors hover:bg-surface-container-low disabled:pointer-events-none disabled:opacity-40"
                   >
@@ -629,13 +745,14 @@ export default function JobsPage() {
                       >
                         <input
                           type="checkbox"
-                          checked={draftSources.includes(option.value)}
+                          checked={currentFilters.draftSources.includes(option.value)}
                           onChange={(e) => {
-                            setDraftSources((prev) =>
-                              e.target.checked
-                                ? [...prev, option.value]
-                                : prev.filter((v) => v !== option.value),
-                            )
+                            setCurrentFilters((prev) => ({
+                              ...prev,
+                              draftSources: e.target.checked
+                                ? [...prev.draftSources, option.value]
+                                : prev.draftSources.filter((v) => v !== option.value),
+                            }))
                           }}
                           className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-primary"
                         />
@@ -649,9 +766,12 @@ export default function JobsPage() {
                     Job type
                   </label>
                   <select
-                    value={draftJobType}
+                    value={currentFilters.draftJobType}
                     onChange={(e) =>
-                      setDraftJobType(e.target.value as JobType | '')
+                      setCurrentFilters((prev) => ({
+                        ...prev,
+                        draftJobType: e.target.value as JobType | '',
+                      }))
                     }
                     className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   >
@@ -667,8 +787,13 @@ export default function JobsPage() {
                     Work arrangement
                   </label>
                   <select
-                    value={draftWorkArrangement}
-                    onChange={(e) => setDraftWorkArrangement(e.target.value)}
+                    value={currentFilters.draftWorkArrangement}
+                    onChange={(e) =>
+                      setCurrentFilters((prev) => ({
+                        ...prev,
+                        draftWorkArrangement: e.target.value,
+                      }))
+                    }
                     className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   >
                     {WORK_ARRANGEMENT_OPTIONS.map((option) => (
@@ -683,8 +808,13 @@ export default function JobsPage() {
                     Location
                   </label>
                   <select
-                    value={draftLocation}
-                    onChange={(e) => setDraftLocation(e.target.value)}
+                    value={currentFilters.draftLocation}
+                    onChange={(e) =>
+                      setCurrentFilters((prev) => ({
+                        ...prev,
+                        draftLocation: e.target.value,
+                      }))
+                    }
                     className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   >
                     <option value="">All locations</option>
@@ -700,12 +830,22 @@ export default function JobsPage() {
                     Sector
                   </label>
                   <select
-                    value={draftSector}
-                    onChange={(e) => setDraftSector(e.target.value)}
+                    value={currentFilters.draftSector}
+                    onChange={(e) =>
+                      setCurrentFilters((prev) => ({
+                        ...prev,
+                        draftSector: e.target.value,
+                      }))
+                    }
                     className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   >
-                    <option value="">All sectors</option>
-                    {sectors.map((sector) => (
+                    <option value="">
+                      {view === 'forYou' ? 'All followed sectors' : 'All sectors'}
+                    </option>
+                    {(view === 'forYou'
+                      ? sectors.filter((s) => prefSectorIds.includes(s.id))
+                      : sectors
+                    ).map((sector) => (
                       <option key={sector.id} value={sector.id}>
                         {sector.name}
                       </option>
@@ -717,8 +857,13 @@ export default function JobsPage() {
                     Experience level
                   </label>
                   <select
-                    value={draftExperience}
-                    onChange={(e) => setDraftExperience(e.target.value)}
+                    value={currentFilters.draftExperience}
+                    onChange={(e) =>
+                      setCurrentFilters((prev) => ({
+                        ...prev,
+                        draftExperience: e.target.value,
+                      }))
+                    }
                     className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   >
                     {EXPERIENCE_OPTIONS.map((option) => (
@@ -733,8 +878,13 @@ export default function JobsPage() {
                     Posted within
                   </label>
                   <select
-                    value={draftPostedWithin}
-                    onChange={(e) => setDraftPostedWithin(e.target.value)}
+                    value={currentFilters.draftPostedWithin}
+                    onChange={(e) =>
+                      setCurrentFilters((prev) => ({
+                        ...prev,
+                        draftPostedWithin: e.target.value,
+                      }))
+                    }
                     className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   >
                     {POSTED_WITHIN_OPTIONS.map((option) => (
@@ -749,8 +899,13 @@ export default function JobsPage() {
                     Closing within
                   </label>
                   <select
-                    value={draftClosingWithin}
-                    onChange={(e) => setDraftClosingWithin(e.target.value)}
+                    value={currentFilters.draftClosingWithin}
+                    onChange={(e) =>
+                      setCurrentFilters((prev) => ({
+                        ...prev,
+                        draftClosingWithin: e.target.value,
+                      }))
+                    }
                     className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   >
                     {CLOSING_WITHIN_OPTIONS.map((option) => (
@@ -766,8 +921,13 @@ export default function JobsPage() {
                   </label>
                   <input
                     type="number"
-                    value={draftSalaryMin}
-                    onChange={(e) => setDraftSalaryMin(e.target.value)}
+                    value={currentFilters.draftSalaryMin}
+                    onChange={(e) =>
+                      setCurrentFilters((prev) => ({
+                        ...prev,
+                        draftSalaryMin: e.target.value,
+                      }))
+                    }
                     placeholder="e.g. 20000"
                     min="0"
                     className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
@@ -779,8 +939,13 @@ export default function JobsPage() {
                   </label>
                   <input
                     type="number"
-                    value={draftSalaryMax}
-                    onChange={(e) => setDraftSalaryMax(e.target.value)}
+                    value={currentFilters.draftSalaryMax}
+                    onChange={(e) =>
+                      setCurrentFilters((prev) => ({
+                        ...prev,
+                        draftSalaryMax: e.target.value,
+                      }))
+                    }
                     placeholder="e.g. 80000"
                     min="0"
                     className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
