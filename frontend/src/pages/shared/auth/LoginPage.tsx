@@ -105,9 +105,10 @@ export default function LoginPage() {
             error
           </span>
           <span>
-            {/* The backend detail already ends with a period — strip it before
-                appending the signup prompt to avoid "address.. Would you" */}
-            {(error ?? '').replace(/\.+$/, '')}. Would you like to{' '}
+            {error && !error.toLowerCase().includes('invalid email or password')
+              ? error.replace(/\.+$/, '')
+              : "This email doesn't have a registered account"}
+            . Would you like to{' '}
             <Link
               to="/signup"
               state={{ email: formik.values.email }}

@@ -50,7 +50,7 @@ public class AuthController : ControllerBase
 
         var user = await _userManager.FindByEmailAsync(req.Email);
         if (user == null)
-            return NotFound(new { message = "Invalid email or password." });
+            return NotFound(new { message = "This email doesn't have a registered account." });
 
         var result = await _signInManager.CheckPasswordSignInAsync(user, req.Password, true);
 
