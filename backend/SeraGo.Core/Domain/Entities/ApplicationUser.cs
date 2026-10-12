@@ -14,8 +14,8 @@ public class ApplicationUser : IdentityUser
     public string LastName { get; set; } = string.Empty;
     // Common profile fields — every role has these.
     public string AvatarUrl { get; set; } = string.Empty;
-    public string City { get; set; } = string.Empty;
-    public string Country { get; set; } = string.Empty;
+    public string City { get; set; } = "Addis Ababa";
+    public string Country { get; set; } = "Ethiopia";
 
     public UserType UserType { get; set; } = UserType.Talent;
     public bool IsActive { get; set; } = true;

@@ -237,10 +237,9 @@ const talentSchema = commonSchema
         .required('Years of experience is required.')
         .test(
           'non-negative-int',
-          'Years of experience must be 0 or greater.',
           (value) => !value || /^\d+$/.test(value),
         ),
-      workMode: string().required('Work mode is required.'),
+      workMode: string(),
       availability: string().required('Availability is required.'),
       currentIndustry: string().required('Current industry is required.'),
       currentProfession: string().required('Current profession is required.'),
@@ -339,14 +338,14 @@ const initialValues: ProfileFormValues = {
   middleName: '',
   lastName: '',
   avatarUrl: '',
-  city: '',
+  city: 'Addis Ababa',
   about: '',
   experienceLevel: '',
   yearsOfExperience: '',
   desiredRoles: [],
   skills: [],
   desiredJobTypes: [],
-  workMode: '',
+  workMode: 'Hybrid',
   availability: '',
   resumeUrl: '',
   linkedInUrl: '',
@@ -560,8 +559,47 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
   const { showToast } = useToast()
   const [validationModalOpen, setValidationModalOpen] = useState(false)
   const [validationErrors, setValidationErrors] = useState<{ field: string; message: string }[]>([])
+  const [isDetectingCity, setIsDetectingCity] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const resumeInputRef = useRef<HTMLInputElement>(null)
+
+  const detectUserCity = () => {
+    if (!navigator.geolocation) {
+      showToast('Geolocation is not supported by your browser.', 'error')
+      return
+    }
+    setIsDetectingCity(true)
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
+            { headers: { 'User-Agent': 'SeraGo-App/1.0' } }
+          )
+          const data = await res.json()
+          const detected =
+            data.address?.city ||
+            data.address?.town ||
+            data.address?.municipality ||
+            data.address?.state ||
+            'Addis Ababa'
+          formik.setFieldValue('city', detected)
+          showToast(`City set to ${detected}`, 'success')
+        } catch {
+          formik.setFieldValue('city', 'Addis Ababa')
+          showToast('Location set to Addis Ababa', 'info')
+        } finally {
+          setIsDetectingCity(false)
+        }
+      },
+      () => {
+        setIsDetectingCity(false)
+        showToast('Could not access GPS location. Kept as Addis Ababa.', 'info')
+      },
+      { timeout: 7000 }
+    )
+  }
 
   const isTalent = role === 'Talent'
 
@@ -631,7 +669,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
             middleName: p.middleName ?? '',
             lastName: p.lastName,
             avatarUrl: p.avatarUrl,
-            city: p.city,
+            city: p.city || 'Addis Ababa',
             about: p.talent?.about ?? '',
             experienceLevel: p.talent?.experienceLevel ?? '',
             yearsOfExperience:
@@ -641,7 +679,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
             desiredRoles: p.talent?.desiredRoles ?? [],
             skills: p.talent?.skills ?? [],
             desiredJobTypes: p.talent?.desiredJobTypes ?? [],
-            workMode: p.talent?.workMode ?? '',
+            workMode: p.talent?.workMode || 'Hybrid',
             availability: p.talent?.availability ?? '',
             resumeUrl: p.talent?.resumeUrl ?? '',
             linkedInUrl: p.talent?.linkedInUrl ?? '',
@@ -862,7 +900,10 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
       formik.setFieldValue('workExperience', parsed.experience)
     }
     if (parsed.education.length > 0) {
-      formik.setFieldValue('educationHistory', parsed.education)
+      formik.setFieldValue(
+        'educationHistory',
+        parsed.education.map((e) => ({ ...e, gpa: e.gpa || '' })),
+      )
       // The form tracks the highest level in its own field, separate from each
       // entry's `level`.
       if (!formik.values.educationLevel) {
@@ -1380,14 +1421,44 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                 </Field>
 
                 <Field label="City *">
-                  <input
-                    name="city"
-                    value={formik.values.city}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    placeholder="Addis Ababa"
-                    className={inputClass}
-                  />
+                  <div className="relative">
+                    <input
+                      name="city"
+                      list="ethiopian-cities"
+                      value={formik.values.city}
+                      onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
+                      placeholder="Addis Ababa"
+                      className={`${inputClass} pr-10`}
+                    />
+                    <button
+                      type="button"
+                      onClick={detectUserCity}
+                      disabled={isDetectingCity}
+                      title="Detect current location"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors disabled:opacity-50"
+                    >
+                      <span className={`material-symbols-outlined text-[18px] ${isDetectingCity ? 'animate-spin' : ''}`}>
+                        {isDetectingCity ? 'progress_activity' : 'my_location'}
+                      </span>
+                    </button>
+                    <datalist id="ethiopian-cities">
+                      <option value="Addis Ababa" />
+                      <option value="Hawassa" />
+                      <option value="Bahir Dar" />
+                      <option value="Dire Dawa" />
+                      <option value="Mekelle" />
+                      <option value="Adama" />
+                      <option value="Gondar" />
+                      <option value="Jimma" />
+                      <option value="Bishoftu" />
+                      <option value="Harar" />
+                      <option value="Jigjiga" />
+                      <option value="Arba Minch" />
+                      <option value="Dessie" />
+                      <option value="Shashamane" />
+                    </datalist>
+                  </div>
                 </Field>
 
                 <Field label="Street address" visibilityKey="address" visibility={formik.values.profileVisibility} onToggleVisibility={toggleVisibility}>
@@ -1438,7 +1509,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                     ))}
                   </select>
                 </Field>
-                <Field label="Work mode *">
+                <Field label="Work mode">
                   <select
                     name="workMode"
                     value={formik.values.workMode}
@@ -1838,7 +1909,9 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                               )}
                           </div>
                           <div>
-                            <label className="font-label-sm text-label-sm font-medium text-on-surface">GPA</label>
+                            <label className="font-label-sm text-label-sm font-medium text-on-surface">
+                              GPA <span className="font-normal text-on-surface-variant text-[11px]">(Optional)</span>
+                            </label>
                             <input
                               value={entry.gpa}
                               onChange={(e) => {

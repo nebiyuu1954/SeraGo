@@ -44,7 +44,7 @@ public class TalentProfile
     public List<JobType> DesiredJobTypes { get; set; } = [];
 
     /// <summary>Onsite / Remote / Hybrid preference.</summary>
-    public WorkMode? WorkMode { get; set; }
+    public WorkMode? WorkMode { get; set; } = Enums.WorkMode.Hybrid;
 
     /// <summary>How soon they can start.</summary>
     public Availability? Availability { get; set; }
