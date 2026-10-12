@@ -127,6 +127,164 @@ export const SECTOR_DOMAIN_KEYWORDS: Record<string, string[]> = {
 }
 
 /**
+ * Typical sample job titles / roles that belong to each sector.
+ * Shown to users so they understand what opportunities a sector encompasses.
+ */
+export const SECTOR_SAMPLE_ROLES: Record<string, string[]> = {
+  'Technology & IT': [
+    'Software Engineering',
+    'Data Science & Analytics',
+    'AI & Machine Learning',
+    'Full Stack Web Development',
+    'Cloud & DevOps Engineering',
+    'Mobile App Development',
+  ],
+  'Accounting & Finance': [
+    'Senior Accountant',
+    'Financial Analyst',
+    'Internal / External Auditor',
+    'Tax Consultant',
+    'Finance Manager',
+  ],
+  'Banking & Insurance': [
+    'Credit & Risk Analyst',
+    'Loan Officer',
+    'Insurance Underwriter',
+    'Branch Operations Manager',
+    'Treasury & Forex Specialist',
+  ],
+  'Healthcare': [
+    'General Physician / Doctor',
+    'Clinical Nurse',
+    'Pharmacist',
+    'Medical Laboratory Technologist',
+    'Public Health Officer',
+  ],
+  'Engineering & Construction': [
+    'Civil Engineer',
+    'Site & Project Engineer',
+    'Electrical Engineer',
+    'Mechanical Engineer',
+    'Architectural Designer',
+  ],
+  'Education & Training': [
+    'University Lecturer',
+    'Curriculum Specialist',
+    'Secondary School Teacher',
+    'Corporate Trainer',
+    'Educational Consultant',
+  ],
+  'Legal': [
+    'Legal Counsel / Attorney',
+    'Corporate Legal Advisor',
+    'Compliance Officer',
+    'Paralegal Specialist',
+    'Contract Specialist',
+  ],
+  'Human Resources': [
+    'HR Generalist / Specialist',
+    'Talent Acquisition / Recruiter',
+    'People Operations Manager',
+    'Employee Relations Officer',
+  ],
+  'Sales & Marketing': [
+    'Digital Marketing Specialist',
+    'Business Development Manager',
+    'Brand & Communications Manager',
+    'Sales Executive',
+  ],
+  'Design & Creative': [
+    'UI / UX Designer',
+    'Graphic Designer',
+    'Art Director',
+    'Motion Graphics & Video Editor',
+    'Brand Identity Designer',
+  ],
+  'Logistics & Transportation': [
+    'Logistics Coordinator',
+    'Fleet Operations Manager',
+    'Supply Chain Analyst',
+    'Warehouse & Inventory Supervisor',
+  ],
+  'Procurement & Supply Chain': [
+    'Procurement Officer',
+    'Sourcing & Vendor Specialist',
+    'Supply Chain Manager',
+    'Purchasing Agent',
+  ],
+  'Customer Service & Support': [
+    'Customer Support Representative',
+    'Client Success Specialist',
+    'Help Desk Support Specialist',
+    'Call Center Team Lead',
+  ],
+  'Business & Administration': [
+    'Operations Manager',
+    'Executive Assistant',
+    'Business Analyst',
+    'Office Administration Lead',
+  ],
+  'Media & Communication': [
+    'Communications Specialist',
+    'Content Creator & Copywriter',
+    'Journalist / Media Editor',
+    'Public Relations (PR) Officer',
+  ],
+  'Hospitality & Tourism': [
+    'Hotel Operations Manager',
+    'Executive Chef',
+    'Guest Relations Manager',
+    'Tour & Travel Coordinator',
+  ],
+  'Manufacturing & Production': [
+    'Production Operations Supervisor',
+    'Quality Control (QA/QC) Engineer',
+    'Plant Maintenance Engineer',
+    'Industrial Process Engineer',
+  ],
+  'Agriculture & Natural Science': [
+    'Agronomist / Crop Specialist',
+    'Agricultural Extension Officer',
+    'Environmental Scientist',
+    'Veterinary Officer',
+  ],
+  'Security & Protection': [
+    'Security Operations Supervisor',
+    'Occupational Safety & Health Officer',
+    'Surveillance & Loss Prevention Lead',
+  ],
+  'Beauty & Grooming': [
+    'Senior Stylist & Hair Specialist',
+    'Esthetician & Skincare Specialist',
+    'Salon & Spa Manager',
+  ],
+  'Skilled & General Labor': [
+    'Maintenance Electrician',
+    'Plumber & Pipe Technician',
+    'Facility Maintenance Technician',
+    'Welder & Metal Fabricator',
+  ],
+  'Social Science & Community': [
+    'Community Development Officer',
+    'Humanitarian Program Officer',
+    'Social Worker / Counselor',
+    'Monitoring & Evaluation (M&E) Lead',
+  ],
+}
+
+export function getSampleRolesForSector(sectorName?: string): string[] {
+  if (!sectorName) return []
+  return (
+    SECTOR_SAMPLE_ROLES[sectorName] || [
+      'Specialist',
+      'Team Lead',
+      'Coordinator',
+      'Manager',
+    ]
+  )
+}
+
+/**
  * Calculates a match score for a sector against resume content.
  */
 export function scoreSectorForResume(

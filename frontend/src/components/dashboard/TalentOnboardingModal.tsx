@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  fetchJobs,
   getApiErrorMessage,
   getStoredAuthTokens,
   parseResume,
@@ -10,15 +9,19 @@ import {
 } from '../../api'
 import { useSectorsQuery } from '../../hooks/query.ts'
 import { useToast } from './Toast.tsx'
-import type { JobResponse, SectorResponse } from '../../types'
+import type { SectorResponse } from '../../types'
 import { cn } from '../../lib/cn.ts'
-import { MAX_FOR_YOU_SECTORS } from '../../lib/sectorMatching.ts'
+import {
+  getSampleRolesForSector,
+  MAX_FOR_YOU_SECTORS,
+} from '../../lib/sectorMatching.ts'
 
 interface TalentOnboardingModalProps {
   open: boolean
   userId: string
   onClose: () => void
   onSectorsSaved: (sectorIds: string[]) => void
+  initialStep?: OnboardingStep
 }
 
 type OnboardingStep = 'cv' | 'sectors'
@@ -28,28 +31,34 @@ export default function TalentOnboardingModal({
   userId,
   onClose,
   onSectorsSaved,
+  initialStep = 'cv',
 }: TalentOnboardingModalProps) {
   const navigate = useNavigate()
   const { showToast } = useToast()
   const { sectors, isLoading: sectorsLoading } = useSectorsQuery(open)
 
-  const [step, setStep] = useState<OnboardingStep>('cv')
+  const [step, setStep] = useState<OnboardingStep>(initialStep)
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [parsingPhase, setParsingPhase] = useState<'uploading' | 'analyzing'>('uploading')
   const [uploadError, setUploadError] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (open) {
+      setStep(initialStep)
+    }
+  }, [open, initialStep])
+
   // Sector selection state (Step 2)
   const [selectedSectorIds, setSelectedSectorIds] = useState<string[]>([])
   const [previewSectorId, setPreviewSectorId] = useState<string | null>(null)
-  const [previewJobs, setPreviewJobs] = useState<JobResponse[]>([])
-  const [previewLoading, setPreviewLoading] = useState(false)
   const [savingSectors, setSavingSectors] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Dismiss helper
   const handleDismiss = () => {
+    if (uploading) return
     localStorage.setItem(`serago_onboarding_dismissed_${userId}`, 'true')
     onClose()
   }
@@ -60,33 +69,6 @@ export default function TalentOnboardingModal({
       setPreviewSectorId(sectors[0].id)
     }
   }, [sectors, previewSectorId])
-
-  // Fetch preview jobs whenever previewSectorId changes
-  useEffect(() => {
-    if (!previewSectorId || !open || step !== 'sectors') return
-    const tokens = getStoredAuthTokens()
-    if (!tokens) return
-
-    let cancelled = false
-    setPreviewLoading(true)
-
-    fetchJobs({ sectorId: previewSectorId, pageSize: 3 }, tokens.accessToken)
-      .then((data) => {
-        if (!cancelled) {
-          setPreviewJobs(data.items ?? [])
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setPreviewJobs([])
-      })
-      .finally(() => {
-        if (!cancelled) setPreviewLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [previewSectorId, open, step])
 
   if (!open) return null
 
@@ -119,22 +101,11 @@ export default function TalentOnboardingModal({
       setParsingPhase('analyzing')
       const result = await parseResume(tokens.accessToken, resumeKey)
 
-      // Mark onboarding completed in settings & local storage
-      try {
-        await patchSettingsCategory(
-          tokens.accessToken,
-          'forYou',
-          JSON.stringify({ onboardingCompleted: true }),
-        )
-      } catch {
-        // Non-blocking
-      }
-      localStorage.setItem(`serago_onboarding_dismissed_${userId}`, 'true')
-
       // Close modal and navigate directly to profile page with state
       onClose()
       navigate('/dashboard/talent/profile', {
         state: {
+          fromOnboarding: true,
           autoParsedResume: {
             resumeUrl: resumeKey,
             parsedProfile: result.profile ?? {
@@ -224,6 +195,7 @@ export default function TalentOnboardingModal({
   }
 
   const currentPreviewSector = sectors.find((s) => s.id === previewSectorId)
+  const currentPreviewSectorRoles = getSampleRolesForSector(currentPreviewSector?.name)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -238,7 +210,7 @@ export default function TalentOnboardingModal({
         {/* Top Header */}
         <div className="flex items-center justify-between border-b border-surface-variant px-6 py-4.5 bg-surface-container-lowest">
           <div className="flex items-center gap-2.5">
-            {step === 'sectors' && (
+            {step === 'sectors' && initialStep !== 'sectors' && (
               <button
                 type="button"
                 onClick={() => setStep('cv')}
@@ -269,8 +241,9 @@ export default function TalentOnboardingModal({
           <button
             type="button"
             onClick={handleDismiss}
+            disabled={uploading}
             aria-label="Close modal"
-            className="rounded-lg p-1.5 text-on-surface-variant hover:bg-surface-container-low transition-colors"
+            className="rounded-lg p-1.5 text-on-surface-variant hover:bg-surface-container-low transition-colors disabled:opacity-40 disabled:pointer-events-none"
           >
             <span className="material-symbols-outlined text-xl">close</span>
           </button>
@@ -460,72 +433,31 @@ export default function TalentOnboardingModal({
                 )}
               </div>
 
-              {/* Live Jobs Preview Container */}
+              {/* Typical Roles / Job Titles Container */}
               <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-4 shadow-sm">
                 <div className="flex items-center justify-between mb-3 border-b border-surface-variant pb-2.5">
                   <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-primary text-lg">visibility</span>
+                    <span className="material-symbols-outlined text-primary text-lg">work</span>
                     <span className="font-label-md text-label-md font-semibold text-on-surface">
-                      Live jobs in {currentPreviewSector?.name ?? 'Selected Sector'}
+                      Typical roles in {currentPreviewSector?.name ?? 'Selected Sector'}
                     </span>
                   </div>
                   <span className="text-[12px] font-medium text-on-surface-variant">
-                    Real-time samples
+                    Included career paths
                   </span>
                 </div>
 
-                {previewLoading ? (
-                  <div className="space-y-2.5 py-2">
-                    {[1, 2].map((i) => (
-                      <div
-                        key={i}
-                        className="h-16 animate-pulse rounded-lg bg-surface-container-low"
-                      />
-                    ))}
-                  </div>
-                ) : previewJobs.length > 0 ? (
-                  <div className="space-y-2">
-                    {previewJobs.map((job) => (
-                      <div
-                        key={job.id}
-                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-surface-variant/60 bg-surface-container-low/30 p-3 hover:bg-surface-container-low/70 transition-colors"
-                      >
-                        <div className="min-w-0">
-                          <h4 className="font-label-md text-label-md font-semibold text-on-surface truncate">
-                            {job.title}
-                          </h4>
-                          <div className="flex items-center gap-2 mt-0.5 text-body-xs text-[12px] text-on-surface-variant">
-                            <span className="truncate">{job.company}</span>
-                            <span>•</span>
-                            <span>{job.location || 'Ethiopia'}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {job.workMode && (
-                            <span className="rounded-full bg-secondary-container/60 px-2.5 py-0.5 text-[11px] font-medium text-on-secondary-container">
-                              {job.workMode}
-                            </span>
-                          )}
-                          <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary">
-                            {job.jobType || 'Full-time'}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="py-6 text-center">
-                    <span className="material-symbols-outlined text-3xl text-on-surface-variant/40">
-                      inbox
+                <div className="flex flex-wrap gap-2 py-1">
+                  {currentPreviewSectorRoles.map((role) => (
+                    <span
+                      key={role}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-surface-container-low px-3 py-1.5 font-label-sm text-label-sm font-medium text-on-surface shadow-xs transition-colors hover:border-primary/40 hover:bg-primary/5"
+                    >
+                      <span className="material-symbols-outlined text-[14px] text-primary">trending_up</span>
+                      <span>{role}</span>
                     </span>
-                    <p className="mt-1 font-body-sm text-body-sm text-on-surface-variant">
-                      No active postings listed for this sector currently.
-                    </p>
-                    <p className="text-[12px] text-on-surface-variant/70">
-                      Selecting this sector ensures you are notified as soon as new jobs are posted!
-                    </p>
-                  </div>
-                )}
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -538,7 +470,8 @@ export default function TalentOnboardingModal({
               <button
                 type="button"
                 onClick={handleDismiss}
-                className="text-label-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors"
+                disabled={uploading}
+                className="text-label-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors disabled:opacity-40 disabled:pointer-events-none"
               >
                 Skip for now
               </button>
@@ -547,7 +480,7 @@ export default function TalentOnboardingModal({
                 type="button"
                 onClick={() => setStep('sectors')}
                 disabled={uploading}
-                className="inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/5 px-4.5 py-2.5 font-label-md text-label-md font-semibold text-primary hover:bg-primary/10 transition-colors"
+                className="inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/5 px-4.5 py-2.5 font-label-md text-label-md font-semibold text-primary hover:bg-primary/10 transition-colors disabled:opacity-40 disabled:pointer-events-none"
               >
                 <span>I don't have a CV right now</span>
                 <span className="material-symbols-outlined text-lg">arrow_forward</span>
@@ -555,15 +488,19 @@ export default function TalentOnboardingModal({
             </>
           ) : (
             <>
-              <button
-                type="button"
-                onClick={() => setStep('cv')}
-                disabled={savingSectors}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant px-4 py-2 font-label-md text-label-md text-on-surface hover:bg-surface-container-low transition-colors"
-              >
-                <span className="material-symbols-outlined text-lg">arrow_back</span>
-                <span>Back</span>
-              </button>
+              {initialStep !== 'sectors' ? (
+                <button
+                  type="button"
+                  onClick={() => setStep('cv')}
+                  disabled={savingSectors}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant px-4 py-2 font-label-md text-label-md text-on-surface hover:bg-surface-container-low transition-colors"
+                >
+                  <span className="material-symbols-outlined text-lg">arrow_back</span>
+                  <span>Back</span>
+                </button>
+              ) : (
+                <div />
+              )}
 
               <div className="flex items-center gap-2">
                 <button

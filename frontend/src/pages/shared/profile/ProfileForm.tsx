@@ -972,7 +972,10 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
           await patchSettingsCategory(
             tokens.accessToken,
             'forYou',
-            JSON.stringify({ sectorIds: selectedSectorIds }),
+            JSON.stringify({
+              sectorIds: selectedSectorIds,
+              onboardingCompleted: true,
+            }),
           )
         } catch (err) {
           console.error('Failed to update For You feed sectors:', err)
@@ -2336,10 +2339,17 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
         }}
         onCancel={() => {
           setReviewProfileData(null)
-          setResumeNotice({
-            kind: 'empty',
-            message: "Resume parsing cancelled. You can fill your profile manually.",
-          })
+          formik.resetForm()
+          if (isTalent) {
+            navigate('/dashboard/talent/settings', {
+              state: { openSectorModal: true },
+            })
+          } else {
+            setResumeNotice({
+              kind: 'empty',
+              message: "Resume parsing cancelled. You can fill your profile manually.",
+            })
+          }
         }}
       />
     </DashboardShell>

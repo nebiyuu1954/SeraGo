@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import UnsavedChangesDialog from '../../../components/ui/UnsavedChangesDialog.tsx'
+import TalentOnboardingModal from '../../../components/dashboard/TalentOnboardingModal.tsx'
 import { useRequireRole, useSettingsQuery, useUnsavedChanges } from '../../../hooks'
 import type { RequiredRole } from '../../../hooks'
 import type { UserSettings } from '../../../types'
@@ -28,13 +30,25 @@ const COPY: Record<RequiredRole, { title: string; blurb: string }> = {
 
 export default function SettingsForm({ role }: SettingsFormProps) {
   const auth = useRequireRole(role)
-  const { settings, isLoading, saveSettings } = useSettingsQuery()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { settings, isLoading, saveSettings, refresh } = useSettingsQuery()
   const { showToast } = useToast()
 
   // Local draft — tracks edits before saving.
   const [draft, setDraft] = useState<UserSettings | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [sectorModalOpen, setSectorModalOpen] = useState(false)
+
+  // Listen for openSectorModal trigger from resume cancellation flow
+  useEffect(() => {
+    const state = location.state as { openSectorModal?: boolean } | null
+    if (state?.openSectorModal) {
+      setSectorModalOpen(true)
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+  }, [location.state, location.pathname, navigate])
 
   // Initialize draft when settings load.
   useEffect(() => {
@@ -183,6 +197,28 @@ export default function SettingsForm({ role }: SettingsFormProps) {
         onDiscard={handleDiscard}
         onCancel={handleCancel}
       />
+
+      {/* Manual sector choosing modal when redirected after resume parsing cancellation */}
+      {role === 'Talent' && auth.status === 'authenticated' && (
+        <TalentOnboardingModal
+          open={sectorModalOpen}
+          userId={auth.user.id}
+          initialStep="sectors"
+          onClose={() => setSectorModalOpen(false)}
+          onSectorsSaved={async (savedSectorIds) => {
+            setSectorModalOpen(false)
+            await refresh()
+            updateDraft({
+              forYou: {
+                ...(draft?.forYou ?? settings.forYou),
+                sectorIds: savedSectorIds,
+                onboardingCompleted: true,
+              },
+            })
+            navigate('/dashboard/talent/jobs?view=forYou')
+          }}
+        />
+      )}
     </DashboardShell>
   )
 }

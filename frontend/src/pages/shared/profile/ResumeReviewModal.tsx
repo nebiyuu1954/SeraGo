@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
-import type { ParsedResumeProfile, JobResponse } from '../../../types'
+import type { ParsedResumeProfile } from '../../../types'
 import RichTextDisplay from '../../../components/ui/RichTextDisplay.tsx'
 import { useSectorsQuery } from '../../../hooks/query.ts'
-import { matchSuggestedSectorIds, MAX_FOR_YOU_SECTORS } from '../../../lib/sectorMatching.ts'
-import { fetchJobs, getStoredAuthTokens } from '../../../api'
+import {
+  matchSuggestedSectorIds,
+  MAX_FOR_YOU_SECTORS,
+  getSampleRolesForSector,
+} from '../../../lib/sectorMatching.ts'
 import { cn } from '../../../lib/cn.ts'
 
 interface ResumeReviewModalProps {
@@ -22,8 +25,6 @@ export default function ResumeReviewModal({
   const { sectors, isLoading: sectorsLoading } = useSectorsQuery(open)
   const [selectedSectorIds, setSelectedSectorIds] = useState<string[]>([])
   const [isPickerExpanded, setIsPickerExpanded] = useState<boolean>(false)
-  const [previewJobs, setPreviewJobs] = useState<JobResponse[]>([])
-  const [previewJobsLoading, setPreviewJobsLoading] = useState<boolean>(false)
 
   useEffect(() => {
     if (profile && sectors.length > 0) {
@@ -34,32 +35,7 @@ export default function ResumeReviewModal({
 
   const primarySectorId = selectedSectorIds[0] || (sectors[0]?.id ?? '')
   const primarySector = sectors.find((s) => s.id === primarySectorId)
-
-  useEffect(() => {
-    if (!open || !primarySectorId) return
-    const tokens = getStoredAuthTokens()
-    if (!tokens?.accessToken) return
-
-    let cancelled = false
-    setPreviewJobsLoading(true)
-
-    fetchJobs({ sectorId: primarySectorId, pageSize: 4 }, tokens.accessToken)
-      .then((data) => {
-        if (!cancelled) {
-          setPreviewJobs(data.items ?? [])
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setPreviewJobs([])
-      })
-      .finally(() => {
-        if (!cancelled) setPreviewJobsLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [open, primarySectorId])
+  const sampleRoles = getSampleRolesForSector(primarySector?.name)
 
   if (!open || !profile) return null
 
@@ -197,57 +173,27 @@ export default function ResumeReviewModal({
                 </div>
               )}
 
-              {/* 3 or 4 Live Jobs in this Sector */}
+              {/* Typical Roles / Job Titles in this Sector */}
               <div className="mt-4 border-t border-primary/15 pt-3.5">
                 <div className="flex items-center justify-between mb-2.5">
                   <span className="font-label-sm text-label-sm font-semibold text-on-surface flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-[16px] text-primary">work</span>
-                    Featured jobs in {primarySector?.name ?? 'this sector'}
+                    Typical roles in {primarySector?.name ?? 'this sector'}
                   </span>
-                  <span className="text-[11px] text-on-surface-variant">Live opportunities</span>
+                  <span className="text-[11px] text-on-surface-variant font-medium">Included job titles</span>
                 </div>
 
-                {previewJobsLoading ? (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {[1, 2, 3, 4].map((i) => (
-                      <div key={i} className="h-14 animate-pulse rounded-lg bg-surface-container-low" />
-                    ))}
-                  </div>
-                ) : previewJobs.length > 0 ? (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {previewJobs.slice(0, 4).map((job) => (
-                      <div
-                        key={job.id}
-                        className="flex flex-col justify-between rounded-lg border border-surface-variant/70 bg-surface-container-lowest p-2.5 shadow-xs"
-                      >
-                        <div className="min-w-0">
-                          <h4 className="font-label-sm text-label-sm font-semibold text-on-surface truncate">
-                            {job.title}
-                          </h4>
-                          <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-on-surface-variant truncate">
-                            <span className="truncate">{job.company}</span>
-                            <span>•</span>
-                            <span className="truncate">{job.location || 'Ethiopia'}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-2 shrink-0">
-                          {job.workMode && (
-                            <span className="rounded bg-secondary-container/50 px-1.5 py-0.5 text-[10px] font-medium text-on-secondary-container">
-                              {job.workMode}
-                            </span>
-                          )}
-                          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                            {job.jobType || 'Full-time'}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-[12px] text-on-surface-variant/70 italic py-1">
-                    No active job postings in this sector at the moment.
-                  </p>
-                )}
+                <div className="flex flex-wrap gap-2">
+                  {sampleRoles.map((role) => (
+                    <span
+                      key={role}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-surface-container-lowest px-3 py-1.5 font-label-sm text-label-sm font-medium text-on-surface shadow-xs transition-colors hover:border-primary/40 hover:bg-primary/5"
+                    >
+                      <span className="material-symbols-outlined text-[14px] text-primary">trending_up</span>
+                      <span>{role}</span>
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
 
