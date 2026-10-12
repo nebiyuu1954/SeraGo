@@ -12,6 +12,7 @@ import { cn } from '../../../lib/cn.ts'
 interface ResumeReviewModalProps {
   open: boolean
   profile: ParsedResumeProfile | null
+  currentSectorIds?: string[]
   onApply: (selectedSectorIds: string[]) => void
   onCancel: () => void
 }
@@ -19,17 +20,22 @@ interface ResumeReviewModalProps {
 export default function ResumeReviewModal({
   open,
   profile,
+  currentSectorIds,
   onApply,
   onCancel,
 }: ResumeReviewModalProps) {
   const { sectors, isLoading: sectorsLoading } = useSectorsQuery(open)
   const [selectedSectorIds, setSelectedSectorIds] = useState<string[]>([])
   const [isPickerExpanded, setIsPickerExpanded] = useState<boolean>(false)
+  const [shouldUpdateSectorSettings, setShouldUpdateSectorSettings] = useState<boolean>(true)
+
+  const hasNoExistingSectors = !currentSectorIds || currentSectorIds.length === 0
 
   useEffect(() => {
     if (profile && sectors.length > 0) {
       const initial = matchSuggestedSectorIds(profile, sectors)
       setSelectedSectorIds(initial)
+      setShouldUpdateSectorSettings(true)
     }
   }, [profile, sectors])
 
@@ -40,6 +46,7 @@ export default function ResumeReviewModal({
   if (!open || !profile) return null
 
   const toggleSector = (id: string) => {
+    setShouldUpdateSectorSettings(true)
     setSelectedSectorIds((prev) => {
       if (prev.includes(id)) {
         return prev.filter((s) => s !== id)
@@ -84,43 +91,116 @@ export default function ResumeReviewModal({
             {/* Highest Matching Sector & Jobs Preview */}
             <div className="rounded-xl border border-primary/25 bg-primary/5 p-4.5 transition-all">
               <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-3 flex-1">
                   <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
                     <span className="material-symbols-outlined text-[20px]">auto_awesome</span>
                   </div>
-                  <div>
-                    <p className="font-body-md text-body-md text-on-surface">
-                      Based on the resume you provided, the highest matching sector is{' '}
-                      <strong className="font-bold text-primary">
-                        {primarySector?.name ?? 'Loading...'}
-                      </strong>
-                      .{' '}
-                      <button
-                        type="button"
-                        onClick={() => setIsPickerExpanded((prev) => !prev)}
-                        className="font-semibold text-primary underline underline-offset-2 hover:text-primary/80 transition-colors cursor-pointer inline-flex items-center gap-0.5"
-                      >
-                        To change, click here
-                        <span className="material-symbols-outlined text-[16px]">
-                          {isPickerExpanded ? 'expand_less' : 'expand_more'}
-                        </span>
-                      </button>
-                    </p>
-                    {selectedSectorIds.length > 1 && (
-                      <p className="font-body-xs text-[12px] text-on-surface-variant mt-1">
-                        Also following:{' '}
-                        {selectedSectorIds
-                          .filter((id) => id !== primarySectorId)
-                          .map((id) => sectors.find((s) => s.id === id)?.name)
-                          .filter(Boolean)
-                          .join(', ')}
-                      </p>
+                  <div className="flex-1">
+                    {hasNoExistingSectors ? (
+                      <div>
+                        <p className="font-body-md text-body-md text-on-surface">
+                          Based on your resume, we found{' '}
+                          <strong className="font-bold text-primary">
+                            {primarySector?.name ?? 'Loading...'}
+                          </strong>{' '}
+                          for you. Do you want to update your sector settings so you can see more of{' '}
+                          <strong className="font-bold text-primary">
+                            {primarySector?.name ?? 'this sector'}
+                          </strong>
+                          ?
+                        </p>
+
+                        <div className="mt-3 flex flex-wrap items-center gap-2.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShouldUpdateSectorSettings(true)
+                              if (primarySectorId && !selectedSectorIds.includes(primarySectorId)) {
+                                setSelectedSectorIds([primarySectorId])
+                              }
+                            }}
+                            className={cn(
+                              'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-label-sm text-label-sm font-semibold transition-all',
+                              shouldUpdateSectorSettings
+                                ? 'bg-primary text-on-primary shadow-xs ring-1 ring-primary'
+                                : 'border border-outline-variant bg-surface-container-lowest text-on-surface hover:bg-surface-container-low'
+                            )}
+                          >
+                            <span className="material-symbols-outlined text-[16px]">
+                              {shouldUpdateSectorSettings ? 'check_circle' : 'radio_button_unchecked'}
+                            </span>
+                            <span>Yes, update my sector settings</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setShouldUpdateSectorSettings(false)}
+                            className={cn(
+                              'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-label-sm text-label-sm font-medium transition-all',
+                              !shouldUpdateSectorSettings
+                                ? 'bg-surface-container-high border border-outline text-on-surface shadow-xs ring-1 ring-outline/30'
+                                : 'border border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low'
+                            )}
+                          >
+                            <span className="material-symbols-outlined text-[16px]">
+                              {!shouldUpdateSectorSettings ? 'check_circle' : 'radio_button_unchecked'}
+                            </span>
+                            <span>No, keep empty for now</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsPickerExpanded((prev) => !prev)
+                              setShouldUpdateSectorSettings(true)
+                            }}
+                            className="font-medium text-[12px] text-primary underline underline-offset-2 hover:text-primary/80 transition-colors cursor-pointer inline-flex items-center gap-0.5 ml-1"
+                          >
+                            {isPickerExpanded ? 'Hide sector options' : 'Choose different sectors'}
+                            <span className="material-symbols-outlined text-[16px]">
+                              {isPickerExpanded ? 'expand_less' : 'expand_more'}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="font-body-md text-body-md text-on-surface">
+                          Based on the resume you provided, the highest matching sector is{' '}
+                          <strong className="font-bold text-primary">
+                            {primarySector?.name ?? 'Loading...'}
+                          </strong>
+                          .{' '}
+                          <button
+                            type="button"
+                            onClick={() => setIsPickerExpanded((prev) => !prev)}
+                            className="font-semibold text-primary underline underline-offset-2 hover:text-primary/80 transition-colors cursor-pointer inline-flex items-center gap-0.5"
+                          >
+                            To change, click here
+                            <span className="material-symbols-outlined text-[16px]">
+                              {isPickerExpanded ? 'expand_less' : 'expand_more'}
+                            </span>
+                          </button>
+                        </p>
+                        {selectedSectorIds.length > 1 && (
+                          <p className="font-body-xs text-[12px] text-on-surface-variant mt-1">
+                            Also following:{' '}
+                            {selectedSectorIds
+                              .filter((id) => id !== primarySectorId)
+                              .map((id) => sectors.find((s) => s.id === id)?.name)
+                              .filter(Boolean)
+                              .join(', ')}
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
-                <span className="shrink-0 font-label-sm text-label-sm font-semibold text-primary rounded-full bg-primary/10 px-2.5 py-1">
-                  {selectedSectorIds.length}/{MAX_FOR_YOU_SECTORS} selected
-                </span>
+                {(!hasNoExistingSectors || shouldUpdateSectorSettings) && (
+                  <span className="shrink-0 font-label-sm text-label-sm font-semibold text-primary rounded-full bg-primary/10 px-2.5 py-1">
+                    {selectedSectorIds.length}/{MAX_FOR_YOU_SECTORS} selected
+                  </span>
+                )}
               </div>
 
               {/* Collapsible Sector Dropdown/Picker */}
@@ -351,7 +431,7 @@ export default function ResumeReviewModal({
           </button>
           <button
             type="button"
-            onClick={() => onApply(selectedSectorIds)}
+            onClick={() => onApply(shouldUpdateSectorSettings ? selectedSectorIds : [])}
             className="inline-flex items-center gap-2 px-5 py-2 rounded-lg font-label-md text-label-md font-medium text-on-primary bg-primary hover:opacity-90 transition-opacity"
           >
             <span className="material-symbols-outlined text-[18px]">check</span>

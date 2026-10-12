@@ -9,7 +9,7 @@ import {
   patchSettingsCategory,
   updateProfile,
 } from '../../../api'
-import { useRequireRole, useUnsavedChanges } from '../../../hooks'
+import { useRequireRole, useSettingsQuery, useUnsavedChanges } from '../../../hooks'
 import type { RequiredRole } from '../../../hooks'
 import type {
   ParsedResumeProfile,
@@ -560,7 +560,10 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
   const auth = useRequireRole(role)
   const navigate = useNavigate()
   const location = useLocation()
+  const { settings } = useSettingsQuery()
+  const currentSectorIds = settings.forYou?.sectorIds ?? []
   const autoParsedHandledRef = useRef(false)
+  const fromOnboardingRef = useRef(false)
   const [profile, setProfile] = useState<ProfileResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -733,6 +736,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
   useEffect(() => {
     if (loading) return
     const state = location.state as {
+      fromOnboarding?: boolean
       autoParsedResume?: {
         resumeUrl: string
         parsedProfile: ParsedResumeProfile
@@ -742,6 +746,9 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
 
     if (state?.autoParsedResume && !autoParsedHandledRef.current) {
       autoParsedHandledRef.current = true
+      if (state.fromOnboarding) {
+        fromOnboardingRef.current = true
+      }
       const { resumeUrl, parsedProfile, fieldsFound } = state.autoParsedResume
       formik.setFieldValue('resumeUrl', resumeUrl)
       setReviewProfileData({ profile: parsedProfile, fieldsFound })
@@ -2319,6 +2326,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
       <ResumeReviewModal
         open={!!reviewProfileData}
         profile={reviewProfileData?.profile ?? null}
+        currentSectorIds={currentSectorIds}
         onApply={async (selectedSectorIds) => {
           if (!reviewProfileData) return
           await applyParsedResume(reviewProfileData.profile, selectedSectorIds)
@@ -2338,9 +2346,11 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
           setReviewProfileData(null)
         }}
         onCancel={() => {
+          const cameFromOnboarding = fromOnboardingRef.current
+          fromOnboardingRef.current = false
           setReviewProfileData(null)
           formik.resetForm()
-          if (isTalent) {
+          if (isTalent && cameFromOnboarding) {
             navigate('/dashboard/talent/settings', {
               state: { openSectorModal: true },
             })
