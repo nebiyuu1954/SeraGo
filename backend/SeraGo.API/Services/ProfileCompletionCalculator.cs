@@ -23,9 +23,8 @@ public static class ProfileCompletionCalculator
         if (profile.Skills.Count == 0) missing.Add("skills");
         if (profile.DesiredJobTypes.Count == 0) missing.Add("desiredJobTypes");
         if (profile.WorkMode is null) missing.Add("workMode");
-        if (profile.Availability is null) missing.Add("availability");
 
-        const int total = 8;
+        const int total = 7;
         return Build(missing, total);
     }
 

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import type { ParsedResumeProfile } from '../../../types'
+import type { ParsedResumeProfile, JobResponse } from '../../../types'
 import RichTextDisplay from '../../../components/ui/RichTextDisplay.tsx'
 import { useSectorsQuery } from '../../../hooks/query.ts'
 import { matchSuggestedSectorIds, MAX_FOR_YOU_SECTORS } from '../../../lib/sectorMatching.ts'
+import { fetchJobs, getStoredAuthTokens } from '../../../api'
 import { cn } from '../../../lib/cn.ts'
 
 interface ResumeReviewModalProps {
@@ -20,7 +21,9 @@ export default function ResumeReviewModal({
 }: ResumeReviewModalProps) {
   const { sectors, isLoading: sectorsLoading } = useSectorsQuery(open)
   const [selectedSectorIds, setSelectedSectorIds] = useState<string[]>([])
-  const [isPickerExpanded, setIsPickerExpanded] = useState<boolean>(true)
+  const [isPickerExpanded, setIsPickerExpanded] = useState<boolean>(false)
+  const [previewJobs, setPreviewJobs] = useState<JobResponse[]>([])
+  const [previewJobsLoading, setPreviewJobsLoading] = useState<boolean>(false)
 
   useEffect(() => {
     if (profile && sectors.length > 0) {
@@ -28,6 +31,35 @@ export default function ResumeReviewModal({
       setSelectedSectorIds(initial)
     }
   }, [profile, sectors])
+
+  const primarySectorId = selectedSectorIds[0] || (sectors[0]?.id ?? '')
+  const primarySector = sectors.find((s) => s.id === primarySectorId)
+
+  useEffect(() => {
+    if (!open || !primarySectorId) return
+    const tokens = getStoredAuthTokens()
+    if (!tokens?.accessToken) return
+
+    let cancelled = false
+    setPreviewJobsLoading(true)
+
+    fetchJobs({ sectorId: primarySectorId, pageSize: 4 }, tokens.accessToken)
+      .then((data) => {
+        if (!cancelled) {
+          setPreviewJobs(data.items ?? [])
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewJobs([])
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewJobsLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, primarySectorId])
 
   if (!open || !profile) return null
 
@@ -73,121 +105,163 @@ export default function ResumeReviewModal({
 
         <div className="p-6 overflow-y-auto flex-1 bg-surface-container-lowest">
           <div className="grid gap-6">
-            {/* For You Feed Sectors Auto-fill */}
+            {/* Highest Matching Sector & Jobs Preview */}
             <div className="rounded-xl border border-primary/25 bg-primary/5 p-4.5 transition-all">
               <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
                     <span className="material-symbols-outlined text-[20px]">auto_awesome</span>
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-label-lg text-label-lg font-semibold text-on-surface">
-                        For You feed
-                      </h3>
-                      <span className="inline-flex items-center rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-medium text-primary">
-                        Highest match
-                      </span>
-                    </div>
-                    <p className="font-body-sm text-body-sm text-on-surface-variant mt-0.5">
-                      Auto-selected your highest matching sector from the resume. You can customize or add a second sector (up to 2).
+                    <p className="font-body-md text-body-md text-on-surface">
+                      Based on the resume you provided, the highest matching sector is{' '}
+                      <strong className="font-bold text-primary">
+                        {primarySector?.name ?? 'Loading...'}
+                      </strong>
+                      .{' '}
+                      <button
+                        type="button"
+                        onClick={() => setIsPickerExpanded((prev) => !prev)}
+                        className="font-semibold text-primary underline underline-offset-2 hover:text-primary/80 transition-colors cursor-pointer inline-flex items-center gap-0.5"
+                      >
+                        To change, click here
+                        <span className="material-symbols-outlined text-[16px]">
+                          {isPickerExpanded ? 'expand_less' : 'expand_more'}
+                        </span>
+                      </button>
                     </p>
+                    {selectedSectorIds.length > 1 && (
+                      <p className="font-body-xs text-[12px] text-on-surface-variant mt-1">
+                        Also following:{' '}
+                        {selectedSectorIds
+                          .filter((id) => id !== primarySectorId)
+                          .map((id) => sectors.find((s) => s.id === id)?.name)
+                          .filter(Boolean)
+                          .join(', ')}
+                      </p>
+                    )}
                   </div>
                 </div>
-                <span className="shrink-0 font-label-md text-label-md font-semibold text-primary">
-                  {selectedSectorIds.length}/{MAX_FOR_YOU_SECTORS}
+                <span className="shrink-0 font-label-sm text-label-sm font-semibold text-primary rounded-full bg-primary/10 px-2.5 py-1">
+                  {selectedSectorIds.length}/{MAX_FOR_YOU_SECTORS} selected
                 </span>
               </div>
 
-              <div className="mt-4 border-t border-primary/15 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setIsPickerExpanded((prev) => !prev)}
-                  className="flex w-full items-center justify-between text-left group"
-                >
-                  <div>
-                    <div className="flex items-center gap-1.5 font-label-md text-label-md font-medium text-on-surface">
-                      <span className="material-symbols-outlined text-[18px] text-on-surface-variant group-hover:text-primary transition-colors">
-                        {isPickerExpanded ? 'expand_less' : 'expand_more'}
-                      </span>
-                      <span>Sectors to follow</span>
+              {/* Collapsible Sector Dropdown/Picker */}
+              {isPickerExpanded && (
+                <div className="mt-4 border-t border-primary/15 pt-3.5">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-label-sm text-label-sm font-semibold text-on-surface">
+                      Pick up to 2 sectors to follow:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsPickerExpanded(false)}
+                      className="text-[12px] font-medium text-primary hover:underline"
+                    >
+                      Done
+                    </button>
+                  </div>
+                  {sectorsLoading ? (
+                    <div className="h-10 animate-pulse rounded-lg bg-surface-container-low" />
+                  ) : (
+                    <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1">
+                      {sectors.map((sector) => {
+                        const checked = selectedSectorIds.includes(sector.id)
+                        const atCap = !checked && selectedSectorIds.length >= MAX_FOR_YOU_SECTORS
+                        return (
+                          <button
+                            key={sector.id}
+                            type="button"
+                            aria-pressed={checked}
+                            disabled={atCap}
+                            onClick={() => toggleSector(sector.id)}
+                            className={cn(
+                              'inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-label-sm text-label-sm font-medium transition-all',
+                              checked
+                                ? 'bg-primary text-on-primary shadow-sm ring-1 ring-primary'
+                                : atCap
+                                  ? 'cursor-not-allowed border border-surface-variant bg-surface-container-lowest text-on-surface-variant/40 opacity-50'
+                                  : 'border border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:border-primary/40 hover:bg-surface-container-low',
+                            )}
+                          >
+                            {checked && (
+                              <span className="material-symbols-outlined text-[14px]">check</span>
+                            )}
+                            <span>{sector.name}</span>
+                          </button>
+                        )
+                      })}
                     </div>
-                    <p className="font-body-sm text-body-sm text-on-surface-variant/80 mt-0.5">
-                      Pick up to 2. Your For You tab shows jobs in these sectors and you'll get alerts when matching jobs are posted. Leave empty to turn the feed off.
-                    </p>
-                  </div>
-                  <span className="shrink-0 font-label-sm text-label-sm text-on-surface-variant">
-                    {selectedSectorIds.length}/{MAX_FOR_YOU_SECTORS}
+                  )}
+                </div>
+              )}
+
+              {/* 3 or 4 Live Jobs in this Sector */}
+              <div className="mt-4 border-t border-primary/15 pt-3.5">
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className="font-label-sm text-label-sm font-semibold text-on-surface flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[16px] text-primary">work</span>
+                    Featured jobs in {primarySector?.name ?? 'this sector'}
                   </span>
-                </button>
+                  <span className="text-[11px] text-on-surface-variant">Live opportunities</span>
+                </div>
 
-                {isPickerExpanded && (
-                  <div className="mt-3.5">
-                    {sectorsLoading ? (
-                      <div className="h-10 animate-pulse rounded-lg bg-surface-container-low" />
-                    ) : sectors.length === 0 ? (
-                      <p className="font-label-sm text-label-sm text-on-surface-variant">
-                        Loading available sectors...
-                      </p>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {sectors.map((sector) => {
-                          const checked = selectedSectorIds.includes(sector.id)
-                          const atCap = !checked && selectedSectorIds.length >= MAX_FOR_YOU_SECTORS
-                          return (
-                            <button
-                              key={sector.id}
-                              type="button"
-                              aria-pressed={checked}
-                              disabled={atCap}
-                              onClick={() => toggleSector(sector.id)}
-                              className={cn(
-                                'inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 font-label-sm text-label-sm font-medium transition-all',
-                                checked
-                                  ? 'bg-primary text-on-primary shadow-sm ring-1 ring-primary'
-                                  : atCap
-                                    ? 'cursor-not-allowed border border-surface-variant bg-surface-container-lowest text-on-surface-variant/40 opacity-50'
-                                    : 'border border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:border-primary/40 hover:bg-surface-container-low',
-                              )}
-                            >
-                              {checked && (
-                                <span className="material-symbols-outlined text-[14px]">check</span>
-                              )}
-                              <span>{sector.name}</span>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )}
-
-                    {selectedSectorIds.length >= MAX_FOR_YOU_SECTORS && (
-                      <p className="mt-2 font-label-sm text-label-sm text-on-surface-variant/70">
-                        You've reached the {MAX_FOR_YOU_SECTORS}-sector limit — remove one to add another.
-                      </p>
-                    )}
+                {previewJobsLoading ? (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div key={i} className="h-14 animate-pulse rounded-lg bg-surface-container-low" />
+                    ))}
                   </div>
+                ) : previewJobs.length > 0 ? (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {previewJobs.slice(0, 4).map((job) => (
+                      <div
+                        key={job.id}
+                        className="flex flex-col justify-between rounded-lg border border-surface-variant/70 bg-surface-container-lowest p-2.5 shadow-xs"
+                      >
+                        <div className="min-w-0">
+                          <h4 className="font-label-sm text-label-sm font-semibold text-on-surface truncate">
+                            {job.title}
+                          </h4>
+                          <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-on-surface-variant truncate">
+                            <span className="truncate">{job.company}</span>
+                            <span>•</span>
+                            <span className="truncate">{job.location || 'Ethiopia'}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-2 shrink-0">
+                          {job.workMode && (
+                            <span className="rounded bg-secondary-container/50 px-1.5 py-0.5 text-[10px] font-medium text-on-secondary-container">
+                              {job.workMode}
+                            </span>
+                          )}
+                          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                            {job.jobType || 'Full-time'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[12px] text-on-surface-variant/70 italic py-1">
+                    No active job postings in this sector at the moment.
+                  </p>
                 )}
               </div>
             </div>
-            {/* Headline & Profession */}
-            {(profile.headline || profile.currentProfession) && (
+
+            {/* Profession */}
+            {profile.currentProfession && (
               <div>
                 <h3 className="font-label-md text-label-md font-semibold text-on-surface mb-2">
-                  Headline & Profession
+                  Profession
                 </h3>
-                <div className="rounded-lg border border-outline-variant bg-surface-container-low p-3 space-y-1">
-                  {profile.headline && (
-                    <p className="font-body-sm text-body-sm text-on-surface">
-                      <span className="font-medium text-on-surface-variant">Headline: </span>
-                      {profile.headline}
-                    </p>
-                  )}
-                  {profile.currentProfession && (
-                    <p className="font-body-sm text-body-sm text-on-surface">
-                      <span className="font-medium text-on-surface-variant">Profession: </span>
-                      {profile.currentProfession}
-                    </p>
-                  )}
+                <div className="rounded-lg border border-outline-variant bg-surface-container-low p-3">
+                  <p className="font-body-sm text-body-sm text-on-surface">
+                    <span className="font-medium text-on-surface-variant">Profession: </span>
+                    {profile.currentProfession}
+                  </p>
                 </div>
               </div>
             )}

@@ -141,6 +141,7 @@ const FIELD_LABELS: Record<string, string> = {
   gpa: 'GPA',
   startYear: 'Start year',
   endYear: 'End year',
+  'education-cross-field': 'Education entry',
 }
 
 const MISSING_LABELS: Record<string, string> = {
@@ -151,11 +152,18 @@ const MISSING_LABELS: Record<string, string> = {
   skills: 'Skills',
   desiredJobTypes: 'Desired job types',
   workMode: 'Work mode',
-  availability: 'Availability',
 }
 
-const inputClass =
-  'w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3.5 py-2.5 font-body-md text-body-md text-on-surface transition-colors placeholder:text-on-surface-variant/60 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
+const getInputClass = (hasError?: boolean, extraClasses?: string) =>
+  cn(
+    'w-full rounded-lg bg-surface-container-lowest px-3.5 py-2.5 font-body-md text-body-md text-on-surface transition-colors placeholder:text-on-surface-variant/60 focus:outline-none focus:ring-1',
+    hasError
+      ? 'border border-error ring-1 ring-error focus:border-error focus:ring-error'
+      : 'border border-outline-variant focus:border-primary focus:ring-primary',
+    extraClasses,
+  )
+
+const inputClass = getInputClass(false)
 
 const optionalUrl = string().test(
   'absolute-url',
@@ -240,7 +248,7 @@ const talentSchema = commonSchema
           (value) => !value || /^\d+$/.test(value),
         ),
       workMode: string(),
-      availability: string().required('Availability is required.'),
+      availability: string(),
       currentIndustry: string().required('Current industry is required.'),
       currentProfession: string().required('Current profession is required.'),
       skills: array()
@@ -429,10 +437,12 @@ function TagInput({
   value,
   onChange,
   placeholder,
+  hasError,
 }: {
   value: string[]
   onChange: (next: string[]) => void
   placeholder?: string
+  hasError?: boolean
 }) {
   const [input, setInput] = useState('')
 
@@ -445,7 +455,14 @@ function TagInput({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-1.5 transition-colors focus-within:border-primary focus-within:ring-1 focus-within:ring-primary">
+    <div
+      className={cn(
+        'flex flex-wrap items-center gap-1.5 rounded-lg bg-surface-container-lowest px-2 py-1.5 transition-colors',
+        hasError
+          ? 'border border-error ring-1 ring-error'
+          : 'border border-outline-variant focus-within:border-primary focus-within:ring-1 focus-within:ring-primary',
+      )}
+    >
       {value.map((tag) => (
         <span
           key={tag}
@@ -1403,11 +1420,11 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
                     placeholder="Jane"
-                    className={inputClass}
+                    className={getInputClass(Boolean(formik.touched.firstName && formik.errors.firstName))}
                   />
                 </Field>
                 <Field
-                  label="Middle name *"
+                  label="Middle name"
                   error={formik.touched.middleName ? formik.errors.middleName : undefined}
                 >
                   <input
@@ -1416,7 +1433,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
                     placeholder="e.g. Kebede"
-                    className={inputClass}
+                    className={getInputClass(Boolean(formik.touched.middleName && formik.errors.middleName))}
                   />
                 </Field>
                 <Field
@@ -1429,21 +1446,30 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
                     placeholder="Doe"
-                    className={inputClass}
+                    className={getInputClass(Boolean(formik.touched.lastName && formik.errors.lastName))}
                   />
                 </Field>
-                <Field label="Phone number *" visibilityKey="phone" visibility={formik.values.profileVisibility} onToggleVisibility={toggleVisibility}>
+                <Field
+                  label="Phone number *"
+                  error={formik.touched.phoneNumber ? formik.errors.phoneNumber : undefined}
+                  visibilityKey="phone"
+                  visibility={formik.values.profileVisibility}
+                  onToggleVisibility={toggleVisibility}
+                >
                   <input
                     name="phoneNumber"
                     value={formik.values.phoneNumber}
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
                     placeholder="+251 91 123 4567"
-                    className={inputClass}
+                    className={getInputClass(Boolean(formik.touched.phoneNumber && formik.errors.phoneNumber))}
                   />
                 </Field>
 
-                <Field label="City *">
+                <Field
+                  label="City *"
+                  error={formik.touched.city ? formik.errors.city : undefined}
+                >
                   <div className="relative">
                     <input
                       name="city"
@@ -1452,7 +1478,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                       onChange={formik.handleChange}
                       onBlur={formik.handleBlur}
                       placeholder="Addis Ababa"
-                      className={`${inputClass} pr-10`}
+                      className={getInputClass(Boolean(formik.touched.city && formik.errors.city), 'pr-10')}
                     />
                     <button
                       type="button"
@@ -1501,7 +1527,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                 title="Professional profile"
                 description="What you do and how you work — your career identity."
                 icon="work"
-                completion={{ filled: professionalFilled, total: 7 }}
+                completion={{ filled: professionalFilled, total: 6 }}
               >
                 <Field
                   label="Years of experience *"
@@ -1515,16 +1541,19 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
                     placeholder="5"
-                    className={inputClass}
+                    className={getInputClass(Boolean(formik.touched.yearsOfExperience && formik.errors.yearsOfExperience))}
                   />
                 </Field>
-                <Field label="Experience level *">
+                <Field
+                  label="Experience level *"
+                  error={formik.touched.experienceLevel ? formik.errors.experienceLevel : undefined}
+                >
                   <select
                     name="experienceLevel"
                     value={formik.values.experienceLevel}
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
-                    className={inputClass}
+                    className={getInputClass(Boolean(formik.touched.experienceLevel && formik.errors.experienceLevel))}
                   >
                     <option value="">Not specified</option>
                     {EXPERIENCE_LEVELS.map((level) => (
@@ -1538,7 +1567,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                     value={formik.values.workMode}
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
-                    className={inputClass}
+                    className={getInputClass(Boolean(formik.touched.workMode && formik.errors.workMode))}
                   >
                     <option value="">Not specified</option>
                     {WORK_MODES.map((mode) => (
@@ -1546,13 +1575,13 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                     ))}
                   </select>
                 </Field>
-                <Field label="Availability *">
+                <Field label="Availability">
                   <select
                     name="availability"
                     value={formik.values.availability}
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
-                    className={inputClass}
+                    className={getInputClass(Boolean(formik.touched.availability && formik.errors.availability))}
                   >
                     <option value="">Not specified</option>
                     {AVAILABILITIES.map((availability) => (
@@ -1560,24 +1589,36 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                     ))}
                   </select>
                 </Field>
-                <Field label="Current industry *" visibilityKey="currentIndustry" visibility={formik.values.profileVisibility} onToggleVisibility={toggleVisibility}>
+                <Field
+                  label="Current industry *"
+                  error={formik.touched.currentIndustry ? formik.errors.currentIndustry : undefined}
+                  visibilityKey="currentIndustry"
+                  visibility={formik.values.profileVisibility}
+                  onToggleVisibility={toggleVisibility}
+                >
                   <input
                     name="currentIndustry"
                     value={formik.values.currentIndustry}
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
                     placeholder="e.g. Technology, Finance"
-                    className={inputClass}
+                    className={getInputClass(Boolean(formik.touched.currentIndustry && formik.errors.currentIndustry))}
                   />
                 </Field>
-                <Field label="Current profession *" visibilityKey="currentProfession" visibility={formik.values.profileVisibility} onToggleVisibility={toggleVisibility}>
+                <Field
+                  label="Current profession *"
+                  error={formik.touched.currentProfession ? formik.errors.currentProfession : undefined}
+                  visibilityKey="currentProfession"
+                  visibility={formik.values.profileVisibility}
+                  onToggleVisibility={toggleVisibility}
+                >
                   <input
                     name="currentProfession"
                     value={formik.values.currentProfession}
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
                     placeholder="e.g. Software Engineer"
-                    className={inputClass}
+                    className={getInputClass(Boolean(formik.touched.currentProfession && formik.errors.currentProfession))}
                   />
                 </Field>
                 <Field full label="About" hint="A short bio employers will see.">
@@ -1728,7 +1769,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                                 formik.setFieldValue('workExperience', next)
                               }}
                               placeholder="e.g. Google"
-                              className={inputClass}
+                              className={getInputClass(Boolean(formik.touched.workExperience?.[idx]?.company && (formik.errors.workExperience as any)?.[idx]?.company))}
                             />
                             {formik.touched.workExperience?.[idx]?.company &&
                               (formik.errors.workExperience as any)?.[idx]?.company && (
@@ -1747,7 +1788,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                                 formik.setFieldValue('workExperience', next)
                               }}
                               placeholder="e.g. Software Engineer"
-                              className={inputClass}
+                              className={getInputClass(Boolean(formik.touched.workExperience?.[idx]?.title && (formik.errors.workExperience as any)?.[idx]?.title))}
                             />
                             {formik.touched.workExperience?.[idx]?.title &&
                               (formik.errors.workExperience as any)?.[idx]?.title && (
@@ -1766,7 +1807,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                                 next[idx] = { ...next[idx], startDate: e.target.value }
                                 formik.setFieldValue('workExperience', next)
                               }}
-                              className={inputClass}
+                              className={getInputClass(Boolean(formik.touched.workExperience?.[idx]?.startDate && (formik.errors.workExperience as any)?.[idx]?.startDate))}
                             />
                             {formik.touched.workExperience?.[idx]?.startDate &&
                               (formik.errors.workExperience as any)?.[idx]?.startDate && (
@@ -1785,7 +1826,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                                 next[idx] = { ...next[idx], endDate: e.target.value }
                                 formik.setFieldValue('workExperience', next)
                               }}
-                              className={inputClass}
+                              className={getInputClass(Boolean(formik.touched.workExperience?.[idx]?.endDate && (formik.errors.workExperience as any)?.[idx]?.endDate))}
                             />
                           </div>
                           <div className="sm:col-span-2">
@@ -1833,13 +1874,19 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                 icon="school"
                 completion={{ filled: educationFilled, total: 2 }}
               >
-                <Field label="Highest education level *" visibilityKey="education" visibility={formik.values.profileVisibility} onToggleVisibility={toggleVisibility}>
+                <Field
+                  label="Highest education level *"
+                  error={formik.touched.educationLevel ? formik.errors.educationLevel : undefined}
+                  visibilityKey="education"
+                  visibility={formik.values.profileVisibility}
+                  onToggleVisibility={toggleVisibility}
+                >
                   <select
                     name="educationLevel"
                     value={formik.values.educationLevel}
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
-                    className={inputClass}
+                    className={getInputClass(Boolean(formik.touched.educationLevel && formik.errors.educationLevel))}
                   >
                     <option value="">Not specified</option>
                     {EDUCATION_LEVELS.map((level) => (
@@ -1847,7 +1894,11 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                     ))}
                   </select>
                 </Field>
-                <Field full label="Education history">
+                <Field
+                  full
+                  label="Education history"
+                  error={(formik.errors as any)['education-cross-field']}
+                >
                   <div className="space-y-4">
                     {formik.values.educationHistory.map((entry, idx) => (
                       <div
@@ -1879,7 +1930,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                                 next[idx] = { ...next[idx], level: e.target.value }
                                 formik.setFieldValue('educationHistory', next)
                               }}
-                              className={inputClass}
+                              className={getInputClass(Boolean(formik.touched.educationHistory?.[idx]?.level && (formik.errors.educationHistory as any)?.[idx]?.level))}
                             >
                               <option value="">Select level</option>
                               {EDUCATION_LEVELS.map((level) => (
@@ -1903,7 +1954,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                                 formik.setFieldValue('educationHistory', next)
                               }}
                               placeholder="e.g. Addis Ababa University"
-                              className={inputClass}
+                              className={getInputClass(Boolean(formik.touched.educationHistory?.[idx]?.institution && (formik.errors.educationHistory as any)?.[idx]?.institution))}
                             />
                             {formik.touched.educationHistory?.[idx]?.institution &&
                               (formik.errors.educationHistory as any)?.[idx]?.institution && (
@@ -1922,7 +1973,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                                 formik.setFieldValue('educationHistory', next)
                               }}
                               placeholder="e.g. BSc Computer Science"
-                              className={inputClass}
+                              className={getInputClass(Boolean(formik.touched.educationHistory?.[idx]?.degree && (formik.errors.educationHistory as any)?.[idx]?.degree))}
                             />
                             {formik.touched.educationHistory?.[idx]?.degree &&
                               (formik.errors.educationHistory as any)?.[idx]?.degree && (
@@ -1958,7 +2009,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                               }}
                               min="1970"
                               max="2099"
-                              className={inputClass}
+                              className={getInputClass(Boolean(formik.touched.educationHistory?.[idx]?.startYear && (formik.errors.educationHistory as any)?.[idx]?.startYear))}
                             />
                             {formik.touched.educationHistory?.[idx]?.startYear &&
                               (formik.errors.educationHistory as any)?.[idx]?.startYear && (
@@ -1980,7 +2031,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                               min="1970"
                               max="2099"
                               placeholder="e.g. 2024"
-                              className={inputClass}
+                              className={getInputClass(Boolean(formik.touched.educationHistory?.[idx]?.endYear && (formik.errors.educationHistory as any)?.[idx]?.endYear))}
                             />
                             {formik.touched.educationHistory?.[idx]?.endYear &&
                               (formik.errors.educationHistory as any)?.[idx]?.endYear && (
@@ -2203,11 +2254,11 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
             <div className="flex items-center gap-2 mb-1">
               <span className="material-symbols-outlined text-error text-lg">error</span>
               <h2 className="font-headline-md text-headline-md text-on-surface">
-                Can't save — fix the errors below
+                Required fields are missing
               </h2>
             </div>
             <p className="font-body-md text-body-sm text-on-surface-variant mb-4">
-              The following fields need attention before your profile can be saved.
+              The following required fields haven't been filled in yet. Please fill them out to complete your profile:
             </p>
             <div className="flex-1 overflow-y-auto space-y-2 pr-1">
               {validationErrors.map((err, i) => (
@@ -2215,9 +2266,9 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                   key={i}
                   className="flex items-start gap-2 rounded-lg border border-error/20 bg-error-container/20 px-3 py-2.5"
                 >
-                  <span className="material-symbols-outlined text-error text-sm mt-0.5">cancel</span>
+                  <span className="material-symbols-outlined text-error text-sm mt-0.5">priority_high</span>
                   <div className="min-w-0">
-                    <span className="font-label-md text-label-md font-medium text-on-surface">{err.field}</span>
+                    <span className="font-label-md text-label-md font-semibold text-on-surface">{err.field}</span>
                     <p className="font-body-sm text-body-sm text-on-surface-variant">{err.message}</p>
                   </div>
                 </div>
@@ -2229,7 +2280,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                 onClick={() => setValidationModalOpen(false)}
                 className="px-4 py-2 rounded-lg font-label-md text-label-md font-medium text-on-accent bg-accent hover:opacity-90 transition-opacity"
               >
-                Got it
+                Understood
               </button>
             </div>
           </div>
