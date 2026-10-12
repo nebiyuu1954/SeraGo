@@ -2182,11 +2182,10 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
               reviewProfileData.fieldsFound === 1 ? '' : 's'
             }${feedMsg}. Nothing is saved yet — review the fields below, then press Save profile.`,
           })
-          showToast({
-            title: 'Resume Applied',
-            message: `Pre-filled profile${feedMsg}. Remember to review and save!`,
-            variant: 'success',
-          })
+          showToast(
+            `Pre-filled profile${feedMsg}. Remember to review and save!`,
+            'success',
+          )
           setReviewProfileData(null)
         }}
         onCancel={() => {
