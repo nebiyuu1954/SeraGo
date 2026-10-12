@@ -52,7 +52,7 @@ export default function ResumeReviewModal({
       />
 
       {/* Dialog */}
-      <div className="relative z-10 w-full max-w-2xl max-h-[90vh] flex flex-col rounded-xl border border-surface-variant bg-surface-container-lowest shadow-xl">
+      <div className="relative z-10 w-full max-w-5xl max-h-[90vh] flex flex-col rounded-2xl border border-surface-variant bg-surface-container-lowest shadow-2xl">
         <div className="p-6 border-b border-surface-variant flex shrink-0 items-center justify-between">
           <div>
             <h2 className="font-headline-md text-headline-md text-on-surface mb-1">

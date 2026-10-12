@@ -340,8 +340,32 @@ public static class ProfileEndpoints
                 }
             }
 
-            // 1. Check suggested sectors from AI / parser (highest first)
-            if (result.Profile.SuggestedSectors is { Count: > 0 })
+            var textPool = string.Join(" ", new[]
+            {
+                result.Profile.Headline,
+                result.Profile.CurrentProfession,
+                result.Profile.Skills != null ? string.Join(" ", result.Profile.Skills) : null,
+                result.Profile.Education != null ? string.Join(" ", result.Profile.Education.Select(e => $"{e.Degree} {e.Institution}")) : null,
+                result.Profile.Experience != null ? string.Join(" ", result.Profile.Experience.Select(e => $"{e.Title} {e.Description}")) : null,
+            }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+            // 1. Check domain keyword scoring across all active sectors first (high precision)
+            if (!string.IsNullOrWhiteSpace(textPool))
+            {
+                var bestDomainMatch = activeSectors
+                    .Select(s => new { Sector = s, Score = CalculateSectorWordMatch(s.Name, textPool) })
+                    .Where(x => x.Score > 0)
+                    .OrderByDescending(x => x.Score)
+                    .FirstOrDefault();
+
+                if (bestDomainMatch is not null)
+                {
+                    TryAddSector(bestDomainMatch.Sector);
+                }
+            }
+
+            // 2. Check suggested sectors from AI / parser
+            if (matchedIds.Count < 1 && result.Profile.SuggestedSectors is { Count: > 0 })
             {
                 foreach (var name in result.Profile.SuggestedSectors)
                 {
@@ -353,39 +377,13 @@ public static class ProfileEndpoints
                 }
             }
 
-            // 2. Check current industry
+            // 3. Check current industry
             if (matchedIds.Count < 1 && !string.IsNullOrWhiteSpace(result.Profile.CurrentIndustry))
             {
                 var found = activeSectors.FirstOrDefault(s =>
                     string.Equals(s.Name, result.Profile.CurrentIndustry, StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(s.Slug, result.Profile.CurrentIndustry, StringComparison.OrdinalIgnoreCase));
                 TryAddSector(found);
-            }
-
-            // 3. Keyword match on headline, profession and skills if still under 1
-            if (matchedIds.Count < 1)
-            {
-                var textPool = string.Join(" ", new[]
-                {
-                    result.Profile.Headline,
-                    result.Profile.CurrentProfession,
-                    result.Profile.Skills != null ? string.Join(" ", result.Profile.Skills) : null
-                }.Where(s => !string.IsNullOrWhiteSpace(s)));
-
-                if (!string.IsNullOrWhiteSpace(textPool))
-                {
-                    var highestMatch = activeSectors
-                        .Where(s => !matchedIds.Contains(s.Id.ToString()))
-                        .Select(s => new { Sector = s, Score = CalculateSectorWordMatch(s.Name, textPool) })
-                        .Where(x => x.Score > 0)
-                        .OrderByDescending(x => x.Score)
-                        .FirstOrDefault();
-
-                    if (highestMatch is not null)
-                    {
-                        TryAddSector(highestMatch.Sector);
-                    }
-                }
             }
 
             result.Profile.SuggestedSectorIds = matchedIds.Take(1).ToList();
@@ -398,8 +396,50 @@ public static class ProfileEndpoints
         return Results.Ok(result ?? new MatchingClient.ResumeParseResult { Success = false });
     }
 
+    private static readonly Dictionary<string, string[]> SectorDomainKeywords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Technology & IT"] = new[] { "software", "developer", "programmer", "programming", "web", "frontend", "backend", "fullstack", "full-stack", "engineer", "engineering", "computer", "code", "coding", "it", "ict", "devops", "cloud", "database", "sql", "python", "javascript", "typescript", "react", "angular", "vue", "django", "dotnet", ".net", "net 8", "c#", "java", "docker", "kubernetes", "aws", "azure", "git", "linux", "hilcoe", "microfrontend", "api", "rest" },
+        ["Accounting & Finance"] = new[] { "accountant", "accounting", "auditor", "audit", "tax", "taxation", "financial", "finance", "bookkeeper", "bookkeeping", "payroll", "ledger", "cpa", "acca", "ifrs", "budget" },
+        ["Banking & Insurance"] = new[] { "bank", "banking", "credit", "loan", "mortgage", "underwriter", "underwriting", "insurance", "actuary", "teller", "microfinance" },
+        ["Healthcare"] = new[] { "doctor", "physician", "nurse", "nursing", "medical", "medicine", "hospital", "clinic", "clinical", "patient", "pharmacy", "pharmacist", "health", "healthcare", "surgeon", "surgery", "laboratory" },
+        ["Engineering & Construction"] = new[] { "civil engineer", "mechanical engineer", "electrical engineer", "structural", "construction", "contractor", "site engineer", "architect", "architecture", "surveyor", "autocad", "building", "hvac", "plumbing" },
+        ["Education & Training"] = new[] { "teacher", "teaching", "lecturer", "professor", "instructor", "pedagogy", "curriculum", "school", "tutor", "education", "trainer", "academic" },
+        ["Legal"] = new[] { "lawyer", "attorney", "legal", "paralegal", "advocate", "prosecutor", "judge", "litigation", "law", "counsel", "compliance" },
+        ["Human Resources"] = new[] { "human resources", "hr", "recruiter", "recruitment", "talent acquisition", "onboarding", "people operations", "personnel" },
+        ["Sales & Marketing"] = new[] { "sales", "marketing", "advertisement", "advertising", "digital marketing", "seo", "brand", "branding", "sales representative", "telemarketing", "merchandising" },
+        ["Design & Creative"] = new[] { "graphic designer", "ui designer", "ux designer", "ui/ux", "animator", "video editor", "illustrator", "photographer", "figma", "art director" },
+        ["Logistics & Transportation"] = new[] { "logistics", "transport", "transportation", "fleet", "driver", "warehouse", "warehousing", "freight", "cargo", "shipping", "distribution", "dispatch" },
+        ["Procurement & Supply Chain"] = new[] { "procurement", "purchasing", "supply chain", "sourcing", "vendor", "inventory", "buyer", "tender" },
+        ["Customer Service & Support"] = new[] { "customer service", "call center", "customer support", "help desk", "client service", "customer care", "receptionist" },
+        ["Business & Administration"] = new[] { "administration", "administrative", "executive assistant", "office manager", "operations manager", "secretary", "clerk", "business analyst" },
+        ["Media & Communication"] = new[] { "journalist", "journalism", "reporter", "news", "editor", "broadcasting", "media", "communications", "public relations", "pr", "copywriter" },
+        ["Hospitality & Tourism"] = new[] { "hotel", "hospitality", "restaurant", "waiter", "waitress", "chef", "cook", "culinary", "bartender", "catering", "tourism", "tour guide" },
+        ["Manufacturing & Production"] = new[] { "manufacturing", "factory", "production line", "assembly", "plant operator", "quality control", "qa/qc", "machinist" },
+        ["Agriculture & Natural Science"] = new[] { "agriculture", "agronomist", "agronomy", "farming", "farmer", "crop", "livestock", "veterinary", "botany", "forestry", "horticulture", "soil science", "biology", "chemist" },
+        ["Security & Protection"] = new[] { "security guard", "surveillance", "safety officer", "patrol", "security officer", "cctv", "bodyguard" },
+        ["Beauty & Grooming"] = new[] { "barber", "hair stylist", "hairdresser", "salon", "spa", "makeup", "esthetician", "cosmetology", "beautician" },
+        ["Skilled & General Labor"] = new[] { "carpenter", "plumber", "electrician", "welder", "mason", "laborer", "cleaner", "janitor", "mechanic", "painter" },
+        ["Social Science & Community"] = new[] { "social work", "social worker", "community development", "sociology", "humanitarian", "counselor", "psychology", "anthropology", "human rights", "social welfare" }
+    };
+
     private static int CalculateSectorWordMatch(string sectorName, string text)
     {
+        if (string.IsNullOrWhiteSpace(text)) return 0;
+        var lowerText = text.ToLowerInvariant();
+
+        if (SectorDomainKeywords.TryGetValue(sectorName, out var keywords))
+        {
+            int score = 0;
+            foreach (var kw in keywords)
+            {
+                if (lowerText.Contains(kw))
+                {
+                    score += kw.Contains(' ') ? 3 : 2;
+                }
+            }
+            if (score > 0) return score;
+        }
+
         var stopWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "with", "from", "that", "this", "have", "will", "your", "their", "work", "experience",
