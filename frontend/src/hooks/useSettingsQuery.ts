@@ -69,6 +69,8 @@ interface UseSettingsResult {
   error: unknown
   /** Save the full settings blob. Updates the SWR cache on success. */
   saveSettings: (next: UserSettings) => Promise<void>
+  /** Force re-fetch the settings from the server. */
+  refresh: () => Promise<any>
   /** Check if settings have unsaved changes. */
   isDirty: boolean
 }
@@ -108,5 +110,5 @@ export function useSettingsQuery(): UseSettingsResult {
   // placeholder for future use.
   const isDirty = false
 
-  return { settings, version, isLoading, error, saveSettings, isDirty }
+  return { settings, version, isLoading, error, saveSettings, refresh: () => mutate(), isDirty }
 }

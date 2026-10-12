@@ -7,6 +7,7 @@ import {
   useJobLocationsQuery,
   useSavedJobsQuery,
   useMyApplicationsQuery,
+  useProfileQuery,
 } from '../../../hooks/query.ts'
 import { useSettingsQuery } from '../../../hooks'
 import { prefetchJob } from '../../../hooks/useJobDetailQuery.ts'
@@ -15,6 +16,7 @@ import type { JobResponse, JobType } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import SaveJobButton from '../../../components/dashboard/SaveJobButton.tsx'
 import { useToast } from '../../../components/dashboard/Toast.tsx'
+import TalentOnboardingModal from '../../../components/dashboard/TalentOnboardingModal.tsx'
 import {
   CLOSING_WITHIN_OPTIONS,
   EXPERIENCE_OPTIONS,
@@ -90,8 +92,42 @@ export default function JobsPage() {
   // --- SWR-cached data (shared across all mounted instances) ---
 
   // The "For you" sectors live in settings (they power the feed + job alerts).
-  const { settings } = useSettingsQuery()
+  const { settings, refresh: refreshSettings } = useSettingsQuery()
   const prefSectorIds = settings.forYou?.sectorIds ?? []
+  const { profile } = useProfileQuery(auth.status === 'authenticated')
+
+  const [onboardingOpen, setOnboardingOpen] = useState(false)
+
+  const currentUserId = auth.status === 'authenticated' ? auth.user.id : ''
+
+  // Trigger onboarding modal for brand-new talent without resume or sectors configured
+  useEffect(() => {
+    if (!currentUserId || !profile) return
+    const dismissedKey = `serago_onboarding_dismissed_${currentUserId}`
+    const isDismissed = localStorage.getItem(dismissedKey) === 'true'
+
+    if (
+      !isDismissed &&
+      !settings.forYou?.onboardingCompleted &&
+      !profile.talent?.resumeUrl &&
+      prefSectorIds.length === 0 &&
+      !profile.talent?.about?.trim() &&
+      (profile.talent?.skills?.length ?? 0) === 0
+    ) {
+      setOnboardingOpen(true)
+    }
+  }, [
+    currentUserId,
+    profile,
+    settings.forYou?.onboardingCompleted,
+    prefSectorIds.length,
+  ])
+
+  const handleSectorsSaved = async () => {
+    await refreshSettings()
+    refreshJobs()
+    setView('forYou')
+  }
 
   const { sectors } = useSectorsQuery(auth.status === 'authenticated')
   const { locations } = useJobLocationsQuery(auth.status === 'authenticated')
@@ -460,7 +496,10 @@ export default function JobsPage() {
 
           {view === 'forYou' && prefSectorIds.length === 0 ? (
             <div className="mt-5">
-              <PreferencesPrompt onBrowseAll={() => setView('all')} />
+              <PreferencesPrompt
+                onChooseSectors={() => setOnboardingOpen(true)}
+                onBrowseAll={() => setView('all')}
+              />
             </div>
           ) : isLoading ? (
             <div className="mt-5">
@@ -768,6 +807,13 @@ export default function JobsPage() {
           </div>
         </aside>
       </div>
+
+      <TalentOnboardingModal
+        open={onboardingOpen}
+        userId={auth.user.id}
+        onClose={() => setOnboardingOpen(false)}
+        onSectorsSaved={handleSectorsSaved}
+      />
     </DashboardShell>
   )
 }
@@ -1086,7 +1132,13 @@ function EmptyState({
 }
 
 /** Shown on "For you" when the talent hasn't set any preferences yet. */
-function PreferencesPrompt({ onBrowseAll }: { onBrowseAll: () => void }) {
+function PreferencesPrompt({
+  onChooseSectors,
+  onBrowseAll,
+}: {
+  onChooseSectors: () => void
+  onBrowseAll: () => void
+}) {
   return (
     <div className="mt-5 flex flex-col items-center justify-center rounded-xl border border-primary/20 bg-primary-container/20 px-6 py-16 text-center shadow-sm">
       <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -1100,12 +1152,13 @@ function PreferencesPrompt({ onBrowseAll }: { onBrowseAll: () => void }) {
         jobs in those sectors — no more scrolling past roles you'd never apply for.
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-3">
-        <Link
-          to="/dashboard/talent/settings"
+        <button
+          type="button"
+          onClick={onChooseSectors}
           className="rounded-lg bg-primary px-6 py-3 font-label-md text-label-md font-medium text-on-primary transition-opacity hover:opacity-90"
         >
           Choose my sectors
-        </Link>
+        </button>
         <button
           type="button"
           onClick={onBrowseAll}

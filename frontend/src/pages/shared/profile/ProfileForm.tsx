@@ -16,7 +16,7 @@ import type {
   ProfileResponse,
   UpdateProfileRequest,
 } from '../../../types'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import UnsavedChangesDialog from '../../../components/ui/UnsavedChangesDialog.tsx'
 import AccordionSection from '../../../components/ui/AccordionSection.tsx'
@@ -542,6 +542,8 @@ const COPY: Record<RequiredRole, { blurb: string }> = {
 export default function ProfileForm({ role }: { role: RequiredRole }) {
   const auth = useRequireRole(role)
   const navigate = useNavigate()
+  const location = useLocation()
+  const autoParsedHandledRef = useRef(false)
   const [profile, setProfile] = useState<ProfileResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -709,6 +711,27 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.status, role])
+
+  // When coming from the onboarding modal with an uploaded & parsed CV:
+  useEffect(() => {
+    if (loading) return
+    const state = location.state as {
+      autoParsedResume?: {
+        resumeUrl: string
+        parsedProfile: ParsedResumeProfile
+        fieldsFound: number
+      }
+    } | null
+
+    if (state?.autoParsedResume && !autoParsedHandledRef.current) {
+      autoParsedHandledRef.current = true
+      const { resumeUrl, parsedProfile, fieldsFound } = state.autoParsedResume
+      formik.setFieldValue('resumeUrl', resumeUrl)
+      setReviewProfileData({ profile: parsedProfile, fieldsFound })
+      // Clear router location state so refreshing does not re-open modal
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+  }, [loading, location.state, formik, navigate, location.pathname])
 
   const handleSave = async (values: ProfileFormValues) => {
     // Guard: never save while profile data is still loading — this prevents

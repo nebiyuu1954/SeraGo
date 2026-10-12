@@ -27,6 +27,8 @@ export interface ForYouSettings {
    * Also drives new-job alerts. Empty = the feed shows the setup prompt.
    */
   sectorIds: string[]
+  /** True when the initial onboarding modal (CV or sector pick) has been completed or dismissed. */
+  onboardingCompleted?: boolean
 }
 
 /** Per-channel toggles for a single notification type. */
@@ -97,6 +99,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   },
   forYou: {
     sectorIds: [],
+    onboardingCompleted: false,
   },
   notifications: {
     // Talent
