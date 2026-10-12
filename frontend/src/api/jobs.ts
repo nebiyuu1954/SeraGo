@@ -48,6 +48,12 @@ function toQuery(params: JobListParams): string {
   if (params.closingWithin !== undefined) {
     search.set('closingWithin', String(params.closingWithin))
   }
+  if (params.salaryMin !== undefined) {
+    search.set('salaryMin', String(params.salaryMin))
+  }
+  if (params.salaryMax !== undefined) {
+    search.set('salaryMax', String(params.salaryMax))
+  }
   const qs = search.toString()
   return qs ? `?${qs}` : ''
 }

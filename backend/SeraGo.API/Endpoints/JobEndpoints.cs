@@ -400,24 +400,45 @@ public static class JobEndpoints
                 .FirstOrDefaultAsync(s => s.UserId == user.Id);
             var prefs = UserSettingsReader.GetForYouSectorIds(settings?.Settings);
             // No sectors chosen → nothing matches (the frontend shows the setup prompt).
-            q = prefs.Count > 0
-                ? q.Where(j => j.SectorId != null && prefs.Contains(j.SectorId.Value))
-                : q.Where(j => false);
+            if (prefs.Count > 0)
+            {
+                var prefNames = await db.Sectors.AsNoTracking()
+                    .Where(s => prefs.Contains(s.Id))
+                    .Select(s => s.Name)
+                    .ToListAsync();
+                q = q.Where(j => (j.SectorId != null && prefs.Contains(j.SectorId.Value))
+                    || (j.SectorName != null && prefNames.Contains(j.SectorName)));
+            }
+            else
+            {
+                q = q.Where(j => false);
+            }
         }
 
         if (query.SectorId is not null)
         {
-            q = q.Where(j => j.SectorId == query.SectorId);
+            var targetSector = await db.Sectors.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == query.SectorId.Value);
+            if (targetSector is not null)
+            {
+                q = q.Where(j => j.SectorId == query.SectorId.Value || j.SectorName == targetSector.Name);
+            }
+            else
+            {
+                q = q.Where(j => j.SectorId == query.SectorId);
+            }
         }
 
         // Source filter — case-insensitive so "Afriwork", "afriwork" etc.
         // all match the same canonical display name stored in the DB.
         if (!string.IsNullOrWhiteSpace(query.Source))
         {
-            var sources = query.Source.Split(',',
-                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(s => s.ToLowerInvariant())
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var rawSources = query.Source.Split(',',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var sources = rawSources
+                .Concat(rawSources.Select(s => s.ToLowerInvariant()))
+                .Concat(rawSources.Select(s => s.ToUpperInvariant()))
+                .ToHashSet();
             q = q.Where(j => j.SourceName != null && sources.Contains(j.SourceName));
         }
 

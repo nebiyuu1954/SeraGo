@@ -140,7 +140,8 @@ export default function JobsPage() {
 
   // The "For you" sectors live in settings (they power the feed + job alerts).
   const { settings, refresh: refreshSettings } = useSettingsQuery()
-  const prefSectorIds = settings.forYou?.sectorIds ?? []
+  const rawPrefSectorIds = settings.forYou?.sectorIds ?? []
+  const prefSectorIds = rawPrefSectorIds.map((id) => id.toLowerCase())
   const { profile } = useProfileQuery(auth.status === 'authenticated')
 
   const [onboardingOpen, setOnboardingOpen] = useState(false)
@@ -178,6 +179,10 @@ export default function JobsPage() {
 
   const { sectors } = useSectorsQuery(auth.status === 'authenticated')
   const { locations } = useJobLocationsQuery(auth.status === 'authenticated')
+
+  const forYouSectors = sectors.filter((s) =>
+    prefSectorIds.includes(s.id.toLowerCase()),
+  )
 
   // "Best match" ranks the feed by AI match score — the For You view's
   // default sort (falls back to newest until scores exist).
@@ -843,7 +848,7 @@ export default function JobsPage() {
                       {view === 'forYou' ? 'All followed sectors' : 'All sectors'}
                     </option>
                     {(view === 'forYou'
-                      ? sectors.filter((s) => prefSectorIds.includes(s.id))
+                      ? (forYouSectors.length > 0 ? forYouSectors : sectors)
                       : sectors
                     ).map((sector) => (
                       <option key={sector.id} value={sector.id}>
@@ -1259,38 +1264,40 @@ function EmptyState({
     <div className="mt-5 flex flex-col items-center justify-center rounded-xl border border-surface-variant bg-surface-container-lowest px-6 py-16 text-center shadow-sm">
       <span className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-container-low text-on-surface-variant">
         <span className="material-symbols-outlined text-3xl">
-          {forYou ? 'auto_awesome' : hasFilters ? 'filter_alt_off' : 'search_off'}
+          {hasFilters ? 'filter_alt_off' : forYou ? 'auto_awesome' : 'search_off'}
         </span>
       </span>
       <h2 className="mt-4 font-headline-md text-headline-md font-semibold text-on-surface">
-        {forYou
-          ? 'No jobs match your preferences yet'
-          : hasFilters
-            ? 'No matching jobs'
+        {hasFilters
+          ? 'No matching jobs'
+          : forYou
+            ? 'No jobs match your preferences yet'
             : 'No jobs yet'}
       </h2>
       <p className="mt-1 max-w-sm font-body-md text-body-md text-on-surface-variant">
-        {forYou
-          ? 'Try adding a For You sector in settings, or browse everything.'
-          : hasFilters
-            ? 'Try adjusting your search or filters.'
+        {hasFilters
+          ? forYou
+            ? 'No jobs in your For You feed match your current filters. Try adjusting or clearing your filters.'
+            : 'Try adjusting your search or filters.'
+          : forYou
+            ? 'Try adding a For You sector in settings, or browse everything.'
             : 'There are no open positions right now — check back soon.'}
       </p>
-      {forYou ? (
+      {hasFilters ? (
+        <button
+          type="button"
+          onClick={onClear}
+          className="mt-6 rounded-lg bg-primary px-6 py-3 font-label-md text-label-md font-medium text-on-primary transition-opacity hover:opacity-90"
+        >
+          Clear filters
+        </button>
+      ) : forYou ? (
         <Link
           to="/dashboard/talent/settings"
           className="mt-6 rounded-lg bg-primary px-6 py-3 font-label-md text-label-md font-medium text-on-primary transition-opacity hover:opacity-90"
         >
           Open settings
         </Link>
-      ) : hasFilters ? (
-        <button
-          type="button"
-          onClick={onClear}
-          className="mt-6 rounded-lg border border-outline-variant bg-surface-container-lowest px-6 py-3 font-label-md text-label-md font-medium text-on-surface transition-colors hover:bg-surface-container-low"
-        >
-          Clear filters
-        </button>
       ) : null}
     </div>
   )
