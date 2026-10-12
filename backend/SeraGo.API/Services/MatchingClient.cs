@@ -351,6 +351,12 @@ public class MatchingClient
         [JsonPropertyName("currentIndustry")]
         public string? CurrentIndustry { get; set; }
 
+        [JsonPropertyName("suggestedSectors")]
+        public List<string> SuggestedSectors { get; set; } = [];
+
+        [JsonPropertyName("suggestedSectorIds")]
+        public List<string> SuggestedSectorIds { get; set; } = [];
+
         /// <summary>One of Entry | Junior | Mid | Senior | Lead.</summary>
         [JsonPropertyName("experienceLevel")]
         public string? ExperienceLevel { get; set; }

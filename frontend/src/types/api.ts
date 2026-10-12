@@ -33,12 +33,14 @@ export interface HealthResponse {
 /** Roles a user may self-select at registration (mirrors backend Roles.SelfService). */
 export type SignUpRole = 'Talent'
 
-/** Body of POST /api/auth/signup (Aufy SignUpRequest + SeraGo profile fields). */
+/** Body of POST /api/auth/signup (SeraGo registration with Ethiopian names and phone). */
 export interface SignUpRequest {
   email: string
   password: string
   firstName: string
+  middleName?: string
   lastName: string
+  phoneNumber: string
   role: SignUpRole
 }
 
@@ -48,16 +50,24 @@ export interface SignUpResponse {
 }
 
 /**
- * Body of POST /api/auth/signup/external — role + password step for new Google
- * users. First/last name are optional: the backend pulls them from Google's
- * claims. The password is required so the account is created WITH one from
- * the start (email + password login works on any device).
+ * Body of POST /api/auth/signup/external — role, phone + password step for new Google
+ * users. First/last name are optional (pulled from Google claims if omitted).
  */
 export interface SignUpExternalRequest {
   firstName?: string
+  middleName?: string
   lastName?: string
+  phoneNumber: string
   role: SignUpRole
   password: string
+}
+
+/** External provider info payload (Google OAuth claims). */
+export interface ExternalAuthInfo {
+  email: string
+  firstName: string
+  lastName: string
+  avatarUrl: string
 }
 
 /** Body of POST /api/account/password/forgot. */
@@ -272,6 +282,10 @@ export interface ParsedResumeProfile {
   /** One of Entry | Junior | Mid | Senior | Lead. */
   experienceLevel: string | null
   yearsOfExperience: number | null
+  /** Suggested sectors for the For You feed (max 2 names). */
+  suggestedSectors?: string[]
+  /** Suggested sector UUIDs for the For You feed (max 2 IDs). */
+  suggestedSectorIds?: string[]
 }
 
 /**

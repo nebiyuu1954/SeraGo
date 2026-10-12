@@ -16,6 +16,7 @@ export type {
   JobType,
   JobWriteRequest,
   WorkMode,
+  ExternalAuthInfo,
   PaginationResponse,
   ParsedEducation,
   ParsedResumeProfile,

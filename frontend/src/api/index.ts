@@ -60,6 +60,7 @@ export {
   buildGoogleChallengeUrl,
   clearStoredAuthTokens,
   confirmEmail,
+  fetchExternalInfo,
   fetchExternalProviders,
   fetchWhoAmI,
   forgotPassword,

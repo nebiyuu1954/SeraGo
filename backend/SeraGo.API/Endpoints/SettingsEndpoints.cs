@@ -124,11 +124,11 @@ public static class SettingsEndpoints
         var user = await userManager.GetUserAsync(claims);
         if (user is null) return Results.Unauthorized();
 
-        // Validate category key — only lowercase alphanumeric + hyphens.
-        if (string.IsNullOrWhiteSpace(category) || !System.Text.RegularExpressions.Regex.IsMatch(category, @"^[a-z][a-z0-9\-]*$"))
+        // Validate category key — alphanumeric + hyphens (supports camelCase like 'forYou').
+        if (string.IsNullOrWhiteSpace(category) || !System.Text.RegularExpressions.Regex.IsMatch(category, @"^[a-zA-Z][a-zA-Z0-9\-]*$"))
         {
             return Results.Problem(
-                "Category must be a lowercase alphanumeric key (e.g. 'account', 'notifications').",
+                "Category must be an alphanumeric key (e.g. 'account', 'forYou', 'notifications').",
                 statusCode: StatusCodes.Status400BadRequest);
         }
 

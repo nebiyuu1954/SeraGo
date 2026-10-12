@@ -20,6 +20,8 @@ export const API_ENDPOINTS = {
       signIn: '/auth/signin/external',
       /** POST (cookie) — creates the account for a brand-new Google user. */
       signUp: '/auth/signup/external',
+      /** GET (cookie) — gets verified external profile claims (Google email, name, avatar). */
+      info: '/auth/external/info',
     },
   },
   account: {

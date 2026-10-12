@@ -6,6 +6,7 @@ import {
   getApiErrorMessage,
   getStoredAuthTokens,
   parseResume,
+  patchSettingsCategory,
   updateProfile,
 } from '../../../api'
 import { useRequireRole, useUnsavedChanges } from '../../../hooks'
@@ -849,9 +850,12 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
   /**
    * Drops parsed resume fields into the form without saving anything. Only the
    * fields that were actually found are touched — everything else keeps
-   * whatever the user already had.
+   * whatever the user already had. Also persists any chosen For You feed sectors.
    */
-  const applyParsedResume = (parsed: ParsedResumeProfile) => {
+  const applyParsedResume = async (
+    parsed: ParsedResumeProfile,
+    selectedSectorIds?: string[],
+  ) => {
     if (parsed.about) formik.setFieldValue('about', parsed.about)
     if (parsed.skills.length > 0) formik.setFieldValue('skills', parsed.skills)
     if (parsed.experience.length > 0) {
@@ -878,6 +882,22 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
     // of value as `currentProfession`, so it is only used as a fallback.
     const profession = parsed.currentProfession ?? parsed.headline
     if (profession) formik.setFieldValue('currentProfession', profession)
+
+    // Persist For You feed sectors if provided
+    if (selectedSectorIds && selectedSectorIds.length > 0) {
+      const tokens = getStoredAuthTokens()
+      if (tokens) {
+        try {
+          await patchSettingsCategory(
+            tokens.accessToken,
+            'forYou',
+            JSON.stringify({ sectorIds: selectedSectorIds }),
+          )
+        } catch (err) {
+          console.error('Failed to update For You feed sectors:', err)
+        }
+      }
+    }
   }
 
   /**
@@ -2149,14 +2169,23 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
       <ResumeReviewModal
         open={!!reviewProfileData}
         profile={reviewProfileData?.profile ?? null}
-        onApply={() => {
+        onApply={async (selectedSectorIds) => {
           if (!reviewProfileData) return
-          applyParsedResume(reviewProfileData.profile)
+          await applyParsedResume(reviewProfileData.profile, selectedSectorIds)
+          const sectorCount = selectedSectorIds.length
+          const feedMsg = sectorCount > 0
+            ? ` and set ${sectorCount} sector${sectorCount === 1 ? '' : 's'} for your For You feed`
+            : ''
           setResumeNotice({
             kind: 'filled',
             message: `We read your resume and pre-filled ${reviewProfileData.fieldsFound} section${
               reviewProfileData.fieldsFound === 1 ? '' : 's'
-            }. Nothing is saved yet — review the fields below, then press Save profile.`,
+            }${feedMsg}. Nothing is saved yet — review the fields below, then press Save profile.`,
+          })
+          showToast({
+            title: 'Resume Applied',
+            message: `Pre-filled profile${feedMsg}. Remember to review and save!`,
+            variant: 'success',
           })
           setReviewProfileData(null)
         }}

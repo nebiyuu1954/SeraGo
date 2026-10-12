@@ -3,6 +3,7 @@ import { API_ENDPOINTS } from './endpoints.ts'
 import { config } from '../config'
 import type {
   AuthTokenResponse,
+  ExternalAuthInfo,
   ForgotPasswordRequest,
   ResetPasswordRequest,
   SignInRequest,
@@ -175,6 +176,19 @@ export function signUpExternal(
   return request<AuthTokenResponse>(API_ENDPOINTS.auth.external.signUp, {
     method: 'POST',
     body: payload,
+    credentials: 'include',
+  })
+}
+
+/**
+ * Fetches the verified external user info (email, name, avatar) from Google
+ * using the external identity cookie.
+ *
+ * GET /api/auth/external/info (cookie auth)
+ */
+export function fetchExternalInfo(): Promise<ExternalAuthInfo> {
+  return request<ExternalAuthInfo>(API_ENDPOINTS.auth.external.info, {
+    method: 'GET',
     credentials: 'include',
   })
 }

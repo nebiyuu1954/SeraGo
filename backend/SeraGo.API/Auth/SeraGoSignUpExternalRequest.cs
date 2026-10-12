@@ -22,7 +22,13 @@ public class SeraGoSignUpExternalRequest : SignUpExternalRequest
     public string? FirstName { get; set; }
 
     [MaxLength(100)]
+    public string? MiddleName { get; set; }
+
+    [MaxLength(100)]
     public string? LastName { get; set; }
+
+    [MaxLength(32)]
+    public string? PhoneNumber { get; set; }
 
     /// <summary>
     /// Retained for backwards compatibility and ignored — every self-service

@@ -18,12 +18,16 @@ import SubmitButton from '../../../components/auth/SubmitButton.tsx'
 import Divider from '../../../components/auth/Divider.tsx'
 import GoogleButton from '../../../components/auth/GoogleButton.tsx'
 import AuthSuccess from '../../../components/auth/AuthSuccess.tsx'
+import EthiopianPhoneInput from '../../../components/auth/EthiopianPhoneInput.tsx'
+import { isValidEthiopianPhone, normalizeEthiopianPhone } from '../../../lib/phoneUtils.ts'
 import { meetsPasswordRules } from '../../../components/auth/passwordRules.ts'
 import { trackEvent } from '../../../lib/analytics'
 
 const FIELD_ORDER = [
   'firstName',
+  'middleName',
   'lastName',
+  'phoneNumber',
   'email',
   'password',
   'confirmPassword',
@@ -40,7 +44,9 @@ function isDuplicateEmailError(err: unknown): boolean {
 
 type SignUpValues = {
   firstName: string
+  middleName: string
   lastName: string
+  phoneNumber: string
   email: string
   password: string
   confirmPassword: string
@@ -48,7 +54,9 @@ type SignUpValues = {
 
 const initialValues: SignUpValues = {
   firstName: '',
+  middleName: '',
   lastName: '',
+  phoneNumber: '',
   email: '',
   password: '',
   confirmPassword: '',
@@ -57,7 +65,20 @@ const initialValues: SignUpValues = {
 /** Single source of truth for field validation — Formik runs this (Yup). */
 const validationSchema = object<SignUpValues>({
   firstName: string().trim().required('Please enter your first name.'),
-  lastName: string().trim().required('Please enter your last name.'),
+  middleName: string()
+    .trim()
+    .required("Please enter your middle name (father's name)."),
+  lastName: string()
+    .trim()
+    .required("Please enter your last name (grandfather's name)."),
+  phoneNumber: string()
+    .trim()
+    .required('Please enter your phone number.')
+    .test(
+      'ethiopian-phone',
+      'Please enter a valid Ethiopian mobile number (e.g. 0910101010 or 910101010).',
+      (value) => (value ? isValidEthiopianPhone(value) : false),
+    ),
   email: string()
     .trim()
     .email('Please enter a valid email address.')
@@ -100,10 +121,14 @@ export default function SignupPage() {
       setError(null)
       setAccountExists(false)
       try {
+        const normalizedPhone =
+          normalizeEthiopianPhone(values.phoneNumber) ?? values.phoneNumber
         const signUpResponse = await signUp({
-          firstName: values.firstName,
-          lastName: values.lastName,
-          email: values.email,
+          firstName: values.firstName.trim(),
+          middleName: values.middleName.trim(),
+          lastName: values.lastName.trim(),
+          phoneNumber: normalizedPhone,
+          email: values.email.trim(),
           password: values.password,
           role: 'Talent',
         })
@@ -217,18 +242,30 @@ export default function SignupPage() {
 
           <form onSubmit={formik.handleSubmit} noValidate className="space-y-5">
             {/* Name fields */}
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <TextInput
                 id="firstName"
                 name="firstName"
                 label="First name"
                 icon="person"
                 autoComplete="given-name"
-                placeholder="John"
+                placeholder="Abebe"
                 value={formik.values.firstName}
                 onChange={formik.handleChange}
                 onBlur={formik.handleBlur}
                 error={fieldError('firstName')}
+              />
+              <TextInput
+                id="middleName"
+                name="middleName"
+                label="Middle name"
+                icon="person"
+                autoComplete="additional-name"
+                placeholder="Kebede"
+                value={formik.values.middleName}
+                onChange={formik.handleChange}
+                onBlur={formik.handleBlur}
+                error={fieldError('middleName')}
               />
               <TextInput
                 id="lastName"
@@ -236,13 +273,24 @@ export default function SignupPage() {
                 label="Last name"
                 icon="badge"
                 autoComplete="family-name"
-                placeholder="Doe"
+                placeholder="Balcha"
                 value={formik.values.lastName}
                 onChange={formik.handleChange}
                 onBlur={formik.handleBlur}
                 error={fieldError('lastName')}
               />
             </div>
+
+            {/* Ethiopian Phone field */}
+            <EthiopianPhoneInput
+              id="phoneNumber"
+              name="phoneNumber"
+              label="Phone number"
+              value={formik.values.phoneNumber}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+              error={fieldError('phoneNumber')}
+            />
 
             <TextInput
               id="email"

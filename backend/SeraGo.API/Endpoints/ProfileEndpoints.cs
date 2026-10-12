@@ -272,7 +272,8 @@ public static class ProfileEndpoints
         ClaimsPrincipal claims,
         UserManager<ApplicationUser> userManager,
         R2StorageService storageService,
-        MatchingClient matchingClient)
+        MatchingClient matchingClient,
+        ApplicationDbContext db)
     {
         var user = await userManager.GetUserAsync(claims);
         if (user is null)
@@ -324,10 +325,100 @@ public static class ProfileEndpoints
 
         var result = await matchingClient.ParseResumeAsync(presignedUrl);
 
+        if (result?.Profile is not null)
+        {
+            var activeSectors = await db.Sectors.Where(s => s.IsActive).ToListAsync();
+            var matchedIds = new List<string>();
+            var matchedNames = new List<string>();
+
+            void TryAddSector(Sector? s)
+            {
+                if (s is not null && !matchedIds.Contains(s.Id.ToString()) && matchedIds.Count < 1)
+                {
+                    matchedIds.Add(s.Id.ToString());
+                    matchedNames.Add(s.Name);
+                }
+            }
+
+            // 1. Check suggested sectors from AI / parser (highest first)
+            if (result.Profile.SuggestedSectors is { Count: > 0 })
+            {
+                foreach (var name in result.Profile.SuggestedSectors)
+                {
+                    var found = activeSectors.FirstOrDefault(s =>
+                        string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(s.Slug, name, StringComparison.OrdinalIgnoreCase));
+                    TryAddSector(found);
+                    if (matchedIds.Count >= 1) break;
+                }
+            }
+
+            // 2. Check current industry
+            if (matchedIds.Count < 1 && !string.IsNullOrWhiteSpace(result.Profile.CurrentIndustry))
+            {
+                var found = activeSectors.FirstOrDefault(s =>
+                    string.Equals(s.Name, result.Profile.CurrentIndustry, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(s.Slug, result.Profile.CurrentIndustry, StringComparison.OrdinalIgnoreCase));
+                TryAddSector(found);
+            }
+
+            // 3. Keyword match on headline, profession and skills if still under 1
+            if (matchedIds.Count < 1)
+            {
+                var textPool = string.Join(" ", new[]
+                {
+                    result.Profile.Headline,
+                    result.Profile.CurrentProfession,
+                    result.Profile.Skills != null ? string.Join(" ", result.Profile.Skills) : null
+                }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+                if (!string.IsNullOrWhiteSpace(textPool))
+                {
+                    var highestMatch = activeSectors
+                        .Where(s => !matchedIds.Contains(s.Id.ToString()))
+                        .Select(s => new { Sector = s, Score = CalculateSectorWordMatch(s.Name, textPool) })
+                        .Where(x => x.Score > 0)
+                        .OrderByDescending(x => x.Score)
+                        .FirstOrDefault();
+
+                    if (highestMatch is not null)
+                    {
+                        TryAddSector(highestMatch.Sector);
+                    }
+                }
+            }
+
+            result.Profile.SuggestedSectorIds = matchedIds.Take(1).ToList();
+            result.Profile.SuggestedSectors = matchedNames.Take(1).ToList();
+        }
+
         // The AI service is optional and an unreadable resume is a normal
         // outcome, not an error the user must fix: unreachable ⇒ success:false.
         // A scanned (image-only) PDF arrives the same way with charsExtracted 0.
         return Results.Ok(result ?? new MatchingClient.ResumeParseResult { Success = false });
+    }
+
+    private static int CalculateSectorWordMatch(string sectorName, string text)
+    {
+        var stopWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "with", "from", "that", "this", "have", "will", "your", "their", "work", "experience",
+            "years", "using", "team", "also", "other", "into", "skills", "general", "services"
+        };
+        var textWords = text.Split(new[] { ' ', ',', '.', '/', '-', '&', '(', ')' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length >= 4 && !stopWords.Contains(w))
+            .Select(w => w.ToLowerInvariant())
+            .ToHashSet();
+
+        var sectorWords = sectorName.Split(new[] { ' ', ',', '.', '/', '-', '&', '(', ')' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length >= 4 && !stopWords.Contains(w))
+            .Select(w => w.ToLowerInvariant())
+            .ToList();
+
+        if (sectorWords.Count == 0) return 0;
+        int matchCount = sectorWords.Count(sw => textWords.Contains(sw));
+        int required = sectorWords.Count == 1 ? 1 : 2;
+        return matchCount >= required ? matchCount : 0;
     }
 
     // --------------------------------------------------------------- Helpers
