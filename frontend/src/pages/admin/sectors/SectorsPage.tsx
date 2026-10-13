@@ -17,6 +17,7 @@ import { useRequireRole } from '../../../hooks'
 import type { JobResponse, SectorDetailResponse, SyncScrapedJobsResult } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import { cn } from '../../../lib/cn.ts'
+import CopyPromptModal from './CopyPromptModal.tsx'
 
 type Tab = 'sectors' | 'aliases' | 'review'
 
@@ -522,6 +523,8 @@ function ReviewTab() {
   
   const [classifying, setClassifying] = useState(false)
   const [aiSuggestions, setAiSuggestions] = useState<Record<string, any[]>>({})
+  const [copyPromptOpen, setCopyPromptOpen] = useState(false)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
 
   const runAiClassification = async () => {
     if (!token || classifying || uncategorized.length === 0) return
@@ -634,6 +637,15 @@ function ReviewTab() {
             ) : (
               'Classify with AI'
             )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCopyPromptOpen(true)}
+            disabled={uncategorized.length === 0}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-surface-variant bg-surface-container-low px-5 py-3 font-label-md text-label-md font-medium text-on-surface transition-colors hover:bg-surface-container-high disabled:pointer-events-none disabled:opacity-50"
+          >
+            <span className="material-symbols-outlined text-lg">content_copy</span>
+            Copy prompt
           </button>
           <button
             type="button"
@@ -780,6 +792,38 @@ function ReviewTab() {
           </ul>
         )}
       </div>
+
+      {toastMessage && (
+        <div
+          role="status"
+          className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 font-label-md text-label-md text-emerald-900 shadow-sm"
+        >
+          <span className="material-symbols-outlined text-emerald-700">check_circle</span>
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      <CopyPromptModal
+        open={copyPromptOpen}
+        onClose={() => setCopyPromptOpen(false)}
+        jobs={uncategorized}
+        sectors={sectors}
+        token={token}
+        onSuccess={(resolvedJobIds) => {
+          setUncategorized((prev) =>
+            prev.filter((j) => !resolvedJobIds.includes(j.id)),
+          )
+          setAssignments((prev) => {
+            const next = { ...prev }
+            resolvedJobIds.forEach((id) => delete next[id])
+            return next
+          })
+          setToastMessage(
+            `Successfully resolved and saved sectors for ${resolvedJobIds.length} job${resolvedJobIds.length === 1 ? '' : 's'}!`,
+          )
+          setTimeout(() => setToastMessage(null), 5000)
+        }}
+      />
     </div>
   )
 }
