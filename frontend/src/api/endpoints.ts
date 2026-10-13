@@ -51,6 +51,8 @@ export const API_ENDPOINTS = {
     jobTypes: '/jobs/job-types',
     /** POST /api/jobs/for-you/match — run AI matching on the For You feed now. */
     forYouMatch: '/jobs/for-you/match',
+    /** POST/PATCH /api/jobs/sectors/bulk — bulk assign sectors to multiple jobs (admin). */
+    bulkSectors: '/jobs/sectors/bulk',
   },
   savedJobs: {
     /** GET /api/saved-jobs — my saved jobs with lifecycle status. */

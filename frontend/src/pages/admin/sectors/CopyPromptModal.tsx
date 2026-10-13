@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { JobResponse, SectorDetailResponse } from '../../../types'
-import { setJobSector, getApiErrorMessage } from '../../../api'
+import { setJobSector, bulkSetJobSectors, getApiErrorMessage } from '../../../api'
 import {
   getSampleRolesForSector,
   SECTOR_DOMAIN_KEYWORDS,
@@ -106,6 +106,7 @@ export default function CopyPromptModal({
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(
     null,
   )
+  const [rateLimitCountdown, setRateLimitCountdown] = useState<number | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   // Generate the formatted prompt
@@ -249,44 +250,99 @@ export default function CopyPromptModal({
     [parsedAssignments],
   )
 
-  // Save the valid assignments to the API in concurrent batches
+  // Save the valid assignments to the API (bulk first, sequential + 429 retry fallback)
   const handleResolveAndSave = async () => {
     if (!token || validAssignments.length === 0 || saving) return
 
     setSaving(true)
     setSaveError(null)
+    setRateLimitCountdown(null)
     setProgress({ current: 0, total: validAssignments.length })
 
     const resolvedIds: string[] = []
-    const BATCH_SIZE = 5
 
+    // 1. Try atomic bulk endpoint first (1 fast request)
     try {
-      for (let i = 0; i < validAssignments.length; i += BATCH_SIZE) {
-        const batch = validAssignments.slice(i, i + BATCH_SIZE)
+      const payload = validAssignments.map((a) => ({
+        jobId: a.jobId,
+        sectorId: a.targetSectorId,
+      }))
+      const res = await bulkSetJobSectors(payload, token)
+      const savedIds =
+        res.updatedJobIds && res.updatedJobIds.length > 0
+          ? res.updatedJobIds
+          : validAssignments.map((a) => a.jobId)
 
-        await Promise.all(
-          batch.map(async (item) => {
-            if (item.targetSectorId) {
-              await setJobSector(item.jobId, item.targetSectorId, token)
-              resolvedIds.push(item.jobId)
+      onSuccess(savedIds)
+      onClose()
+      setJsonInput('')
+      setSaving(false)
+      setProgress(null)
+      return
+    } catch (bulkErr: any) {
+      console.warn(
+        'Bulk sector endpoint unavailable, falling back to sequential calls with rate-limit pacing:',
+        bulkErr,
+      )
+    }
+
+    // 2. Sequential fallback with 429 auto-retry and pacing
+    const remaining = [...validAssignments]
+    try {
+      for (let i = 0; i < remaining.length; i++) {
+        const item = remaining[i]
+        if (!item.targetSectorId) continue
+
+        let succeeded = false
+        let retries = 0
+
+        while (!succeeded && retries < 4) {
+          try {
+            await setJobSector(item.jobId, item.targetSectorId, token)
+            succeeded = true
+            resolvedIds.push(item.jobId)
+            setProgress({
+              current: resolvedIds.length,
+              total: validAssignments.length,
+            })
+            // Small pacing delay to avoid burst
+            await new Promise((r) => setTimeout(r, 120))
+          } catch (err: any) {
+            const isRateLimit =
+              err?.status === 429 ||
+              (err?.message &&
+                err.message.toLowerCase().includes('too many requests'))
+
+            if (isRateLimit && retries < 3) {
+              retries++
+              // Countdown for 15 seconds to let the rate limit window replenish
+              for (let sec = 15; sec > 0; sec--) {
+                setRateLimitCountdown(sec)
+                await new Promise((r) => setTimeout(r, 1000))
+              }
+              setRateLimitCountdown(null)
+            } else {
+              throw err
             }
-          }),
-        )
-
-        setProgress({
-          current: Math.min(i + batch.length, validAssignments.length),
-          total: validAssignments.length,
-        })
+          }
+        }
       }
 
       onSuccess(resolvedIds)
       onClose()
       setJsonInput('')
     } catch (err) {
-      setSaveError(getApiErrorMessage(err))
+      // If partially succeeded, still notify parent about the resolved jobs!
+      if (resolvedIds.length > 0) {
+        onSuccess(resolvedIds)
+      }
+      setSaveError(
+        `${getApiErrorMessage(err)} (Saved ${resolvedIds.length} of ${validAssignments.length} jobs before error)`,
+      )
     } finally {
       setSaving(false)
       setProgress(null)
+      setRateLimitCountdown(null)
     }
   }
 
@@ -485,6 +541,18 @@ export default function CopyPromptModal({
               <div className="mt-3 flex items-center gap-2 rounded-lg border border-error/40 bg-error-container px-3 py-2 font-label-sm text-label-sm text-on-error-container">
                 <span className="material-symbols-outlined text-base">error</span>
                 <span>{saveError}</span>
+              </div>
+            )}
+
+            {/* Rate limit cooldown countdown notice */}
+            {rateLimitCountdown !== null && (
+              <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 font-label-sm text-label-sm text-amber-900 shadow-sm">
+                <span className="material-symbols-outlined text-base text-amber-600 animate-spin">
+                  hourglass_top
+                </span>
+                <span>
+                  API rate limit reached (20 requests/min). Cooling down for <strong>{rateLimitCountdown}s</strong> before automatically resuming…
+                </span>
               </div>
             )}
 

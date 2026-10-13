@@ -201,6 +201,30 @@ export function setJobSector(
   })
 }
 
+export interface BulkSectorAssignmentItem {
+  jobId: string
+  sectorId: string | null
+}
+
+export interface BulkSectorAssignmentResponse {
+  updatedCount: number
+  updatedJobIds: string[]
+}
+
+/**
+ * POST /api/jobs/sectors/bulk — admin assigns sectors to multiple jobs in one call.
+ */
+export function bulkSetJobSectors(
+  assignments: BulkSectorAssignmentItem[],
+  accessToken: string,
+): Promise<BulkSectorAssignmentResponse> {
+  return request<BulkSectorAssignmentResponse>(API_ENDPOINTS.jobs.bulkSectors, {
+    method: 'POST',
+    body: { assignments },
+    headers: auth(accessToken),
+  })
+}
+
 /**
  * POST /api/admin/jobs/classify
  */

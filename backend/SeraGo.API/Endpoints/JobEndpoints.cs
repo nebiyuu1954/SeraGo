@@ -74,7 +74,9 @@ public static class JobEndpoints
         group.MapPatch("/{id:guid}/approve", ApproveJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();
         group.MapPatch("/{id:guid}/reject", RejectJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();
         group.MapPatch("/{id:guid}/restore", RestoreJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();
-        group.MapPatch("/{id:guid}/sector", SetJobSectorAsync).RequireRateLimiting("jobs_write").WithOpenApi();
+        group.MapPatch("/{id:guid}/sector", SetJobSectorAsync).WithOpenApi();
+        group.MapPost("/sectors/bulk", SetJobSectorsBulkAsync).WithOpenApi();
+        group.MapPatch("/sectors/bulk", SetJobSectorsBulkAsync).WithOpenApi();
 
         return app;
     }
@@ -165,6 +167,9 @@ public static class JobEndpoints
     }
 
     public sealed record SetJobSectorRequest(Guid? SectorId);
+    public sealed record BulkSetJobSectorItem(Guid JobId, Guid? SectorId);
+    public sealed record BulkSetJobSectorRequest(IReadOnlyList<BulkSetJobSectorItem> Assignments);
+    public sealed record BulkSetJobSectorResponse(int UpdatedCount, IReadOnlyList<Guid> UpdatedJobIds);
 
     public sealed record RejectJobRequest(string? Reason);
 
@@ -1561,6 +1566,61 @@ public static class JobEndpoints
 
         await db.SaveChangesAsync();
         return Results.Ok(ToResponse(job, string.Empty));
+    }
+
+    /// <summary>POST/PATCH /api/jobs/sectors/bulk — admin assigns sectors to multiple jobs in one operation.</summary>
+    [Authorize(Roles = Roles.Admin)]
+    private static async Task<IResult> SetJobSectorsBulkAsync(
+        BulkSetJobSectorRequest request,
+        ApplicationDbContext db)
+    {
+        if (request.Assignments is null || request.Assignments.Count == 0)
+        {
+            return Results.Ok(new BulkSetJobSectorResponse(0, Array.Empty<Guid>()));
+        }
+
+        var jobIds = request.Assignments.Select(a => a.JobId).Distinct().ToList();
+        var jobs = await db.Jobs.Where(j => jobIds.Contains(j.Id)).ToListAsync();
+        var jobDict = jobs.ToDictionary(j => j.Id);
+
+        var sectorIds = request.Assignments
+            .Where(a => a.SectorId.HasValue)
+            .Select(a => a.SectorId!.Value)
+            .Distinct()
+            .ToList();
+
+        var sectors = await db.Sectors.AsNoTracking()
+            .Where(s => sectorIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id);
+
+        var updated = new List<Guid>();
+        var now = DateTimeOffset.UtcNow;
+
+        foreach (var item in request.Assignments)
+        {
+            if (!jobDict.TryGetValue(item.JobId, out var job)) continue;
+
+            if (item.SectorId.HasValue)
+            {
+                if (sectors.TryGetValue(item.SectorId.Value, out var sector))
+                {
+                    job.SectorId = sector.Id;
+                    job.SectorName = sector.Name;
+                    job.UpdatedAt = now;
+                    updated.Add(job.Id);
+                }
+            }
+            else
+            {
+                job.SectorId = null;
+                job.SectorName = null;
+                job.UpdatedAt = now;
+                updated.Add(job.Id);
+            }
+        }
+
+        await db.SaveChangesAsync();
+        return Results.Ok(new BulkSetJobSectorResponse(updated.Count, updated));
     }
 
     /// <summary>PATCH /api/jobs/{id}/restore — admin unhides a soft-deleted job (is_active=true).</summary>

@@ -28,6 +28,7 @@ export {
   rejectJob,
   restoreJob,
   setJobSector,
+  bulkSetJobSectors,
   classifyJobs,
   runForYouMatching,
   submitJob,
