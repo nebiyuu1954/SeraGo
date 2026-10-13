@@ -47,6 +47,8 @@ export const API_ENDPOINTS = {
     list: '/jobs',
     /** GET /api/jobs/locations — distinct locations of the live feed, for the filter dropdown. */
     locations: '/jobs/locations',
+    /** GET /api/jobs/job-types — active job counts grouped by JobType for filter dropdown. */
+    jobTypes: '/jobs/job-types',
     /** POST /api/jobs/for-you/match — run AI matching on the For You feed now. */
     forYouMatch: '/jobs/for-you/match',
   },

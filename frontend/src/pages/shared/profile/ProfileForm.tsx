@@ -100,6 +100,32 @@ const JOB_TYPE_CHOICES = [
   { value: 'Other', label: 'Other' },
 ]
 
+export const ETHIOPIAN_CITIES = [
+  'Addis Ababa',
+  'Adama',
+  'Arba Minch',
+  'Asosa',
+  'Bahir Dar',
+  'Bishoftu',
+  'Debre Birhan',
+  'Dessie',
+  'Dilla',
+  'Dire Dawa',
+  'Gambela',
+  'Gondar',
+  'Harar',
+  'Hawassa',
+  'Hosanna',
+  'Jigjiga',
+  'Jimma',
+  'Mekelle',
+  'Nekemte',
+  'Semera',
+  'Shashamane',
+  'Wolaita Sodo',
+  'Other',
+]
+
 const FIELD_LABELS: Record<string, string> = {
   firstName: 'First name',
   middleName: 'Middle name',
@@ -581,47 +607,8 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
   const { showToast } = useToast()
   const [validationModalOpen, setValidationModalOpen] = useState(false)
   const [validationErrors, setValidationErrors] = useState<{ field: string; message: string }[]>([])
-  const [isDetectingCity, setIsDetectingCity] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const resumeInputRef = useRef<HTMLInputElement>(null)
-
-  const detectUserCity = () => {
-    if (!navigator.geolocation) {
-      showToast('Geolocation is not supported by your browser.', 'error')
-      return
-    }
-    setIsDetectingCity(true)
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          const { latitude, longitude } = position.coords
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
-            { headers: { 'User-Agent': 'SeraGo-App/1.0' } }
-          )
-          const data = await res.json()
-          const detected =
-            data.address?.city ||
-            data.address?.town ||
-            data.address?.municipality ||
-            data.address?.state ||
-            'Addis Ababa'
-          formik.setFieldValue('city', detected)
-          showToast(`City set to ${detected}`, 'success')
-        } catch {
-          formik.setFieldValue('city', 'Addis Ababa')
-          showToast('Location set to Addis Ababa', 'info')
-        } finally {
-          setIsDetectingCity(false)
-        }
-      },
-      () => {
-        setIsDetectingCity(false)
-        showToast('Could not access GPS location. Kept as Addis Ababa.', 'info')
-      },
-      { timeout: 7000 }
-    )
-  }
 
   const isTalent = role === 'Talent'
 
@@ -1480,44 +1467,23 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                   label="City *"
                   error={formik.touched.city ? formik.errors.city : undefined}
                 >
-                  <div className="relative">
-                    <input
-                      name="city"
-                      list="ethiopian-cities"
-                      value={formik.values.city}
-                      onChange={formik.handleChange}
-                      onBlur={formik.handleBlur}
-                      placeholder="Addis Ababa"
-                      className={getInputClass(Boolean(formik.touched.city && formik.errors.city), 'pr-10')}
-                    />
-                    <button
-                      type="button"
-                      onClick={detectUserCity}
-                      disabled={isDetectingCity}
-                      title="Detect current location"
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors disabled:opacity-50"
-                    >
-                      <span className={`material-symbols-outlined text-[18px] ${isDetectingCity ? 'animate-spin' : ''}`}>
-                        {isDetectingCity ? 'progress_activity' : 'my_location'}
-                      </span>
-                    </button>
-                    <datalist id="ethiopian-cities">
-                      <option value="Addis Ababa" />
-                      <option value="Hawassa" />
-                      <option value="Bahir Dar" />
-                      <option value="Dire Dawa" />
-                      <option value="Mekelle" />
-                      <option value="Adama" />
-                      <option value="Gondar" />
-                      <option value="Jimma" />
-                      <option value="Bishoftu" />
-                      <option value="Harar" />
-                      <option value="Jigjiga" />
-                      <option value="Arba Minch" />
-                      <option value="Dessie" />
-                      <option value="Shashamane" />
-                    </datalist>
-                  </div>
+                  <select
+                    name="city"
+                    value={formik.values.city}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    className={getInputClass(Boolean(formik.touched.city && formik.errors.city))}
+                  >
+                    <option value="">Select a city</option>
+                    {(formik.values.city && !ETHIOPIAN_CITIES.includes(formik.values.city)
+                      ? [formik.values.city, ...ETHIOPIAN_CITIES]
+                      : ETHIOPIAN_CITIES
+                    ).map((city) => (
+                      <option key={city} value={city}>
+                        {city}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
 
                 <Field label="Street address" visibilityKey="address" visibility={formik.values.profileVisibility} onToggleVisibility={toggleVisibility}>

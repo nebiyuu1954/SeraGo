@@ -52,6 +52,7 @@ public static class JobEndpoints
 
         group.MapGet("/", ListJobsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
         group.MapGet("/locations", ListLocationsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
+        group.MapGet("/job-types", ListJobTypesAsync).RequireRateLimiting("jobs_read").WithOpenApi();
         group.MapGet("/{id:guid}", GetJobAsync).RequireRateLimiting("jobs_read").WithOpenApi();
 
         group.MapPost("/", CreateJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();
@@ -245,6 +246,9 @@ public static class JobEndpoints
 
     /// <summary>The envelope's data for POST /api/jobs/for-you/match.</summary>
     public sealed record ForYouMatchResponse(int Scored, int Cached, int Total, string? Message);
+
+    /// <summary>Counts of jobs grouped by JobType for filter dropdowns.</summary>
+    public sealed record JobTypeCountResponse(string JobType, int Count);
 
     // ------------------------------------------------------------- Handlers
 
@@ -827,6 +831,57 @@ public static class JobEndpoints
         }
 
         return Results.Ok(locations);
+    }
+
+    /// <summary>
+    /// GET /api/jobs/job-types — count of active jobs grouped by JobType.
+    /// Supports ?forMe=true to scope counts to the candidate's followed sectors.
+    /// </summary>
+    [Authorize]
+    private static async Task<IResult> ListJobTypesAsync(
+        [FromQuery] bool? forMe,
+        ClaimsPrincipal claims,
+        UserManager<ApplicationUser> userManager,
+        ApplicationDbContext db,
+        CancellationToken ct)
+    {
+        var user = await userManager.GetUserAsync(claims);
+        if (user is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var q = db.Jobs.AsNoTracking()
+            .Where(j => j.Status == JobStatus.Published && j.IsActive
+                && (j.Deadline == null || j.Deadline > now.AddDays(-JobLifecycle.GraceDays)));
+
+        if (forMe == true)
+        {
+            var settings = await db.UserSettings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.UserId == user.Id, ct);
+            var prefs = UserSettingsReader.GetForYouSectorIds(settings?.Settings);
+            if (prefs.Count > 0)
+            {
+                var prefNames = await db.Sectors.AsNoTracking()
+                    .Where(s => prefs.Contains(s.Id))
+                    .Select(s => s.Name)
+                    .ToListAsync(ct);
+                q = q.Where(j => (j.SectorId != null && prefs.Contains(j.SectorId.Value))
+                    || (j.SectorName != null && prefNames.Contains(j.SectorName)));
+            }
+            else
+            {
+                return Results.Ok(Array.Empty<JobTypeCountResponse>());
+            }
+        }
+
+        var counts = await q
+            .GroupBy(j => j.JobType)
+            .Select(g => new JobTypeCountResponse(EnumCamel(g.Key.ToString()), g.Count()))
+            .ToListAsync(ct);
+
+        return Results.Ok(counts);
     }
 
     /// <summary>Placeholders that aren't real locations — never offered in the dropdown.</summary>

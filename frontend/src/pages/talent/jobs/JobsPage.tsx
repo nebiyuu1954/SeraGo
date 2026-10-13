@@ -5,6 +5,7 @@ import {
   useJobsQuery,
   useSectorsQuery,
   useJobLocationsQuery,
+  useJobTypesQuery,
   useSavedJobsQuery,
   useMyApplicationsQuery,
   useProfileQuery,
@@ -179,6 +180,16 @@ export default function JobsPage() {
 
   const { sectors } = useSectorsQuery(auth.status === 'authenticated')
   const { locations } = useJobLocationsQuery(auth.status === 'authenticated')
+  const { counts: forYouJobTypeCounts } = useJobTypesQuery(
+    true,
+    auth.status === 'authenticated',
+  )
+  const { counts: allJobTypeCounts } = useJobTypesQuery(
+    false,
+    auth.status === 'authenticated',
+  )
+  const activeJobTypeCounts =
+    view === 'forYou' ? forYouJobTypeCounts : allJobTypeCounts
 
   const forYouSectors = sectors.filter((s) =>
     prefSectorIds.includes(s.id.toLowerCase()),
@@ -780,11 +791,33 @@ export default function JobsPage() {
                     }
                     className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   >
-                    {JOB_TYPE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
+                    {JOB_TYPE_OPTIONS.map((option) => {
+                      if (!option.value) {
+                        return (
+                          <option key="" value="">
+                            All types
+                          </option>
+                        )
+                      }
+                      const count = activeJobTypeCounts
+                        ? activeJobTypeCounts[option.value]
+                        : undefined
+                      const hasCountData = count !== undefined
+                      // Only show job types that have jobs in this feed (or currently selected)
+                      if (
+                        hasCountData &&
+                        count === 0 &&
+                        currentFilters.draftJobType !== option.value
+                      ) {
+                        return null
+                      }
+                      return (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                          {hasCountData ? ` (${count})` : ''}
+                        </option>
+                      )
+                    })}
                   </select>
                 </div>
                 <div>

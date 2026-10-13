@@ -5,6 +5,7 @@ import type {
   JobListData,
   JobListParams,
   JobResponse,
+  JobTypeCountResponse,
   JobWriteRequest,
   JobViewsData,
   JobViewsStatsResponse,
@@ -76,6 +77,17 @@ export function fetchJobs(
 export function fetchJobLocations(accessToken: string): Promise<string[]> {
   return request<string[]>(API_ENDPOINTS.jobs.locations, {
     headers: auth(accessToken),
+  })
+}
+
+/** GET /api/jobs/job-types — count of active jobs grouped by JobType (filter dropdown). */
+export function fetchJobTypes(
+  forMe?: boolean,
+  accessToken?: string,
+): Promise<JobTypeCountResponse[]> {
+  const qs = forMe ? '?forMe=true' : ''
+  return request<JobTypeCountResponse[]>(`${API_ENDPOINTS.jobs.jobTypes}${qs}`, {
+    headers: accessToken ? auth(accessToken) : undefined,
   })
 }
 

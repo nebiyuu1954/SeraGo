@@ -14,6 +14,7 @@ export type {
   JobResponse,
   JobStatus,
   JobType,
+  JobTypeCountResponse,
   JobWriteRequest,
   WorkMode,
   ExternalAuthInfo,

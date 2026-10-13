@@ -27,6 +27,9 @@ export const queryKeys = {
   /** Distinct locations of the live feed. */
   jobLocations: ['jobLocations'] as const,
 
+  /** Available job types with counts for live feed (supports forMe scoping). */
+  jobTypes: (forMe?: boolean) => ['jobTypes', { forMe: !!forMe }] as const,
+
   /** Current user's profile (includes talent preferences). */
   profile: ['profile'] as const,
 

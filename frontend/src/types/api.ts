@@ -324,6 +324,12 @@ export type JobType =
 /** Work arrangement (where the work happens) — mirror of the API's WorkMode. */
 export type WorkMode = 'onsite' | 'remote' | 'hybrid'
 
+/** Job type count item from GET /api/jobs/job-types. */
+export interface JobTypeCountResponse {
+  jobType: JobType
+  count: number
+}
+
 /** A single job posting — the data item of GET /api/jobs. */
 export interface JobResponse {
   id: string

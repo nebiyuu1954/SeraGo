@@ -23,6 +23,7 @@ export {
   fetchJobViewsStats,
   fetchJob,
   fetchJobLocations,
+  fetchJobTypes,
   fetchJobs,
   rejectJob,
   restoreJob,
