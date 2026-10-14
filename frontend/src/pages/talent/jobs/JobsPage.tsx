@@ -13,7 +13,7 @@ import {
 import { useSettingsQuery } from '../../../hooks'
 import { prefetchJob } from '../../../hooks/useJobDetailQuery.ts'
 import { useRequireRole } from '../../../hooks'
-import type { JobResponse, JobType } from '../../../types'
+import type { JobResponse, JobType, SectorResponse } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import SaveJobButton from '../../../components/dashboard/SaveJobButton.tsx'
 import { useToast } from '../../../components/dashboard/Toast.tsx'
@@ -66,14 +66,6 @@ interface ViewFilterState {
   salaryMax: string
   sort: string
   page: number
-  draftJobType: JobType | ''
-  draftLocation: string
-  draftSector: string
-  draftSources: string[]
-  draftExperience: string
-  draftWorkArrangement: string
-  draftPostedWithin: string
-  draftClosingWithin: string
   draftSalaryMin: string
   draftSalaryMax: string
 }
@@ -93,14 +85,6 @@ const DEFAULT_FILTER_STATE: ViewFilterState = {
   salaryMax: '',
   sort: 'newest',
   page: 1,
-  draftJobType: '',
-  draftLocation: '',
-  draftSector: '',
-  draftSources: [],
-  draftExperience: '',
-  draftWorkArrangement: '',
-  draftPostedWithin: '',
-  draftClosingWithin: '',
   draftSalaryMin: '',
   draftSalaryMax: '',
 }
@@ -136,6 +120,7 @@ export default function JobsPage() {
   const [pageSize, setPageSize] = useState(10)
   // The right-hand filter panel is a collapsible sidebar, expanded by default.
   const [filtersOpen, setFiltersOpen] = useState(true)
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
 
   // --- SWR-cached data (shared across all mounted instances) ---
 
@@ -226,6 +211,48 @@ export default function JobsPage() {
     return () => clearTimeout(t)
   }, [allJobsFilters.searchInput])
 
+  // Debounced salary inputs for "For you" feed
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setForYouFilters((prev) => {
+        if (
+          prev.salaryMin === prev.draftSalaryMin &&
+          prev.salaryMax === prev.draftSalaryMax
+        ) {
+          return prev
+        }
+        return {
+          ...prev,
+          salaryMin: prev.draftSalaryMin,
+          salaryMax: prev.draftSalaryMax,
+          page: 1,
+        }
+      })
+    }, 400)
+    return () => clearTimeout(t)
+  }, [forYouFilters.draftSalaryMin, forYouFilters.draftSalaryMax])
+
+  // Debounced salary inputs for "All jobs" feed
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setAllJobsFilters((prev) => {
+        if (
+          prev.salaryMin === prev.draftSalaryMin &&
+          prev.salaryMax === prev.draftSalaryMax
+        ) {
+          return prev
+        }
+        return {
+          ...prev,
+          salaryMin: prev.draftSalaryMin,
+          salaryMax: prev.draftSalaryMax,
+          page: 1,
+        }
+      })
+    }, 400)
+    return () => clearTimeout(t)
+  }, [allJobsFilters.draftSalaryMin, allJobsFilters.draftSalaryMax])
+
   // GA4: report the applied (debounced) search term once per query
   useEffect(() => {
     if (!currentFilters.appliedQ) return
@@ -294,48 +321,26 @@ export default function JobsPage() {
 
   const { showToast } = useToast()
 
-  const filtersDirty =
-    currentFilters.appliedQ !== '' ||
-    currentFilters.jobType !== '' ||
-    currentFilters.location.trim() !== '' ||
-    currentFilters.sectorId !== '' ||
-    currentFilters.sources.length > 0 ||
-    currentFilters.experience !== '' ||
-    currentFilters.workArrangement !== '' ||
-    currentFilters.postedWithin !== '' ||
-    currentFilters.closingWithin !== '' ||
-    currentFilters.salaryMin !== '' ||
-    currentFilters.salaryMax !== '' ||
-    currentFilters.draftJobType !== '' ||
-    currentFilters.draftLocation.trim() !== '' ||
-    currentFilters.draftSector !== '' ||
-    currentFilters.draftSources.length > 0 ||
-    currentFilters.draftExperience !== '' ||
-    currentFilters.draftWorkArrangement !== '' ||
-    currentFilters.draftPostedWithin !== '' ||
-    currentFilters.draftClosingWithin !== '' ||
-    currentFilters.draftSalaryMin !== '' ||
-    currentFilters.draftSalaryMax !== ''
+  const activeFilterCount =
+    (currentFilters.jobType !== '' ? 1 : 0) +
+    (currentFilters.location.trim() !== '' ? 1 : 0) +
+    (currentFilters.sectorId !== '' ? 1 : 0) +
+    currentFilters.sources.length +
+    (currentFilters.experience !== '' ? 1 : 0) +
+    (currentFilters.workArrangement !== '' ? 1 : 0) +
+    (currentFilters.postedWithin !== '' ? 1 : 0) +
+    (currentFilters.closingWithin !== '' ? 1 : 0) +
+    (currentFilters.salaryMin ||
+    currentFilters.salaryMax ||
+    currentFilters.draftSalaryMin ||
+    currentFilters.draftSalaryMax
+      ? 1
+      : 0)
+
+  const filtersDirty = currentFilters.appliedQ !== '' || activeFilterCount > 0
 
   const setView = (next: 'forYou' | 'all') => {
     setSearchParams(next === 'forYou' ? {} : { view: 'all' }, { replace: true })
-  }
-
-  const applyFilters = () => {
-    setCurrentFilters((prev) => ({
-      ...prev,
-      jobType: prev.draftJobType,
-      location: prev.draftLocation,
-      sectorId: prev.draftSector,
-      sources: prev.draftSources,
-      experience: prev.draftExperience,
-      workArrangement: prev.draftWorkArrangement,
-      postedWithin: prev.draftPostedWithin,
-      closingWithin: prev.draftClosingWithin,
-      salaryMin: prev.draftSalaryMin,
-      salaryMax: prev.draftSalaryMax,
-      page: 1,
-    }))
   }
 
   const clearFilters = () => {
@@ -353,18 +358,37 @@ export default function JobsPage() {
       closingWithin: '',
       salaryMin: '',
       salaryMax: '',
-      draftJobType: '',
-      draftLocation: '',
-      draftSector: '',
-      draftSources: [],
-      draftExperience: '',
-      draftWorkArrangement: '',
-      draftPostedWithin: '',
-      draftClosingWithin: '',
       draftSalaryMin: '',
       draftSalaryMax: '',
       page: 1,
     }))
+  }
+
+  const removeFilter = (key: keyof ViewFilterState, valueToRemove?: string) => {
+    setCurrentFilters((prev) => {
+      if (key === 'sources' && valueToRemove) {
+        return {
+          ...prev,
+          sources: prev.sources.filter((s) => s !== valueToRemove),
+          page: 1,
+        }
+      }
+      if (key === 'salaryMin' || key === 'salaryMax') {
+        return {
+          ...prev,
+          salaryMin: '',
+          salaryMax: '',
+          draftSalaryMin: '',
+          draftSalaryMax: '',
+          page: 1,
+        }
+      }
+      return {
+        ...prev,
+        [key]: '',
+        page: 1,
+      }
+    })
   }
 
   // --- "Run AI matching" (For You view) ---
@@ -535,7 +559,24 @@ export default function JobsPage() {
             className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest py-2 pl-10 pr-4 font-body-md text-body-md text-on-surface transition-colors placeholder:text-on-surface-variant/60 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Mobile Filter Button (visible only on < lg) */}
+          <button
+            type="button"
+            onClick={() => setMobileFilterOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low lg:hidden"
+          >
+            <span className="material-symbols-outlined text-lg text-primary">
+              tune
+            </span>
+            <span>Filters</span>
+            {activeFilterCount > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-bold text-on-primary">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+
           {filtersDirty && (
             <button
               type="button"
@@ -613,6 +654,217 @@ export default function JobsPage() {
                   {matching ? 'Matching jobs…' : 'Run AI matching'}
                 </button>
               )}
+            </div>
+          )}
+
+          {/* Active filter chips */}
+          {activeFilterCount > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="font-label-sm text-label-sm font-medium text-on-surface-variant">
+                Active filters:
+              </span>
+
+              {/* Job Type chip */}
+              {currentFilters.jobType && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary-container/20 py-1 pl-3 pr-1.5 font-label-sm text-label-sm font-medium text-primary">
+                  <span>
+                    Type:{' '}
+                    {JOB_TYPE_LABELS[currentFilters.jobType as JobType] ??
+                      currentFilters.jobType}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeFilter('jobType')}
+                    aria-label="Remove job type filter"
+                    className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-primary/20"
+                  >
+                    <span className="material-symbols-outlined text-xs">
+                      close
+                    </span>
+                  </button>
+                </span>
+              )}
+
+              {/* Location chip */}
+              {currentFilters.location.trim() && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary-container/20 py-1 pl-3 pr-1.5 font-label-sm text-label-sm font-medium text-primary">
+                  <span>Location: {currentFilters.location}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeFilter('location')}
+                    aria-label="Remove location filter"
+                    className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-primary/20"
+                  >
+                    <span className="material-symbols-outlined text-xs">
+                      close
+                    </span>
+                  </button>
+                </span>
+              )}
+
+              {/* Sector chip */}
+              {currentFilters.sectorId && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary-container/20 py-1 pl-3 pr-1.5 font-label-sm text-label-sm font-medium text-primary">
+                  <span>
+                    Sector:{' '}
+                    {sectors.find((s) => s.id === currentFilters.sectorId)
+                      ?.name ?? 'Selected sector'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeFilter('sectorId')}
+                    aria-label="Remove sector filter"
+                    className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-primary/20"
+                  >
+                    <span className="material-symbols-outlined text-xs">
+                      close
+                    </span>
+                  </button>
+                </span>
+              )}
+
+              {/* Work Arrangement chip */}
+              {currentFilters.workArrangement && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary-container/20 py-1 pl-3 pr-1.5 font-label-sm text-label-sm font-medium text-primary">
+                  <span>
+                    Work:{' '}
+                    {WORK_ARRANGEMENT_OPTIONS.find(
+                      (w) => w.value === currentFilters.workArrangement,
+                    )?.label ?? currentFilters.workArrangement}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeFilter('workArrangement')}
+                    aria-label="Remove work arrangement filter"
+                    className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-primary/20"
+                  >
+                    <span className="material-symbols-outlined text-xs">
+                      close
+                    </span>
+                  </button>
+                </span>
+              )}
+
+              {/* Experience chip */}
+              {currentFilters.experience && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary-container/20 py-1 pl-3 pr-1.5 font-label-sm text-label-sm font-medium text-primary">
+                  <span>
+                    Exp:{' '}
+                    {EXPERIENCE_OPTIONS.find(
+                      (e) => e.value === currentFilters.experience,
+                    )?.label ?? currentFilters.experience}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeFilter('experience')}
+                    aria-label="Remove experience filter"
+                    className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-primary/20"
+                  >
+                    <span className="material-symbols-outlined text-xs">
+                      close
+                    </span>
+                  </button>
+                </span>
+              )}
+
+              {/* Sources chips */}
+              {currentFilters.sources.map((src) => {
+                const label =
+                  SOURCE_OPTIONS.find((s) => s.value === src)?.label ?? src
+                return (
+                  <span
+                    key={src}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary-container/20 py-1 pl-3 pr-1.5 font-label-sm text-label-sm font-medium text-primary"
+                  >
+                    <span>Source: {label}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeFilter('sources', src)}
+                      aria-label={`Remove ${label} source filter`}
+                      className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-primary/20"
+                    >
+                      <span className="material-symbols-outlined text-xs">
+                        close
+                      </span>
+                    </button>
+                  </span>
+                )
+              })}
+
+              {/* Posted within chip */}
+              {currentFilters.postedWithin && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary-container/20 py-1 pl-3 pr-1.5 font-label-sm text-label-sm font-medium text-primary">
+                  <span>
+                    {POSTED_WITHIN_OPTIONS.find(
+                      (p) => p.value === currentFilters.postedWithin,
+                    )?.label ?? 'Recent'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeFilter('postedWithin')}
+                    aria-label="Remove posted within filter"
+                    className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-primary/20"
+                  >
+                    <span className="material-symbols-outlined text-xs">
+                      close
+                    </span>
+                  </button>
+                </span>
+              )}
+
+              {/* Closing within chip */}
+              {currentFilters.closingWithin && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary-container/20 py-1 pl-3 pr-1.5 font-label-sm text-label-sm font-medium text-primary">
+                  <span>
+                    {CLOSING_WITHIN_OPTIONS.find(
+                      (c) => c.value === currentFilters.closingWithin,
+                    )?.label ?? 'Closing'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeFilter('closingWithin')}
+                    aria-label="Remove closing within filter"
+                    className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-primary/20"
+                  >
+                    <span className="material-symbols-outlined text-xs">
+                      close
+                    </span>
+                  </button>
+                </span>
+              )}
+
+              {/* Salary chip */}
+              {(currentFilters.salaryMin || currentFilters.salaryMax) && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary-container/20 py-1 pl-3 pr-1.5 font-label-sm text-label-sm font-medium text-primary">
+                  <span>
+                    Salary:{' '}
+                    {currentFilters.salaryMin && currentFilters.salaryMax
+                      ? `${Number(currentFilters.salaryMin).toLocaleString()} – ${Number(currentFilters.salaryMax).toLocaleString()} ETB`
+                      : currentFilters.salaryMin
+                        ? `≥ ${Number(currentFilters.salaryMin).toLocaleString()} ETB`
+                        : `≤ ${Number(currentFilters.salaryMax).toLocaleString()} ETB`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeFilter('salaryMin')}
+                    aria-label="Remove salary filter"
+                    className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-primary/20"
+                  >
+                    <span className="material-symbols-outlined text-xs">
+                      close
+                    </span>
+                  </button>
+                </span>
+              )}
+
+              {/* Clear all text button */}
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="ml-1 font-label-sm text-label-sm text-on-surface-variant transition-colors hover:text-primary hover:underline"
+              >
+                Clear all
+              </button>
             </div>
           )}
 
@@ -722,289 +974,72 @@ export default function JobsPage() {
           )}
         </div>
 
-        {/* Right: collapsible filter panel — expanded by default */}
-        <aside className="w-full shrink-0 lg:sticky lg:top-20 lg:w-64">
-          <div className="rounded-xl border border-surface-variant bg-surface-container-lowest shadow-sm">
-            <button
-              type="button"
-              onClick={() => setFiltersOpen((o) => !o)}
-              aria-expanded={filtersOpen}
-              className="flex w-full items-center justify-between gap-2 px-4 py-3.5 font-label-md text-label-md font-semibold text-on-surface"
-            >
-              <span className="flex items-center gap-2">
+        {/* Right: desktop sticky filter panel with independent scroll containment */}
+        <aside className="hidden lg:block w-72 shrink-0 lg:sticky lg:top-20">
+          <div className="flex flex-col rounded-xl border border-surface-variant bg-surface-container-lowest shadow-sm lg:max-h-[calc(100vh-6rem)]">
+            {/* Pinned Header */}
+            <div className="flex items-center justify-between border-b border-surface-variant px-4 py-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setFiltersOpen((o) => !o)}
+                aria-expanded={filtersOpen}
+                className="flex items-center gap-2 font-label-md text-label-md font-semibold text-on-surface hover:text-primary transition-colors"
+              >
                 <span className="material-symbols-outlined text-lg text-primary">
                   tune
                 </span>
-                Filters
-                {filtersDirty && (
-                  <span
-                    aria-hidden="true"
-                    className="h-2 w-2 rounded-full bg-accent"
-                  />
+                <span>Filters</span>
+                {activeFilterCount > 0 && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/15 px-1.5 text-xs font-bold text-primary">
+                    {activeFilterCount}
+                  </span>
                 )}
-              </span>
-              <span className="material-symbols-outlined text-lg text-on-surface-variant transition-transform">
-                {filtersOpen ? 'expand_less' : 'expand_more'}
-              </span>
-            </button>
+                <span className="material-symbols-outlined text-base text-on-surface-variant">
+                  {filtersOpen ? 'expand_less' : 'expand_more'}
+                </span>
+              </button>
+              {activeFilterCount > 0 && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="font-label-sm text-label-sm font-medium text-primary transition-colors hover:underline"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+
+            {/* Scrollable Filter List - Isolated Scroll with overscroll-contain */}
             {filtersOpen && (
-              <div className="space-y-4 border-t border-surface-variant px-4 py-4">
-                <div>
-                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
-                    Website
-                  </label>
-                  <div className="mt-2 space-y-1.5">
-                    {SOURCE_OPTIONS.map((option) => (
-                      <label
-                        key={option.value}
-                        className="flex cursor-pointer items-center gap-2 font-body-md text-body-md text-on-surface"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={currentFilters.draftSources.includes(option.value)}
-                          onChange={(e) => {
-                            setCurrentFilters((prev) => ({
-                              ...prev,
-                              draftSources: e.target.checked
-                                ? [...prev.draftSources, option.value]
-                                : prev.draftSources.filter((v) => v !== option.value),
-                            }))
-                          }}
-                          className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-primary"
-                        />
-                        {option.label}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
-                    Job type
-                  </label>
-                  <select
-                    value={currentFilters.draftJobType}
-                    onChange={(e) =>
-                      setCurrentFilters((prev) => ({
-                        ...prev,
-                        draftJobType: e.target.value as JobType | '',
-                      }))
-                    }
-                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    {JOB_TYPE_OPTIONS.map((option) => {
-                      if (!option.value) {
-                        return (
-                          <option key="" value="">
-                            All types
-                          </option>
-                        )
-                      }
-                      const count = activeJobTypeCounts
-                        ? activeJobTypeCounts[option.value]
-                        : undefined
-                      const hasCountData = count !== undefined
-                      // Only show job types that have jobs in this feed (or currently selected)
-                      if (
-                        hasCountData &&
-                        count === 0 &&
-                        currentFilters.draftJobType !== option.value
-                      ) {
-                        return null
-                      }
-                      return (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                          {hasCountData ? ` (${count})` : ''}
-                        </option>
-                      )
-                    })}
-                  </select>
-                </div>
-                <div>
-                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
-                    Work arrangement
-                  </label>
-                  <select
-                    value={currentFilters.draftWorkArrangement}
-                    onChange={(e) =>
-                      setCurrentFilters((prev) => ({
-                        ...prev,
-                        draftWorkArrangement: e.target.value,
-                      }))
-                    }
-                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    {WORK_ARRANGEMENT_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
-                    Location
-                  </label>
-                  <select
-                    value={currentFilters.draftLocation}
-                    onChange={(e) =>
-                      setCurrentFilters((prev) => ({
-                        ...prev,
-                        draftLocation: e.target.value,
-                      }))
-                    }
-                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    <option value="">All locations</option>
-                    {locations.map((location) => (
-                      <option key={location} value={location}>
-                        {location}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
-                    Sector
-                  </label>
-                  <select
-                    value={currentFilters.draftSector}
-                    onChange={(e) =>
-                      setCurrentFilters((prev) => ({
-                        ...prev,
-                        draftSector: e.target.value,
-                      }))
-                    }
-                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    <option value="">
-                      {view === 'forYou' ? 'All followed sectors' : 'All sectors'}
-                    </option>
-                    {(view === 'forYou'
-                      ? (forYouSectors.length > 0 ? forYouSectors : sectors)
-                      : sectors
-                    ).map((sector) => (
-                      <option key={sector.id} value={sector.id}>
-                        {sector.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
-                    Experience level
-                  </label>
-                  <select
-                    value={currentFilters.draftExperience}
-                    onChange={(e) =>
-                      setCurrentFilters((prev) => ({
-                        ...prev,
-                        draftExperience: e.target.value,
-                      }))
-                    }
-                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    {EXPERIENCE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
-                    Posted within
-                  </label>
-                  <select
-                    value={currentFilters.draftPostedWithin}
-                    onChange={(e) =>
-                      setCurrentFilters((prev) => ({
-                        ...prev,
-                        draftPostedWithin: e.target.value,
-                      }))
-                    }
-                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    {POSTED_WITHIN_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
-                    Closing within
-                  </label>
-                  <select
-                    value={currentFilters.draftClosingWithin}
-                    onChange={(e) =>
-                      setCurrentFilters((prev) => ({
-                        ...prev,
-                        draftClosingWithin: e.target.value,
-                      }))
-                    }
-                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    {CLOSING_WITHIN_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
-                    Min salary (ETB)
-                  </label>
-                  <input
-                    type="number"
-                    value={currentFilters.draftSalaryMin}
-                    onChange={(e) =>
-                      setCurrentFilters((prev) => ({
-                        ...prev,
-                        draftSalaryMin: e.target.value,
-                      }))
-                    }
-                    placeholder="e.g. 20000"
-                    min="0"
-                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-                <div>
-                  <label className="font-label-sm text-label-sm font-medium text-on-surface">
-                    Max salary (ETB)
-                  </label>
-                  <input
-                    type="number"
-                    value={currentFilters.draftSalaryMax}
-                    onChange={(e) =>
-                      setCurrentFilters((prev) => ({
-                        ...prev,
-                        draftSalaryMax: e.target.value,
-                      }))
-                    }
-                    placeholder="e.g. 80000"
-                    min="0"
-                    className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-                <div className="flex gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={clearFilters}
-                    className="flex-1 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low"
-                  >
-                    Clear filters
-                  </button>
-                  <button
-                    type="button"
-                    onClick={applyFilters}
-                    className="flex-1 rounded-lg bg-primary px-4 py-2 font-label-md text-label-md font-medium text-on-primary transition-opacity hover:opacity-90"
-                  >
-                    Apply
-                  </button>
-                </div>
+              <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 space-y-4">
+                <FilterFields
+                  filters={currentFilters}
+                  onFilterChange={(key, val) => {
+                    setCurrentFilters((prev) => ({
+                      ...prev,
+                      [key]: val,
+                      page: 1,
+                    }))
+                  }}
+                  activeJobTypeCounts={activeJobTypeCounts}
+                  locations={locations}
+                  sectors={sectors}
+                  forYouSectors={forYouSectors}
+                  view={view}
+                />
+              </div>
+            )}
+
+            {/* Pinned Footer if any filters are active */}
+            {filtersOpen && activeFilterCount > 0 && (
+              <div className="border-t border-surface-variant p-3 shrink-0 bg-surface-container-lowest">
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest py-2 font-label-md text-label-md font-medium text-on-surface transition-colors hover:bg-surface-container-low"
+                >
+                  Reset all filters
+                </button>
               </div>
             )}
           </div>
@@ -1017,7 +1052,310 @@ export default function JobsPage() {
         onClose={() => setOnboardingOpen(false)}
         onSectorsSaved={handleSectorsSaved}
       />
+
+      {/* Mobile / Tablet Filter Drawer */}
+      {mobileFilterOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
+            onClick={() => setMobileFilterOpen(false)}
+            aria-hidden="true"
+          />
+
+          {/* Drawer container */}
+          <div className="fixed inset-y-0 right-0 flex w-full max-w-sm flex-col bg-surface-container-lowest shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-surface-variant px-5 py-4 shrink-0">
+              <div className="flex items-center gap-2 font-title-medium font-semibold text-on-surface">
+                <span className="material-symbols-outlined text-xl text-primary">
+                  tune
+                </span>
+                <span>Filter jobs</span>
+                {activeFilterCount > 0 && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/15 px-1.5 text-xs font-bold text-primary">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileFilterOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-low"
+                aria-label="Close filters"
+              >
+                <span className="material-symbols-outlined text-xl">close</span>
+              </button>
+            </div>
+
+            {/* Scrollable Body */}
+            <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5 space-y-5">
+              <FilterFields
+                filters={currentFilters}
+                onFilterChange={(key, val) => {
+                  setCurrentFilters((prev) => ({
+                    ...prev,
+                    [key]: val,
+                    page: 1,
+                  }))
+                }}
+                activeJobTypeCounts={activeJobTypeCounts}
+                locations={locations}
+                sectors={sectors}
+                forYouSectors={forYouSectors}
+                view={view}
+              />
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center gap-3 border-t border-surface-variant p-4 shrink-0 bg-surface-container-lowest">
+              {activeFilterCount > 0 && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="flex-1 rounded-lg border border-outline-variant py-2.5 font-label-md text-label-md font-medium text-on-surface transition-colors hover:bg-surface-container-low"
+                >
+                  Clear all
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setMobileFilterOpen(false)}
+                className="flex-1 rounded-lg bg-primary py-2.5 font-label-md text-label-md font-medium text-on-primary transition-opacity hover:opacity-90 shadow-sm"
+              >
+                {pagination ? `Show ${pagination.totalCount} results` : 'Done'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardShell>
+  )
+}
+
+/* ------------------------------------------------------------- Filter Fields */
+
+interface FilterFieldsProps {
+  filters: ViewFilterState
+  onFilterChange: <K extends keyof ViewFilterState>(
+    key: K,
+    value: ViewFilterState[K],
+  ) => void
+  activeJobTypeCounts?: Record<JobType, number> | null
+  locations: string[]
+  sectors: SectorResponse[]
+  forYouSectors: SectorResponse[]
+  view: 'forYou' | 'all'
+}
+
+function FilterFields({
+  filters,
+  onFilterChange,
+  activeJobTypeCounts,
+  locations,
+  sectors,
+  forYouSectors,
+  view,
+}: FilterFieldsProps) {
+  return (
+    <>
+      <div>
+        <label className="font-label-sm text-label-sm font-medium text-on-surface">
+          Website
+        </label>
+        <div className="mt-2 space-y-1.5">
+          {SOURCE_OPTIONS.map((option) => (
+            <label
+              key={option.value}
+              className="flex cursor-pointer items-center gap-2 font-body-md text-body-md text-on-surface"
+            >
+              <input
+                type="checkbox"
+                checked={filters.sources.includes(option.value)}
+                onChange={(e) => {
+                  const newSources = e.target.checked
+                    ? [...filters.sources, option.value]
+                    : filters.sources.filter((v) => v !== option.value)
+                  onFilterChange('sources', newSources)
+                }}
+                className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-primary"
+              />
+              {option.label}
+            </label>
+          ))}
+        </div>
+      </div>
+      <div>
+        <label className="font-label-sm text-label-sm font-medium text-on-surface">
+          Job type
+        </label>
+        <select
+          value={filters.jobType}
+          onChange={(e) =>
+            onFilterChange('jobType', (e.target.value as JobType) || '')
+          }
+          className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          {JOB_TYPE_OPTIONS.map((option) => {
+            if (!option.value) {
+              return (
+                <option key="" value="">
+                  All types
+                </option>
+              )
+            }
+            const count = activeJobTypeCounts
+              ? activeJobTypeCounts[option.value as JobType]
+              : undefined
+            const hasCountData = count !== undefined
+            if (
+              hasCountData &&
+              count === 0 &&
+              filters.jobType !== option.value
+            ) {
+              return null
+            }
+            return (
+              <option key={option.value} value={option.value}>
+                {option.label}
+                {hasCountData ? ` (${count})` : ''}
+              </option>
+            )
+          })}
+        </select>
+      </div>
+      <div>
+        <label className="font-label-sm text-label-sm font-medium text-on-surface">
+          Work arrangement
+        </label>
+        <select
+          value={filters.workArrangement}
+          onChange={(e) => onFilterChange('workArrangement', e.target.value)}
+          className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          {WORK_ARRANGEMENT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="font-label-sm text-label-sm font-medium text-on-surface">
+          Location
+        </label>
+        <select
+          value={filters.location}
+          onChange={(e) => onFilterChange('location', e.target.value)}
+          className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          <option value="">All locations</option>
+          {locations.map((location) => (
+            <option key={location} value={location}>
+              {location}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="font-label-sm text-label-sm font-medium text-on-surface">
+          Sector
+        </label>
+        <select
+          value={filters.sectorId}
+          onChange={(e) => onFilterChange('sectorId', e.target.value)}
+          className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          <option value="">
+            {view === 'forYou' ? 'All followed sectors' : 'All sectors'}
+          </option>
+          {(view === 'forYou'
+            ? forYouSectors.length > 0
+              ? forYouSectors
+              : sectors
+            : sectors
+          ).map((sector) => (
+            <option key={sector.id} value={sector.id}>
+              {sector.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="font-label-sm text-label-sm font-medium text-on-surface">
+          Experience level
+        </label>
+        <select
+          value={filters.experience}
+          onChange={(e) => onFilterChange('experience', e.target.value)}
+          className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          {EXPERIENCE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="font-label-sm text-label-sm font-medium text-on-surface">
+          Posted within
+        </label>
+        <select
+          value={filters.postedWithin}
+          onChange={(e) => onFilterChange('postedWithin', e.target.value)}
+          className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          {POSTED_WITHIN_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="font-label-sm text-label-sm font-medium text-on-surface">
+          Closing within
+        </label>
+        <select
+          value={filters.closingWithin}
+          onChange={(e) => onFilterChange('closingWithin', e.target.value)}
+          className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          {CLOSING_WITHIN_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="font-label-sm text-label-sm font-medium text-on-surface">
+          Min salary (ETB)
+        </label>
+        <input
+          type="number"
+          value={filters.draftSalaryMin}
+          onChange={(e) => onFilterChange('draftSalaryMin', e.target.value)}
+          placeholder="e.g. 20000"
+          min="0"
+          className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+      </div>
+      <div>
+        <label className="font-label-sm text-label-sm font-medium text-on-surface">
+          Max salary (ETB)
+        </label>
+        <input
+          type="number"
+          value={filters.draftSalaryMax}
+          onChange={(e) => onFilterChange('draftSalaryMax', e.target.value)}
+          placeholder="e.g. 80000"
+          min="0"
+          className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+      </div>
+    </>
   )
 }
 
