@@ -187,7 +187,7 @@ public sealed class ScrapedJobSyncService
                 ? existing
                 : null;
 
-            var jobType = MapJobType(ReadString(reader, "job_type"));
+            var rawJobType = ReadString(reader, "job_type");
             var publishedAt = ReadDateTime(reader, "published_at");
             var deadline = ReadDateTime(reader, "deadline");
             var description = ReadString(reader, "description") ?? string.Empty;
@@ -239,6 +239,14 @@ public sealed class ScrapedJobSyncService
             var reporterTypeText = ReadString(reader, "reporter_type_text");
             var reporterPosted = ReadString(reader, "reporter_posted");
             var refreshedAt = ReadDateTime(reader, "refreshed_at");
+
+            // Tolerant job-type resolution: combine raw job_type with title,
+            // description, and source-specific employment text as fallback.
+            var jobType = MapJobType(
+                rawJobType,
+                title,
+                description,
+                employmentText ?? jobTime ?? geezJobType ?? reporterTypeText);
 
             // Resolve the best company logo: prefer per-site logos over the universal one.
             var bestLogo = logo;
@@ -618,8 +626,54 @@ public sealed class ScrapedJobSyncService
         _ => slug,
     };
 
-    /// <summary>Tolerant job-type mapping.</summary>
-    private static JobType MapJobType(string? value)
+    /// <summary>Tolerant job-type mapping with fallback extraction from title, description, and source employment text.</summary>
+    private static JobType MapJobType(string? value, string? title = null, string? description = null, string? employmentText = null)
+    {
+        var resolved = ResolveJobType(value);
+        if (resolved != JobType.Other)
+        {
+            return resolved;
+        }
+
+        if (!string.IsNullOrWhiteSpace(employmentText))
+        {
+            var fromEmployment = ResolveJobType(employmentText);
+            if (fromEmployment != JobType.Other)
+            {
+                return fromEmployment;
+            }
+        }
+
+        var combinedText = $"{title} {description}".ToLowerInvariant();
+        if (System.Text.RegularExpressions.Regex.IsMatch(combinedText, @"\b(full[- ]time|permanent|fulltime)\b"))
+        {
+            return JobType.FullTime;
+        }
+        if (System.Text.RegularExpressions.Regex.IsMatch(combinedText, @"\b(part[- ]time|parttime)\b"))
+        {
+            return JobType.PartTime;
+        }
+        if (System.Text.RegularExpressions.Regex.IsMatch(combinedText, @"\b(internship|intern)\b"))
+        {
+            return JobType.Internship;
+        }
+        if (System.Text.RegularExpressions.Regex.IsMatch(combinedText, @"\b(contract(ual)?|fixed[- ]term|consultan(t|cy)|tor\b)"))
+        {
+            return JobType.Contract;
+        }
+        if (System.Text.RegularExpressions.Regex.IsMatch(combinedText, @"\b(freelance|freelancer)\b"))
+        {
+            return JobType.Freelance;
+        }
+        if (System.Text.RegularExpressions.Regex.IsMatch(combinedText, @"\b(temporary|temp)\b"))
+        {
+            return JobType.Temporary;
+        }
+
+        return JobType.Other;
+    }
+
+    private static JobType ResolveJobType(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -632,7 +686,7 @@ public sealed class ScrapedJobSyncService
         if (text.Contains("intern")) return JobType.Internship;
         if (text.Contains("freelance")) return JobType.Freelance;
         if (text.Contains("temporary")) return JobType.Temporary;
-        if (text.Contains("full")) return JobType.FullTime;
+        if (text.Contains("full") || text.Contains("permanent")) return JobType.FullTime;
         return JobType.Other;
     }
 
