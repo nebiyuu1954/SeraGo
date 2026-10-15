@@ -560,8 +560,26 @@ function ReviewTab() {
     setReviewLoading(true)
     setError(null)
     try {
-      const data = await fetchJobs({ uncategorized: true, pageSize: 50 }, token)
-      setUncategorized(data.items)
+      // 1. Fetch first page of uncategorized jobs
+      const firstPage = await fetchJobs({ uncategorized: true, page: 1, pageSize: 50 }, token)
+      let allItems = [...firstPage.items]
+      const totalPages = firstPage.pagination?.totalPages ?? 1
+
+      // 2. If more pages exist, fetch all remaining pages in parallel so ALL uncategorized jobs are loaded into memory
+      if (totalPages > 1) {
+        const remainingPromises = []
+        for (let p = 2; p <= totalPages; p++) {
+          remainingPromises.push(
+            fetchJobs({ uncategorized: true, page: p, pageSize: 50 }, token),
+          )
+        }
+        const restResults = await Promise.all(remainingPromises)
+        for (const res of restResults) {
+          allItems = allItems.concat(res.items)
+        }
+      }
+
+      setUncategorized(allItems)
     } catch (err) {
       setError(getApiErrorMessage(err))
     } finally {
@@ -619,7 +637,7 @@ function ReviewTab() {
             Safe to run repeatedly.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={runAiClassification}
@@ -635,7 +653,7 @@ function ReviewTab() {
                 Classifying…
               </>
             ) : (
-              'Classify with AI'
+              uncategorized.length > 0 ? `Classify with AI (${uncategorized.length})` : 'Classify with AI'
             )}
           </button>
           <button
@@ -645,7 +663,7 @@ function ReviewTab() {
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-surface-variant bg-surface-container-low px-5 py-3 font-label-md text-label-md font-medium text-on-surface transition-colors hover:bg-surface-container-high disabled:pointer-events-none disabled:opacity-50"
           >
             <span className="material-symbols-outlined text-lg">content_copy</span>
-            Copy prompt
+            {uncategorized.length > 0 ? `Copy prompt (${uncategorized.length})` : 'Copy prompt'}
           </button>
           <button
             type="button"
@@ -721,13 +739,42 @@ function ReviewTab() {
 
       {/* Uncategorized review queue */}
       <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-5 shadow-sm">
-        <h3 className="font-label-md text-label-md font-semibold text-on-surface">
-          Uncategorized jobs
-        </h3>
-        <p className="mt-0.5 font-label-sm text-label-sm text-on-surface-variant">
-          Jobs the normalizer couldn't place — assign a sector or leave them
-          for a future alias.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h3 className="font-label-md text-label-md font-semibold text-on-surface">
+                Uncategorized jobs
+              </h3>
+              {!reviewLoading && (
+                <span
+                  className={cn(
+                    'rounded-full px-2.5 py-0.5 font-label-sm text-label-sm font-semibold border',
+                    uncategorized.length > 0
+                      ? 'bg-amber-100 text-amber-900 border-amber-300'
+                      : 'bg-emerald-100 text-emerald-800 border-emerald-300',
+                  )}
+                >
+                  {uncategorized.length > 0
+                    ? `${uncategorized.length} uncategorized`
+                    : 'All categorized'}
+                </span>
+              )}
+            </div>
+            <p className="mt-0.5 font-label-sm text-label-sm text-on-surface-variant">
+              Jobs the normalizer couldn't place — assign a sector, classify with internal AI, or export a prompt to external LLMs.
+            </p>
+          </div>
+          {uncategorized.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setCopyPromptOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-1.5 font-label-sm text-label-sm font-medium text-primary hover:bg-primary/20 transition-colors"
+            >
+              <span className="material-symbols-outlined text-base">content_copy</span>
+              <span>Export batch prompt</span>
+            </button>
+          )}
+        </div>
 
         {reviewLoading ? (
           <div className="flex items-center justify-center py-10">

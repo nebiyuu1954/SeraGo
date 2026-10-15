@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { JobResponse, SectorDetailResponse } from '../../../types'
 import { setJobSector, bulkSetJobSectors, getApiErrorMessage } from '../../../api'
 import {
@@ -108,12 +108,25 @@ export default function CopyPromptModal({
   )
   const [rateLimitCountdown, setRateLimitCountdown] = useState<number | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [jobLimit, setJobLimit] = useState<number>(10)
 
-  // Generate the formatted prompt
+  // Reset to default 10 jobs whenever the modal opens
+  useEffect(() => {
+    if (open) {
+      setJobLimit(10)
+    }
+  }, [open])
+
+  const effectiveLimit = Math.max(1, Math.min(jobLimit, jobs.length || 1))
+  const selectedJobs = useMemo(() => {
+    return jobs.slice(0, effectiveLimit)
+  }, [jobs, effectiveLimit])
+
+  // Generate the formatted prompt using the selected batch of jobs
   const generatedPrompt = useMemo(() => {
-    if (!open || jobs.length === 0 || sectors.length === 0) return ''
-    return buildSectorClassificationPrompt(jobs, sectors)
-  }, [open, jobs, sectors])
+    if (!open || selectedJobs.length === 0 || sectors.length === 0) return ''
+    return buildSectorClassificationPrompt(selectedJobs, sectors)
+  }, [open, selectedJobs, sectors])
 
   // Copy prompt to clipboard
   const handleCopyPrompt = async () => {
@@ -370,7 +383,7 @@ export default function CopyPromptModal({
               </h2>
             </div>
             <p className="mt-0.5 font-label-sm text-label-sm text-on-surface-variant">
-              Copy the prompt to classify {jobs.length} uncategorized jobs in any AI model, then paste the response to resolve them all at once.
+              Select how many jobs to include (default 10), copy the prompt for external AI, then paste the response to resolve in bulk.
             </p>
           </div>
           <button
@@ -397,12 +410,12 @@ export default function CopyPromptModal({
                   <h3 className="font-label-md text-label-md font-semibold text-on-surface">
                     Copy Prompt for External AI
                   </h3>
-                  <span className="rounded-full bg-surface-container-highest px-2.5 py-0.5 font-label-sm text-label-sm text-on-surface-variant">
-                    {jobs.length} jobs · {sectors.length} sectors
+                  <span className="rounded-full bg-surface-container-highest px-2.5 py-0.5 font-label-sm text-label-sm font-medium text-on-surface-variant">
+                    {selectedJobs.length} of {jobs.length} jobs · {sectors.length} sectors
                   </span>
                 </div>
                 <p className="mt-1 font-body-sm text-body-sm text-on-surface-variant">
-                  Includes full canonical sectors, sample roles, domain keywords, and job descriptions.
+                  Includes canonical sectors, sample roles, keywords, and job descriptions formatted for ChatGPT, Claude, Gemini, or DeepSeek.
                 </p>
               </div>
 
@@ -431,8 +444,71 @@ export default function CopyPromptModal({
                   <span className="material-symbols-outlined text-lg">
                     {copied ? 'check' : 'content_copy'}
                   </span>
-                  {copied ? 'Copied to clipboard!' : 'Copy prompt'}
+                  {copied ? `Copied ${selectedJobs.length} jobs!` : `Copy prompt (${selectedJobs.length} jobs)`}
                 </button>
+              </div>
+            </div>
+
+            {/* Batch size selector: Default 10 jobs */}
+            <div className="mt-3.5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-surface-variant bg-surface-container-lowest px-3.5 py-2.5">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-lg text-primary">
+                  tune
+                </span>
+                <span className="font-label-md text-label-md font-medium text-on-surface">
+                  Number of jobs to include:
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {[10, 25, 50].map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    disabled={jobs.length === 0}
+                    onClick={() => setJobLimit(num)}
+                    className={cn(
+                      'rounded-md px-3 py-1 font-label-sm text-label-sm font-medium transition-colors',
+                      jobLimit === num
+                        ? 'bg-primary text-on-primary shadow-xs'
+                        : 'border border-outline-variant bg-surface-container-low text-on-surface hover:bg-surface-container-high',
+                    )}
+                  >
+                    {num} {num === 10 ? '(Default)' : ''}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  disabled={jobs.length === 0}
+                  onClick={() => setJobLimit(jobs.length)}
+                  className={cn(
+                    'rounded-md px-3 py-1 font-label-sm text-label-sm font-medium transition-colors',
+                    jobLimit >= jobs.length
+                      ? 'bg-primary text-on-primary shadow-xs'
+                      : 'border border-outline-variant bg-surface-container-low text-on-surface hover:bg-surface-container-high',
+                  )}
+                >
+                  All ({jobs.length})
+                </button>
+                <div className="flex items-center gap-1.5 pl-1 border-l border-surface-variant">
+                  <label htmlFor="customJobLimit" className="font-label-sm text-label-sm text-on-surface-variant">
+                    Custom:
+                  </label>
+                  <input
+                    id="customJobLimit"
+                    type="number"
+                    min={1}
+                    max={jobs.length}
+                    value={jobLimit}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10)
+                      if (!isNaN(val)) {
+                        setJobLimit(Math.max(1, Math.min(val, jobs.length)))
+                      }
+                    }}
+                    className="w-16 rounded-md border border-outline-variant bg-surface-container-lowest px-2 py-1 text-center font-label-sm text-label-sm text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
               </div>
             </div>
 
