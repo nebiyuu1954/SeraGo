@@ -1,4 +1,5 @@
 import AccordionSection from '../../../../components/ui/AccordionSection.tsx'
+import TelegramLinkCard from '../../../../components/settings/TelegramLinkCard.tsx'
 import type {
   NotificationSettings as NotificationSettingsType,
   NotificationChannelToggles,
@@ -140,6 +141,11 @@ export default function NotificationSettings({ role, value, onChange }: Notifica
       icon="notifications"
       completion={{ filled: enabledCount, total: Math.max(totalToggles, 1) }}
     >
+      {/* ── Telegram linking (all roles) ── */}
+      <div className="md:col-span-2 mb-1">
+        <TelegramLinkCard />
+      </div>
+
       {/* ── Talent notifications ── */}
       {isTalent && (
         <div className="md:col-span-2">
