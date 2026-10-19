@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using SeraGo.Core.Domain.Entities;
 using SeraGo.Core.Domain.Enums;
@@ -246,19 +247,46 @@ public sealed class TelegramBotService
     /// </summary>
     public async Task<bool> UnlinkByChatIdAsync(long chatId)
     {
+        var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
+        return linkedUser is not null && await UnlinkAccountAsync(linkedUser.Value.UserId);
+    }
+
+    /// <summary>
+    /// Returns whether the user has a Telegram bot linked and the associated chat_id.
+    /// </summary>
+    public async Task<(bool Linked, long? ChatId)> GetUserTelegramStatusAsync(string userId)
+    {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-        var needle1 = $"\"chatId\":{chatId}";
-        var needle2 = $"\"chatId\": {chatId}";
-        var needle3 = $"\"chatId\":\"{chatId}\"";
-        var needle4 = $"\"chatId\": \"{chatId}\"";
-        var userId = await db.UserSettings
-            .Where(s => s.Settings.Contains(needle1) || s.Settings.Contains(needle2) || s.Settings.Contains(needle3) || s.Settings.Contains(needle4))
-            .Select(s => s.UserId)
+        var settingsJson = await db.UserSettings.AsNoTracking()
+            .Where(s => s.UserId == userId)
+            .Select(s => s.Settings)
             .FirstOrDefaultAsync();
 
-        return userId is not null && await UnlinkAccountAsync(userId);
+        if (string.IsNullOrWhiteSpace(settingsJson))
+            return (false, null);
+
+        try
+        {
+            var doc = JsonDocument.Parse(settingsJson);
+            if (doc.RootElement.TryGetProperty("telegram", out var tg))
+            {
+                var isLinked = tg.TryGetProperty("linked", out var linkedProp) && linkedProp.GetBoolean();
+                long? chatId = null;
+                if (tg.TryGetProperty("chatId", out var chatProp))
+                {
+                    if (chatProp.ValueKind == JsonValueKind.Number && chatProp.TryGetInt64(out var idNum))
+                        chatId = idNum;
+                    else if (chatProp.ValueKind == JsonValueKind.String && long.TryParse(chatProp.GetString(), out var idParsed))
+                        chatId = idParsed;
+                }
+                return (isLinked, chatId);
+            }
+        }
+        catch { }
+
+        return (false, null);
     }
 
     /// <summary>
@@ -383,7 +411,7 @@ public sealed class TelegramBotService
         // User sent a document (e.g. CV file upload in Telegram)
         if (message.Document is not null)
         {
-            await HandleDocumentUploadAsync(chatId);
+            await HandleDocumentUploadAsync(chatId, message.Document);
             return;
         }
 
@@ -401,6 +429,26 @@ public sealed class TelegramBotService
                 var linkedUserId = ValidateLinkingToken(token);
                 if (linkedUserId is not null)
                 {
+                    // Conflict check 1: Chat is already linked to another SeraGo account
+                    var existingChatUser = await FindLinkedUserByChatIdAsync(chatId);
+                    if (existingChatUser is not null && existingChatUser.Value.UserId != linkedUserId)
+                    {
+                        await _botClient.SendMessage(chatId,
+                            "⚠️ <b>Account Conflict:</b> This Telegram chat is already connected to another SeraGo account. Please unlink that account first using /unlink.",
+                            parseMode: ParseMode.Html);
+                        return;
+                    }
+
+                    // Conflict check 2: SeraGo account is already linked to another Telegram bot
+                    var (isUserLinked, existingUserChatId) = await GetUserTelegramStatusAsync(linkedUserId);
+                    if (isUserLinked && existingUserChatId != chatId)
+                    {
+                        await _botClient.SendMessage(chatId,
+                            "⚠️ <b>Account Conflict:</b> Your SeraGo account already has a Telegram bot connected. Only one Telegram bot is allowed per account. Disconnect it in your SeraGo Settings before connecting this one.",
+                            parseMode: ParseMode.Html);
+                        return;
+                    }
+
                     var linked = await LinkAccountAsync(linkedUserId, chatId);
                     if (linked)
                     {
@@ -443,7 +491,7 @@ public sealed class TelegramBotService
             var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
             if (linkedUser is not null)
             {
-                await SendCvStatusCardAsync(chatId, linkedUser.Value.UserId);
+                await SendOrEditCvManagementCardAsync(chatId, null, linkedUser.Value.UserId);
             }
             else
             {
@@ -542,6 +590,45 @@ public sealed class TelegramBotService
             return;
         }
 
+        if (data == "manage_cv")
+        {
+            var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
+            if (linkedUser is not null)
+            {
+                await _botClient.AnswerCallbackQuery(callbackQuery.Id);
+                await SendOrEditCvManagementCardAsync(chatId, callbackQuery.Message?.MessageId, linkedUser.Value.UserId);
+            }
+            else
+            {
+                await _botClient.AnswerCallbackQuery(callbackQuery.Id, text: "⚠️ Please connect your SeraGo account first.", showAlert: true);
+                await SendUnlinkedWelcomeCardAsync(chatId);
+            }
+            return;
+        }
+
+        if (data == "download_cv")
+        {
+            var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
+            if (linkedUser is not null)
+            {
+                await _botClient.AnswerCallbackQuery(callbackQuery.Id, text: "📥 Fetching your CV...");
+                await DownloadAndSendCvAsync(chatId, linkedUser.Value.UserId);
+            }
+            else
+            {
+                await _botClient.AnswerCallbackQuery(callbackQuery.Id, text: "⚠️ Please connect your SeraGo account first.", showAlert: true);
+                await SendUnlinkedWelcomeCardAsync(chatId);
+            }
+            return;
+        }
+
+        if (data == "prompt_upload_cv")
+        {
+            await _botClient.AnswerCallbackQuery(callbackQuery.Id);
+            await SendCvUploadPromptAsync(chatId, callbackQuery.Message?.MessageId);
+            return;
+        }
+
         if (data == "open_sector_picker" || data == "refresh_sectors")
         {
             var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
@@ -616,33 +703,167 @@ public sealed class TelegramBotService
         try { await _botClient.AnswerCallbackQuery(callbackQuery.Id); } catch { }
     }
 
-    private async Task HandleDocumentUploadAsync(long chatId)
+    private async Task HandleDocumentUploadAsync(long chatId, Document document)
     {
         if (_botClient is null) return;
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var storage = scope.ServiceProvider.GetService<R2StorageService>();
+
         var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
-        bool hasCv = false;
-        if (linkedUser is not null)
+        if (linkedUser is null)
         {
-            using var scope = _scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var profile = await db.TalentProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.UserId == linkedUser.Value.UserId);
-            hasCv = !string.IsNullOrWhiteSpace(profile?.ResumeUrl);
+            await _botClient.SendMessage(
+                chatId,
+                "⚠️ <b>Account Not Connected!</b>\n\nPlease connect your SeraGo account before uploading your CV so we can attach it to your profile.",
+                parseMode: ParseMode.Html);
+            await SendUnlinkedWelcomeCardAsync(chatId);
+            return;
         }
 
-        var keyboard = new InlineKeyboardMarkup(new[]
+        // Validate file extension
+        var fileName = document.FileName ?? "resume.pdf";
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        var allowedExts = new[] { ".pdf", ".docx", ".doc" };
+        if (!allowedExts.Contains(ext))
         {
-            new[] { InlineKeyboardButton.WithCallbackData("✏️ Change Sector", "open_sector_picker") },
-            new[] { InlineKeyboardButton.WithUrl(hasCv ? "🔄 Change CV" : "➕ Add CV", "https://serago.pro.et/dashboard/talent/profile") }
-        });
+            var keyboard = new InlineKeyboardMarkup(new[]
+            {
+                new[] { InlineKeyboardButton.WithCallbackData("« Back to Manage CV", "manage_cv") }
+            });
 
-        await _botClient.SendMessage(
+            await _botClient.SendMessage(
+                chatId,
+                "⚠️ <b>Unsupported File Format!</b>\n\n" +
+                $"You uploaded: <code>{Escape(fileName)}</code>\n\n" +
+                "Please upload your CV in one of the accepted formats:\n" +
+                "• <b>PDF (.pdf)</b>\n" +
+                "• <b>Word (.docx, .doc)</b>",
+                parseMode: ParseMode.Html,
+                replyMarkup: keyboard);
+            return;
+        }
+
+        // Validate file size: 10 MB maximum
+        const long maxSizeBytes = 10 * 1024 * 1024;
+        if (document.FileSize > maxSizeBytes)
+        {
+            var sizeMb = Math.Round((double)(document.FileSize ?? 0) / (1024 * 1024), 1);
+            var keyboard = new InlineKeyboardMarkup(new[]
+            {
+                new[] { InlineKeyboardButton.WithCallbackData("« Back to Manage CV", "manage_cv") }
+            });
+
+            await _botClient.SendMessage(
+                chatId,
+                $"⚠️ <b>File Too Large ({sizeMb} MB)!</b>\n\n" +
+                "The maximum allowed CV file size is <b>10 MB</b>. Please compress or choose a smaller file.",
+                parseMode: ParseMode.Html,
+                replyMarkup: keyboard);
+            return;
+        }
+
+        if (storage is null || !storage.IsConfigured)
+        {
+            await _botClient.SendMessage(chatId, "⚠️ File storage is not configured on this server.", parseMode: ParseMode.Html);
+            return;
+        }
+
+        var progressMsg = await _botClient.SendMessage(
             chatId,
-            "📄 <b>Document Received!</b>\n\n" +
-            "To connect your CV for AI job compatibility scoring and 1-click applications, please upload it directly to your profile on SeraGo:\n\n" +
-            "👉 <a href=\"https://serago.pro.et/dashboard/talent/profile\">Upload CV on SeraGo Profile</a>\n\n" +
-            "You can also change your preferred job sector below right now to receive matching job alerts!",
-            parseMode: ParseMode.Html,
-            replyMarkup: keyboard);
+            "⏳ <i>Uploading and updating your CV on SeraGo...</i>",
+            parseMode: ParseMode.Html);
+
+        try
+        {
+            // 1. Download file from Telegram
+            var tgFile = await _botClient.GetFile(document.FileId);
+            if (string.IsNullOrWhiteSpace(tgFile.FilePath))
+            {
+                throw new Exception("Telegram did not provide a FilePath.");
+            }
+
+            using var memoryStream = new MemoryStream();
+            await _botClient.DownloadFile(tgFile.FilePath, memoryStream);
+            memoryStream.Position = 0;
+
+            // 2. Upload to Cloudflare R2
+            var contentType = document.MimeType ?? (ext == ".pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+            var newKey = await storage.UploadFileAsync(linkedUser.Value.UserId, fileName, contentType, "resumes", memoryStream);
+
+            // 3. Update TalentProfile in database
+            var profile = await db.TalentProfiles.FirstOrDefaultAsync(p => p.UserId == linkedUser.Value.UserId);
+            if (profile is null)
+            {
+                profile = new TalentProfile
+                {
+                    UserId = linkedUser.Value.UserId,
+                    ResumeUrl = newKey,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                db.TalentProfiles.Add(profile);
+            }
+            else
+            {
+                var oldKey = profile.ResumeUrl;
+                profile.ResumeUrl = newKey;
+                profile.UpdatedAt = DateTime.UtcNow;
+
+                // 4. Delete old CV from storage if present and different
+                if (!string.IsNullOrWhiteSpace(oldKey) && oldKey != newKey)
+                {
+                    try { await storage.DeleteFileAsync(oldKey); }
+                    catch (Exception ex) { _logger.LogWarning(ex, "Failed to delete previous CV {OldKey}", oldKey); }
+                }
+            }
+
+            await db.SaveChangesAsync();
+
+            // 5. Trigger MatchingClient resume parsing in background if available
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var parseScope = _scopeFactory.CreateScope();
+                    var matchingClient = parseScope.ServiceProvider.GetService<MatchingClient>();
+                    var r2 = parseScope.ServiceProvider.GetService<R2StorageService>();
+                    if (matchingClient is not null && r2 is not null)
+                    {
+                        var presignedUrl = r2.GetPresignedDownloadUrlAsync(newKey);
+                        await matchingClient.ParseResumeAsync(presignedUrl);
+                    }
+                }
+                catch { }
+            });
+
+            // 6. Delete progress message and send success card
+            try { await _botClient.DeleteMessage(chatId, progressMsg.MessageId); } catch { }
+
+            var successKeyboard = new InlineKeyboardMarkup(new[]
+            {
+                new[] { InlineKeyboardButton.WithCallbackData("📄 Manage CV", "manage_cv") },
+                new[] { InlineKeyboardButton.WithCallbackData("✏️ Change Sector", "open_sector_picker") }
+            });
+
+            var fileSizeKb = Math.Round((double)(document.FileSize ?? 0) / 1024, 1);
+            await _botClient.SendMessage(
+                chatId,
+                "🎉 <b>CV Successfully Updated!</b>\n\n" +
+                $"📄 <b>File:</b> <code>{Escape(fileName)}</code> ({fileSizeKb} KB)\n\n" +
+                "✅ Your previous CV was replaced, and your new resume is now active for AI job compatibility scoring and tailored alerts.",
+                parseMode: ParseMode.Html,
+                replyMarkup: successKeyboard);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to upload CV document from Telegram for user {UserId}", linkedUser.Value.UserId);
+            try { await _botClient.DeleteMessage(chatId, progressMsg.MessageId); } catch { }
+            await _botClient.SendMessage(
+                chatId,
+                "⚠️ <b>Upload Failed!</b>\nWe could not save your CV file. Please try again or upload directly on your SeraGo profile.",
+                parseMode: ParseMode.Html);
+        }
     }
 
     public async Task<(string Text, InlineKeyboardMarkup Markup)> BuildTalentDashboardContentAsync(
@@ -723,9 +944,7 @@ public sealed class TelegramBotService
                 ? InlineKeyboardButton.WithCallbackData("🔕 Stop Sector Notifications", "stop_telegram_notifs")
                 : InlineKeyboardButton.WithCallbackData("🔔 Turn On Sector Notifications", "start_telegram_notifs");
 
-            var cvButton = hasCv
-                ? InlineKeyboardButton.WithUrl("🔄 Change CV", "https://serago.pro.et/dashboard/talent/profile")
-                : InlineKeyboardButton.WithUrl("➕ Add CV", "https://serago.pro.et/dashboard/talent/profile");
+            var cvButton = InlineKeyboardButton.WithCallbackData(hasCv ? "📄 Manage CV" : "➕ Add CV", "manage_cv");
 
             var keyboard = new InlineKeyboardMarkup(new[]
             {
@@ -848,7 +1067,7 @@ public sealed class TelegramBotService
             header: "🚀 <b>Test Job Alert (Instant Verification)</b>");
     }
 
-    private async Task SendCvStatusCardAsync(long chatId, string userId)
+    public async Task SendOrEditCvManagementCardAsync(long chatId, int? messageId, string userId)
     {
         if (_botClient is null) return;
         using var scope = _scopeFactory.CreateScope();
@@ -856,40 +1075,173 @@ public sealed class TelegramBotService
         var profile = await db.TalentProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.UserId == userId);
         var hasCv = !string.IsNullOrWhiteSpace(profile?.ResumeUrl);
 
+        var sb = new StringBuilder();
+        sb.AppendLine("📄 <b>Manage Your CV</b>");
+        sb.AppendLine();
+
+        InlineKeyboardMarkup keyboard;
+
         if (hasCv)
         {
-            var keyboard = new InlineKeyboardMarkup(new[]
-            {
-                new[] { InlineKeyboardButton.WithUrl("🔄 Change CV", "https://serago.pro.et/dashboard/talent/profile") },
-                new[] { InlineKeyboardButton.WithCallbackData("✏️ Change Sector", "open_sector_picker") }
-            });
+            var rawFileName = profile!.ResumeUrl!.Split('/').LastOrDefault() ?? "Resume.pdf";
+            var cleanFileName = Regex.Replace(rawFileName, @"^\d{8}_\d{6}_", "");
+            if (string.IsNullOrWhiteSpace(cleanFileName)) cleanFileName = "Resume.pdf";
 
-            await _botClient.SendMessage(
-                chatId,
-                "✅ <b>Your CV is connected!</b>\n\n" +
-                "Your resume is active. SeraGo's AI automatically matches incoming jobs with your skills and work experience, delivering personalized alerts right here.\n\n" +
-                "Tap <b>🔄 Change CV</b> if you would like to update your resume on SeraGo.",
-                parseMode: ParseMode.Html,
-                replyMarkup: keyboard);
+            sb.AppendLine("✅ <b>Status: Active CV Connected</b>");
+            sb.AppendLine($"📄 <b>Current File:</b> <code>{Escape(cleanFileName)}</code>");
+            sb.AppendLine("Your resume is active for AI job compatibility scoring.");
+            sb.AppendLine();
+            sb.AppendLine("What would you like to do?");
+
+            keyboard = new InlineKeyboardMarkup(new[]
+            {
+                new[] { InlineKeyboardButton.WithCallbackData("📥 Download Current CV", "download_cv") },
+                new[] { InlineKeyboardButton.WithCallbackData("🔄 Update / Replace CV", "prompt_upload_cv") },
+                new[] { InlineKeyboardButton.WithCallbackData("« Back to Dashboard", "show_dashboard") }
+            });
         }
         else
         {
+            sb.AppendLine("⚠️ <b>Status: No CV on File</b>");
+            sb.AppendLine("You haven't uploaded a CV yet. Adding your CV unlocks AI job compatibility scoring and tailored alerts.");
+            sb.AppendLine();
+            sb.AppendLine("📋 <b>Requirements:</b>");
+            sb.AppendLine("• Supported formats: <b>PDF (.pdf)</b> or <b>Word (.docx, .doc)</b>");
+            sb.AppendLine("• Maximum file size: <b>10 MB</b>");
+
+            keyboard = new InlineKeyboardMarkup(new[]
+            {
+                new[] { InlineKeyboardButton.WithCallbackData("📤 Upload CV Now", "prompt_upload_cv") },
+                new[] { InlineKeyboardButton.WithCallbackData("« Back to Dashboard", "show_dashboard") }
+            });
+        }
+
+        if (messageId is not null)
+        {
+            try
+            {
+                await _botClient.EditMessageText(
+                    chatId: chatId,
+                    messageId: messageId.Value,
+                    text: sb.ToString(),
+                    parseMode: ParseMode.Html,
+                    replyMarkup: keyboard);
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to edit message for CV management, falling back to SendMessage");
+            }
+        }
+
+        await _botClient.SendMessage(chatId, sb.ToString(), parseMode: ParseMode.Html, replyMarkup: keyboard);
+    }
+
+    public async Task SendCvUploadPromptAsync(long chatId, int? messageId)
+    {
+        if (_botClient is null) return;
+
+        var text =
+            "📤 <b>Upload / Update Your CV</b>\n\n" +
+            "Please attach and send your resume file directly in this chat!\n\n" +
+            "📋 <b>File Guidelines:</b>\n" +
+            "• Accepted formats: <b>PDF (.pdf)</b> or <b>Word (.docx, .doc)</b>\n" +
+            "• Maximum file size: <b>10 MB</b>\n\n" +
+            "<i>Simply tap the paperclip 📎 icon below, select your file, and send it. Once received, it will automatically replace your previous CV on SeraGo!</i>";
+
+        var keyboard = new InlineKeyboardMarkup(new[]
+        {
+            new[] { InlineKeyboardButton.WithCallbackData("« Back to Manage CV", "manage_cv") },
+            new[] { InlineKeyboardButton.WithCallbackData("« Dashboard", "show_dashboard") }
+        });
+
+        if (messageId is not null)
+        {
+            try
+            {
+                await _botClient.EditMessageText(
+                    chatId: chatId,
+                    messageId: messageId.Value,
+                    text: text,
+                    parseMode: ParseMode.Html,
+                    replyMarkup: keyboard);
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to edit message for CV upload prompt, falling back to SendMessage");
+            }
+        }
+
+        await _botClient.SendMessage(chatId, text, parseMode: ParseMode.Html, replyMarkup: keyboard);
+    }
+
+    public async Task DownloadAndSendCvAsync(long chatId, string userId)
+    {
+        if (_botClient is null) return;
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var storage = scope.ServiceProvider.GetService<R2StorageService>();
+
+        var profile = await db.TalentProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.UserId == userId);
+        if (string.IsNullOrWhiteSpace(profile?.ResumeUrl))
+        {
             var keyboard = new InlineKeyboardMarkup(new[]
             {
-                new[] { InlineKeyboardButton.WithUrl("➕ Add CV", "https://serago.pro.et/dashboard/talent/profile") },
-                new[] { InlineKeyboardButton.WithCallbackData("✏️ Change Sector", "open_sector_picker") }
+                new[] { InlineKeyboardButton.WithCallbackData("📤 Upload CV Now", "prompt_upload_cv") },
+                new[] { InlineKeyboardButton.WithCallbackData("« Back to Dashboard", "show_dashboard") }
             });
 
             await _botClient.SendMessage(
                 chatId,
-                "📄 <b>No CV on File</b>\n\n" +
-                "You haven't uploaded a CV yet. When you add your CV on SeraGo, our AI:\n" +
-                "• Calculates your compatibility score for new jobs\n" +
-                "• Highlights matching skills\n" +
-                "• Sends tailored job alerts directly to this chat\n\n" +
-                "Tap <b>➕ Add CV</b> below to upload your resume!",
+                "⚠️ <b>No CV on File</b>\n\nYou haven't uploaded a CV yet. Tap <b>Upload CV Now</b> to add your resume.",
                 parseMode: ParseMode.Html,
                 replyMarkup: keyboard);
+            return;
+        }
+
+        if (storage is null || !storage.IsConfigured)
+        {
+            await _botClient.SendMessage(chatId, "⚠️ File storage is not configured on this server.", parseMode: ParseMode.Html);
+            return;
+        }
+
+        try
+        {
+            var (stream, contentType, fileName) = await storage.DownloadFileAsync(profile.ResumeUrl);
+            await using (stream)
+            {
+                var rawFileName = fileName.Split('/').LastOrDefault() ?? "Resume.pdf";
+                var cleanFileName = Regex.Replace(rawFileName, @"^\d{8}_\d{6}_", "");
+                if (string.IsNullOrWhiteSpace(cleanFileName)) cleanFileName = "Resume.pdf";
+
+                await _botClient.SendDocument(
+                    chatId: chatId,
+                    document: InputFile.FromStream(stream, cleanFileName),
+                    caption: $"📄 <b>Here is your current CV on file with SeraGo:</b>\n<code>{Escape(cleanFileName)}</code>",
+                    parseMode: ParseMode.Html);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to download and send CV directly for user {UserId}", userId);
+            try
+            {
+                var presignedUrl = storage.GetPresignedDownloadUrlAsync(profile.ResumeUrl);
+                var keyboard = new InlineKeyboardMarkup(new[]
+                {
+                    new[] { InlineKeyboardButton.WithUrl("📥 Download CV (Secure Link)", presignedUrl) },
+                    new[] { InlineKeyboardButton.WithCallbackData("« Back to Manage CV", "manage_cv") }
+                });
+                await _botClient.SendMessage(
+                    chatId,
+                    "📄 Here is a secure 15-minute download link for your CV:",
+                    replyMarkup: keyboard);
+            }
+            catch
+            {
+                await _botClient.SendMessage(chatId, "⚠️ Could not retrieve your CV right now. Please try again later or check your SeraGo profile.");
+            }
         }
     }
 
@@ -916,7 +1268,7 @@ public sealed class TelegramBotService
         await _botClient.SendMessage(chatId, message, parseMode: ParseMode.Html, replyMarkup: keyboard);
     }
 
-    private async Task<(string UserId, string? FirstName)?> FindLinkedUserByChatIdAsync(long chatId)
+    public async Task<(string UserId, string? FirstName)?> FindLinkedUserByChatIdAsync(long chatId)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -924,19 +1276,37 @@ public sealed class TelegramBotService
         var needle2 = $"\"chatId\": {chatId}";
         var needle3 = $"\"chatId\":\"{chatId}\"";
         var needle4 = $"\"chatId\": \"{chatId}\"";
-        var setting = await db.UserSettings.AsNoTracking()
+        var candidates = await db.UserSettings.AsNoTracking()
             .Where(s => s.Settings.Contains(needle1) || s.Settings.Contains(needle2) || s.Settings.Contains(needle3) || s.Settings.Contains(needle4))
-            .Select(s => new { s.UserId })
-            .FirstOrDefaultAsync();
+            .Select(s => new { s.UserId, s.Settings })
+            .ToListAsync();
 
-        if (setting is null) return null;
+        foreach (var candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate.Settings)) continue;
+            try
+            {
+                var doc = JsonDocument.Parse(candidate.Settings);
+                if (doc.RootElement.TryGetProperty("telegram", out var tg))
+                {
+                    var isLinked = tg.TryGetProperty("linked", out var linkedProp) && linkedProp.GetBoolean();
+                    if (!isLinked) continue;
 
-        var user = await db.Users.AsNoTracking()
-            .Where(u => u.Id == setting.UserId)
-            .Select(u => new { u.Id, u.FirstName })
-            .FirstOrDefaultAsync();
+                    var user = await db.Users.AsNoTracking()
+                        .Where(u => u.Id == candidate.UserId)
+                        .Select(u => new { u.Id, u.FirstName })
+                        .FirstOrDefaultAsync();
 
-        return user is not null ? (user.Id, user.FirstName) : null;
+                    if (user is not null)
+                    {
+                        return (user.Id, user.FirstName);
+                    }
+                }
+            }
+            catch { }
+        }
+
+        return null;
     }
 
     private async Task<string?> SetUserSectorAsync(long chatId, Guid sectorId)

@@ -267,7 +267,40 @@ public static class TelegramEndpoints
         var validatedChatId = telegramService.ValidateChatLinkingToken(request.Token);
         if (validatedChatId is null || validatedChatId.Value != request.ChatId)
         {
-            return Results.BadRequest(new { message = "Invalid or expired linking token." });
+            return Results.BadRequest(new { code = "INVALID_TOKEN", message = "Invalid or expired linking token." });
+        }
+
+        // 1. Enforce 1-bot-per-account rule: check if this SeraGo account already has a linked Telegram bot
+        var (isUserLinked, existingUserChatId) = await telegramService.GetUserTelegramStatusAsync(userId);
+        if (isUserLinked)
+        {
+            if (existingUserChatId == request.ChatId)
+            {
+                return Results.Conflict(new
+                {
+                    code = "ALREADY_CONNECTED_SAME_CHAT",
+                    message = "Your SeraGo account is already connected to this Telegram chat."
+                });
+            }
+            else
+            {
+                return Results.Conflict(new
+                {
+                    code = "ACCOUNT_ALREADY_CONNECTED",
+                    message = "The account you logged into already has a Telegram bot connected. Only one Telegram bot is allowed per SeraGo account. Disconnect the existing bot in your Settings if you wish to connect this chat instead."
+                });
+            }
+        }
+
+        // 2. Enforce 1-account-per-bot rule: check if this Telegram chat is already connected to another SeraGo user account
+        var existingChatOwner = await telegramService.FindLinkedUserByChatIdAsync(request.ChatId);
+        if (existingChatOwner is not null && existingChatOwner.Value.UserId != userId)
+        {
+            return Results.Conflict(new
+            {
+                code = "CHAT_ALREADY_CONNECTED_TO_ANOTHER",
+                message = "This Telegram chat is already connected to another SeraGo account. Please unlink your previous account before connecting a new one."
+            });
         }
 
         var linked = await telegramService.LinkAccountAsync(userId, request.ChatId);

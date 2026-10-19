@@ -131,7 +131,7 @@ public class ResponseEnvelopeMiddleware
 
     private async Task WriteFailureAsync(HttpContext context, Stream body, Stream buffer, int status)
     {
-        var code = status switch
+        var defaultCode = status switch
         {
             400 => "VALIDATION_ERROR",
             401 => "UNAUTHORIZED",
@@ -144,32 +144,35 @@ public class ResponseEnvelopeMiddleware
             _ => "INTERNAL_ERROR",
         };
 
-        var message = ReadErrorMessage(buffer);
+        var (customCode, message) = ReadErrorDetails(buffer);
+        var code = !string.IsNullOrWhiteSpace(customCode) ? customCode : defaultCode;
 
         await WriteAsync(context, body,
             ApiResponses.Fail(code, string.IsNullOrWhiteSpace(message) ? $"Request failed ({status})." : message));
     }
 
     /// <summary>
-    /// Pulls a human-readable message from a ProblemDetails / custom error body:
+    /// Pulls a human-readable message and custom error code from a ProblemDetails / custom error body:
     /// our <c>message</c>, then ProblemDetails <c>detail</c> or <c>title</c>,
     /// then the flattened field-level <c>errors</c> dict.
     /// </summary>
-    private static string? ReadErrorMessage(Stream buffer)
+    private static (string? Code, string? Message) ReadErrorDetails(Stream buffer)
     {
         if (buffer.Length == 0)
         {
-            return null;
+            return (null, null);
         }
 
         try
         {
+            buffer.Position = 0;
             using var doc = JsonDocument.Parse(buffer);
             var root = doc.RootElement;
 
             if (root.ValueKind == JsonValueKind.String)
-                return root.GetString();
+                return (null, root.GetString());
 
+            string? code = GetString(root, "code") ?? GetString(root, "messageCode");
             string? message = null;
 
             if (root.ValueKind == JsonValueKind.Object &&
@@ -197,11 +200,11 @@ public class ResponseEnvelopeMiddleware
                 ?? GetString(root, "detail")
                 ?? GetString(root, "title");
 
-            return message;
+            return (code, message);
         }
         catch (JsonException)
         {
-            return null;
+            return (null, null);
         }
     }
 
