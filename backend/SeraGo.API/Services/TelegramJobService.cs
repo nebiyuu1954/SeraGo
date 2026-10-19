@@ -609,7 +609,7 @@ public sealed class TelegramJobService
                 parseMode: ParseMode.Html,
                 replyMarkup: keyboard);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return await client.SendMessage(
                 chatId: chatId,

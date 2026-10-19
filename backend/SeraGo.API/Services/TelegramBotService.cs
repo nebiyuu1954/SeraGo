@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using SeraGo.Core.Domain.Entities;
+using SeraGo.Core.Domain.Enums;
 using SeraGo.Infrastructure.Context;
 using Telegram.Bot;
 using Telegram.Bot.Types;
