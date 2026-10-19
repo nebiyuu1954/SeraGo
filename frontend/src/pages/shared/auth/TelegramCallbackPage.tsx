@@ -192,16 +192,20 @@ export default function TelegramCallbackPage() {
         <form onSubmit={formik.handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <TextInput
+              id="firstName"
               label="First Name"
               name="firstName"
+              icon="person"
               value={formik.values.firstName}
               onChange={formik.handleChange}
               onBlur={formik.handleBlur}
               error={formik.touched.firstName ? formik.errors.firstName : undefined}
             />
             <TextInput
+              id="lastName"
               label="Last Name"
               name="lastName"
+              icon="badge"
               value={formik.values.lastName}
               onChange={formik.handleChange}
               onBlur={formik.handleBlur}
@@ -210,16 +214,20 @@ export default function TelegramCallbackPage() {
           </div>
 
           <TextInput
+            id="middleName"
             label="Middle Name (Optional)"
             name="middleName"
+            icon="person"
             value={formik.values.middleName}
             onChange={formik.handleChange}
             onBlur={formik.handleBlur}
           />
 
           <TextInput
+            id="email"
             label="Email Address"
             name="email"
+            icon="mail"
             type="email"
             placeholder="you@example.com"
             value={formik.values.email}
@@ -229,14 +237,20 @@ export default function TelegramCallbackPage() {
           />
 
           <EthiopianPhoneInput
+            id="phoneNumber"
+            name="phoneNumber"
+            label="Phone number"
             value={formik.values.phoneNumber}
-            onChange={(val) => formik.setFieldValue('phoneNumber', val)}
+            onChange={formik.handleChange}
+            onBlur={formik.handleBlur}
             error={formik.touched.phoneNumber ? formik.errors.phoneNumber : undefined}
           />
 
           <PasswordInput
-            label="Choose a Password"
+            id="password"
             name="password"
+            autoComplete="new-password"
+            label="Choose a Password"
             value={formik.values.password}
             onChange={formik.handleChange}
             onBlur={formik.handleBlur}
@@ -244,8 +258,10 @@ export default function TelegramCallbackPage() {
           />
 
           <PasswordInput
-            label="Confirm Password"
+            id="confirmPassword"
             name="confirmPassword"
+            autoComplete="new-password"
+            label="Confirm Password"
             value={formik.values.confirmPassword}
             onChange={formik.handleChange}
             onBlur={formik.handleBlur}

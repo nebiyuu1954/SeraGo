@@ -404,7 +404,8 @@ function ConnectedAccountsSection() {
             </div>
 
             {/* ── Telegram ── */}
-            <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-surface-variant p-3.5">
+            {(telegramAvailable || isTelegramConnected) && (
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-surface-variant p-3.5">
               <div className="flex items-center gap-3">
                 <svg
                   className="h-5 w-5 shrink-0"
@@ -463,7 +464,8 @@ function ConnectedAccountsSection() {
                 )}
               </div>
             </div>
-          </div>
+          )}
+        </div>
         </div>
       </div>
     </div>
