@@ -62,6 +62,8 @@ public static class TelegramEndpoints
                 ? Results.Ok(new { message = $"Webhook registered to {webhookUrl}" })
                 : Results.Problem("Failed to register webhook");
         })
+        .WithOpenApi();
+
         // Connect chat endpoint — called by the special /telegram/connect page
         group.MapPost("/connect-chat", ConnectChatAsync)
             .RequireAuthorization()

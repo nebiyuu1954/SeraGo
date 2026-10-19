@@ -173,13 +173,13 @@ export default function TelegramConnectPage() {
           name="email"
           type="email"
           label="Email address"
+          icon="mail"
           placeholder="you@example.com"
           autoComplete="email"
           value={formik.values.email}
           onChange={formik.handleChange}
           onBlur={formik.handleBlur}
           error={formik.touched.email ? formik.errors.email : undefined}
-          disabled={formik.isSubmitting}
         />
 
         <PasswordInput
@@ -192,13 +192,12 @@ export default function TelegramConnectPage() {
           onChange={formik.handleChange}
           onBlur={formik.handleBlur}
           error={formik.touched.password ? formik.errors.password : undefined}
-          disabled={formik.isSubmitting}
         />
 
         <SubmitButton
-          label="Sign In & Connect Telegram"
-          busyLabel="Connecting…"
-          isSubmitting={formik.isSubmitting}
+          loading={formik.isSubmitting}
+          loadingLabel="Connecting…"
+          idleLabel="Sign In & Connect Telegram"
         />
       </form>
     </AuthShell>
