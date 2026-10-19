@@ -52,6 +52,18 @@ public static class TelegramEndpoints
         })
         .WithOpenApi();
 
+        // Webhook registration trigger
+        group.MapPost("/webhook/register", async (TelegramBotService svc) =>
+        {
+            var webhookUrl = Environment.GetEnvironmentVariable("TELEGRAM_WEBHOOK_URL")
+                ?? "https://api.serago.pro.et/api/telegram/webhook";
+            var success = await svc.RegisterWebhookAsync(webhookUrl);
+            return success
+                ? Results.Ok(new { message = $"Webhook registered to {webhookUrl}" })
+                : Results.Problem("Failed to register webhook");
+        })
+        .WithOpenApi();
+
         return app;
     }
 
@@ -172,16 +184,34 @@ public static class TelegramEndpoints
     // ── POST /api/telegram/webhook ──
 
     private static async Task<IResult> HandleWebhookAsync(
-        [FromBody] object update,
-        TelegramBotService telegramService)
+        HttpRequest request,
+        TelegramBotService telegramService,
+        ILoggerFactory loggerFactory)
     {
-        // Parse the Telegram update
-        var json = System.Text.Json.JsonSerializer.Serialize(update);
-        var telegramUpdate = System.Text.Json.JsonSerializer.Deserialize<Telegram.Bot.Types.Update>(json);
-
-        if (telegramUpdate is not null)
+        var logger = loggerFactory.CreateLogger("TelegramWebhook");
+        try
         {
-            await telegramService.HandleMessageAsync(telegramUpdate);
+            using var reader = new StreamReader(request.Body);
+            var json = await reader.ReadToEndAsync();
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return Results.Ok();
+            }
+
+            var options = new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            var telegramUpdate = System.Text.Json.JsonSerializer.Deserialize<Telegram.Bot.Types.Update>(json, options);
+
+            if (telegramUpdate is not null)
+            {
+                await telegramService.HandleMessageAsync(telegramUpdate);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to process incoming Telegram webhook update");
         }
 
         return Results.Ok();

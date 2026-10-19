@@ -150,6 +150,25 @@ public sealed class TelegramBotService
     }
 
     /// <summary>
+    /// Registers the bot's webhook with Telegram servers.
+    /// </summary>
+    public async Task<bool> RegisterWebhookAsync(string webhookUrl)
+    {
+        if (_botClient is null) return false;
+        try
+        {
+            await _botClient.SetWebhook(webhookUrl);
+            _logger.LogInformation("Telegram webhook registered to {Url}", webhookUrl);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to register Telegram webhook to {Url}", webhookUrl);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// The bot's @username (cached), used to build the t.me deep link that
     /// starts the account-linking flow. Null when the bot client is absent or
     /// Telegram can't be reached.

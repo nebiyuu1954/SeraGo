@@ -440,6 +440,26 @@ if (SeraGo.API.Extensions.ServicesExtensions.HangfireEnabled)
     }
 }
 
+// Ensure the Telegram bot webhook is registered on startup
+var telegramBotClient = app.Services.GetService<Telegram.Bot.ITelegramBotClient>();
+if (telegramBotClient is not null)
+{
+    var webhookUrl = Environment.GetEnvironmentVariable("TELEGRAM_WEBHOOK_URL")
+        ?? "https://api.serago.pro.et/api/telegram/webhook";
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            await telegramBotClient.SetWebhook(webhookUrl);
+            app.Logger.LogInformation("Telegram webhook automatically registered: {WebhookUrl}", webhookUrl);
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogWarning(ex, "Failed to automatically register Telegram webhook on startup");
+        }
+    });
+}
+
 // Lightweight health check for the Render container health monitor.
 // Deliberately stateless: no DB, Redis, R2, or external calls — safe to hit
 // every 10 minutes without consuming meaningful resources. Excluded from auth,
