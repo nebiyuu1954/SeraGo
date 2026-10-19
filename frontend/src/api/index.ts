@@ -99,6 +99,7 @@ export {
   patchSettingsCategory,
 } from './settings.ts'
 export {
+  connectTelegramChat,
   fetchTelegramLinkUrl,
   fetchTelegramStatus,
   unlinkTelegram,

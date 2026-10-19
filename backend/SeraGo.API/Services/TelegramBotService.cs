@@ -92,9 +92,57 @@ public sealed class TelegramBotService
         }
     }
 
+    /// <summary>
+    /// Generates a short, signed token for a Telegram chatId.
+    /// Layout: 8-byte chatId (long) + 4-byte expiry + 16-byte HMAC = 28 bytes (38 chars base64url).
+    /// </summary>
+    public string GenerateChatLinkingToken(long chatId)
+    {
+        Span<byte> buffer = stackalloc byte[ChatLinkTokenBytes];
+        BinaryPrimitives.WriteInt64BigEndian(buffer[..8], chatId);
+
+        var expiry = (uint)DateTimeOffset.UtcNow.AddHours(24).ToUnixTimeSeconds();
+        BinaryPrimitives.WriteUInt32BigEndian(buffer[8..12], expiry);
+
+        var mac = ComputeLinkMac(buffer[..12]);
+        mac.AsSpan(0, 16).CopyTo(buffer[12..]);
+
+        return Base64UrlEncode(buffer);
+    }
+
+    /// <summary>
+    /// Validates a chat linking token and returns the chatId if valid; null if invalid or expired.
+    /// </summary>
+    public long? ValidateChatLinkingToken(string token)
+    {
+        try
+        {
+            var buffer = Base64UrlDecode(token);
+            if (buffer.Length != ChatLinkTokenBytes) return null;
+
+            var expected = ComputeLinkMac(buffer.AsSpan(0, 12));
+            if (!CryptographicOperations.FixedTimeEquals(
+                    buffer.AsSpan(12, 16), expected.AsSpan(0, 16)))
+            {
+                return null;
+            }
+
+            var expiry = BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(8, 4));
+            if (DateTimeOffset.UtcNow.ToUnixTimeSeconds() > expiry)
+                return null; // expired
+
+            return BinaryPrimitives.ReadInt64BigEndian(buffer.AsSpan(0, 8));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     // ── Linking-token crypto helpers ──
 
     private const int LinkTokenBytes = 36; // 16 id + 4 exp + 16 MAC
+    private const int ChatLinkTokenBytes = 28; // 8 chatId + 4 exp + 16 MAC
 
     /// <summary>
     /// HMAC-SHA256 over the token body. Keyed by TELEGRAM_LINK_SECRET, falling
@@ -406,29 +454,73 @@ public sealed class TelegramBotService
                 if (result is not null)
                 {
                     var (toggledOn, sectorName, updatedMarkup) = result.Value;
-                    var toast = toggledOn ? $"✅ Subscribed to {sectorName}!" : $"❌ Removed {sectorName}";
-                    try
+                    if (toggledOn)
                     {
+                        var toast = $"✅ Subscribed to {sectorName}!";
                         await _botClient.AnswerCallbackQuery(callbackQuery.Id, text: toast);
-                        await _botClient.EditMessageReplyMarkup(
-                            chatId: chatId.Value,
-                            messageId: callbackQuery.Message!.MessageId,
-                            replyMarkup: updatedMarkup);
+
+                        var confirmedKeyboard = new InlineKeyboardMarkup(new[]
+                        {
+                            new[] { InlineKeyboardButton.WithUrl($"🔍 Browse {sectorName} Jobs", "https://serago.pro.et/dashboard/talent/jobs") },
+                            new[] { InlineKeyboardButton.WithCallbackData("✏️ Change Alert Sector", "open_sector_picker") },
+                            new[] { InlineKeyboardButton.WithUrl("📄 Upload CV on SeraGo", "https://serago.pro.et/dashboard/talent/profile") }
+                        });
+
+                        var confirmedMessage =
+                            $"✅ <b>Subscribed to {Escape(sectorName)}!</b>\n\n" +
+                            $"Instant job alerts are now active for this sector. Whenever a new job matching <b>{Escape(sectorName)}</b> is posted, it will be delivered directly to this chat!\n\n" +
+                            $"<i>We won't ask for any other sectors. You're completely set!</i>";
+
+                        try
+                        {
+                            await _botClient.EditMessageText(
+                                chatId: chatId.Value,
+                                messageId: callbackQuery.Message!.MessageId,
+                                text: confirmedMessage,
+                                parseMode: ParseMode.Html,
+                                replyMarkup: confirmedKeyboard);
+                        }
+                        catch
+                        {
+                            await _botClient.SendMessage(chatId.Value, confirmedMessage, parseMode: ParseMode.Html, replyMarkup: confirmedKeyboard);
+                        }
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        _logger.LogWarning(ex, "Failed to update Telegram callback query reply markup");
+                        var toast = $"❌ Removed {sectorName}";
+                        await _botClient.AnswerCallbackQuery(callbackQuery.Id, text: toast);
+                        try
+                        {
+                            await _botClient.EditMessageReplyMarkup(
+                                chatId: chatId.Value,
+                                messageId: callbackQuery.Message!.MessageId,
+                                replyMarkup: updatedMarkup);
+                        }
+                        catch { }
                     }
                 }
             }
         }
-        else if (data == "refresh_sectors")
+        else if (data == "open_sector_picker" || data == "refresh_sectors")
         {
             var linkedUser = await FindLinkedUserByChatIdAsync(chatId.Value);
             if (linkedUser is not null)
             {
                 await _botClient.AnswerCallbackQuery(callbackQuery.Id);
-                await SendTalentDashboardCardAsync(chatId.Value, linkedUser.Value.UserId, null);
+                using var scope = _scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var profile = await db.TalentProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.UserId == linkedUser.Value.UserId);
+                var settings = await db.UserSettings.AsNoTracking().FirstOrDefaultAsync(s => s.UserId == linkedUser.Value.UserId);
+                var selectedSectorIds = UserSettingsReader.GetForYouSectorIds(settings?.Settings);
+                var allSectors = await db.Sectors.AsNoTracking().Where(s => s.IsActive).OrderBy(s => s.Name).Take(10).ToListAsync();
+                var hasCv = !string.IsNullOrWhiteSpace(profile?.ResumeUrl);
+                var keyboard = BuildSectorPickerKeyboard(allSectors, selectedSectorIds.ToHashSet(), hasCv);
+
+                await _botClient.SendMessage(
+                    chatId.Value,
+                    "🎯 <b>Select your job sector:</b>\nTap any sector below to toggle alerts on/off:",
+                    parseMode: ParseMode.Html,
+                    replyMarkup: keyboard);
             }
         }
     }
@@ -452,7 +544,7 @@ public sealed class TelegramBotService
             replyMarkup: keyboard);
     }
 
-    private async Task SendTalentDashboardCardAsync(long chatId, string userId, string? headerNotice)
+    public async Task SendTalentDashboardCardAsync(long chatId, string userId, string? headerNotice)
     {
         if (_botClient is null) return;
         using var scope = _scopeFactory.CreateScope();
@@ -485,7 +577,7 @@ public sealed class TelegramBotService
         else
         {
             sb.AppendLine("📄 <b>CV Status:</b> ⚠️ No CV on file");
-            sb.AppendLine("Upload your CV on SeraGo for AI matching, or pick your job sectors below to receive tailored alerts right here.");
+            sb.AppendLine("Upload your CV on SeraGo for AI matching, or pick your job sector below to receive tailored alerts right here.");
         }
 
         sb.AppendLine();
@@ -494,19 +586,28 @@ public sealed class TelegramBotService
         {
             var sectorNames = allSectors.Where(s => selectedSectorIds.Contains(s.Id)).Select(s => s.Name).ToList();
             var displayNames = sectorNames.Count > 0 ? string.Join(", ", sectorNames) : $"{selectedSectorIds.Count} selected";
-            sb.AppendLine($"Subscribed: <i>{Escape(displayNames)}</i>");
-        }
-        else
-        {
-            sb.AppendLine("<i>No sectors selected yet. Tap buttons below to subscribe:</i>");
+            sb.AppendLine($"Subscribed: <b>{Escape(displayNames)}</b>");
+            sb.AppendLine();
+            sb.AppendLine("⚡ <i>Instant job alerts are active! Whenever a new job matching your sector is posted, it will be delivered directly here.</i>");
+
+            var keyboard = new InlineKeyboardMarkup(new[]
+            {
+                new[] { InlineKeyboardButton.WithUrl("🔍 Browse Matching Jobs", "https://serago.pro.et/dashboard/talent/jobs") },
+                new[] { InlineKeyboardButton.WithCallbackData("✏️ Change Alert Sector", "open_sector_picker") },
+                new[] { InlineKeyboardButton.WithUrl(hasCv ? "📄 View CV on SeraGo" : "📄 Upload CV for AI Matching", "https://serago.pro.et/dashboard/talent/profile") }
+            });
+
+            await _botClient.SendMessage(chatId, sb.ToString(), parseMode: ParseMode.Html, replyMarkup: keyboard);
+            return;
         }
 
+        sb.AppendLine("<i>No alert sectors selected yet.</i>");
         sb.AppendLine();
-        sb.AppendLine("👇 <i>Tap any sector below to toggle job alerts on/off:</i>");
+        sb.AppendLine("👇 <b>Select your job sector to activate alerts:</b>");
 
-        var keyboard = BuildSectorPickerKeyboard(allSectors, selectedSectorIds.ToHashSet(), hasCv);
+        var pickerKeyboard = BuildSectorPickerKeyboard(allSectors, selectedSectorIds.ToHashSet(), hasCv);
 
-        await _botClient.SendMessage(chatId, sb.ToString(), parseMode: ParseMode.Html, replyMarkup: keyboard);
+        await _botClient.SendMessage(chatId, sb.ToString(), parseMode: ParseMode.Html, replyMarkup: pickerKeyboard);
     }
 
     private async Task SendCvStatusCardAsync(long chatId, string userId)
@@ -556,10 +657,12 @@ public sealed class TelegramBotService
     private async Task SendUnlinkedWelcomeCardAsync(long chatId)
     {
         if (_botClient is null) return;
+        var token = GenerateChatLinkingToken(chatId);
+        var connectUrl = $"https://serago.pro.et/telegram/connect?chat_id={chatId}&token={token}";
+
         var keyboard = new InlineKeyboardMarkup(new[]
         {
-            new[] { InlineKeyboardButton.WithUrl("🔗 Connect SeraGo Account", "https://serago.pro.et/dashboard/settings#telegram") },
-            new[] { InlineKeyboardButton.WithUrl("🚀 Create Free Account", "https://serago.pro.et/signup") },
+            new[] { InlineKeyboardButton.WithUrl("🔗 Connect SeraGo Account", connectUrl) },
             new[] { InlineKeyboardButton.WithUrl("📢 Join SeraGo Job Channel", "https://t.me/SeraGo2026") },
             new[] { InlineKeyboardButton.WithUrl("🔍 Browse Latest Jobs", "https://serago.pro.et/dashboard/talent/jobs") }
         });
@@ -567,12 +670,9 @@ public sealed class TelegramBotService
         var message =
             "👋 <b>Welcome to SeraGo Bot!</b>\n\n" +
             "I am your personal AI Job Alert Assistant for opportunities across Ethiopia.\n\n" +
-            "<b>How to connect your account:</b>\n" +
-            "1. Tap <b>🔗 Connect SeraGo Account</b> below\n" +
-            "2. In Settings, the <b>Notifications</b> panel will open\n" +
-            "3. Tap the blue <b>[ Connect Telegram ]</b> button\n" +
-            "4. Your browser will bounce back to this chat and link your account instantly! 🎉\n\n" +
-            "<i>Don't have an account yet? Tap 'Create Free Account' to get started in 30 seconds.</i>";
+            "<b>How to activate instant job alerts:</b>\n" +
+            "Tap <b>🔗 Connect SeraGo Account</b> below to connect your account. Once connected, matched jobs will be delivered directly to this chat!\n\n" +
+            "<i>Don't have an account yet? You can sign in or create a free one on the next screen in 30 seconds.</i>";
 
         await _botClient.SendMessage(chatId, message, parseMode: ParseMode.Html, replyMarkup: keyboard);
     }

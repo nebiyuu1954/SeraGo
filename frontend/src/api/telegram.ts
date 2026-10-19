@@ -42,3 +42,17 @@ export function unlinkTelegram(accessToken: string): Promise<unknown> {
     headers: auth(accessToken),
   })
 }
+
+/** POST /api/telegram/connect-chat — connect Telegram chat to current signed-in user. */
+export function connectTelegramChat(
+  accessToken: string,
+  chatId: number,
+  token: string,
+): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>(API_ENDPOINTS.telegram.connectChat, {
+    method: 'POST',
+    headers: auth(accessToken),
+    body: { chatId, token },
+  })
+}
+

@@ -62,7 +62,10 @@ public static class TelegramEndpoints
                 ? Results.Ok(new { message = $"Webhook registered to {webhookUrl}" })
                 : Results.Problem("Failed to register webhook");
         })
-        .WithOpenApi();
+        // Connect chat endpoint — called by the special /telegram/connect page
+        group.MapPost("/connect-chat", ConnectChatAsync)
+            .RequireAuthorization()
+            .WithOpenApi();
 
         return app;
     }
@@ -217,7 +220,46 @@ public static class TelegramEndpoints
         return Results.Ok();
     }
 
+    private static async Task<IResult> ConnectChatAsync(
+        [FromBody] TelegramConnectChatRequest request,
+        TelegramBotService telegramService,
+        HttpContext context)
+    {
+        var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? context.User.FindFirstValue("sub");
+
+        if (userId is null)
+            return Results.Unauthorized();
+
+        var validatedChatId = telegramService.ValidateChatLinkingToken(request.Token);
+        if (validatedChatId is null || validatedChatId.Value != request.ChatId)
+        {
+            return Results.BadRequest(new { message = "Invalid or expired linking token." });
+        }
+
+        var linked = await telegramService.LinkAccountAsync(userId, request.ChatId);
+        if (!linked)
+        {
+            return Results.Problem("Could not link account.");
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await telegramService.SendTalentDashboardCardAsync(
+                    request.ChatId,
+                    userId,
+                    "🎉 <b>Your SeraGo account has been successfully connected!</b>");
+            }
+            catch { }
+        });
+
+        return Results.Ok(new { success = true });
+    }
+
     // ── DTOs ──
 
     public sealed record TelegramLinkRequest(string Token);
+    public sealed record TelegramConnectChatRequest(long ChatId, string Token);
 }

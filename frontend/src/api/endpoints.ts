@@ -123,6 +123,8 @@ export const API_ENDPOINTS = {
     unlink: '/telegram/unlink',
     /** GET /api/telegram/status — { linked } for the signed-in account. */
     status: '/telegram/status',
+    /** POST /api/telegram/connect-chat — connect Telegram chat with signed token. */
+    connectChat: '/telegram/connect-chat',
   },
   scraper: {
     /** GET /api/admin/scraper/week-stats — list of scraper weeks. */
