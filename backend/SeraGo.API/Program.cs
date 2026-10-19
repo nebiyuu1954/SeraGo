@@ -365,6 +365,27 @@ if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TELEGRAM_BOT_
     || !string.IsNullOrWhiteSpace(builder.Configuration["TELEGRAM_BOT_TOKEN"]))
 {
     app.MapTelegramEndpoints(); // /api/telegram — account linking, webhook
+
+    // Ensure Telegram webhook is registered on startup so buttons and messages work immediately
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            await Task.Delay(3000);
+            using var scope = app.Services.CreateScope();
+            var botService = scope.ServiceProvider.GetService<TelegramBotService>();
+            if (botService is not null)
+            {
+                var webhookUrl = Environment.GetEnvironmentVariable("TELEGRAM_WEBHOOK_URL")
+                    ?? "https://api.serago.pro.et/api/telegram/webhook";
+                await botService.RegisterWebhookAsync(webhookUrl);
+            }
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogWarning(ex, "Failed to auto-register Telegram webhook on startup");
+        }
+    });
 }
 
 // SignalR hub for real-time notifications — keep-alive tuned for the Cloudflare

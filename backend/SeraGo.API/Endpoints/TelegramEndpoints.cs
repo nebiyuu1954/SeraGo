@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SeraGo.API.Services;
 using SeraGo.Infrastructure.Context;
+using Telegram.Bot;
 
 namespace SeraGo.API.Endpoints;
 
@@ -52,7 +53,7 @@ public static class TelegramEndpoints
         })
         .WithOpenApi();
 
-        // Webhook registration trigger
+        // Webhook registration triggers & status inspection
         group.MapPost("/webhook/register", async (TelegramBotService svc) =>
         {
             var webhookUrl = Environment.GetEnvironmentVariable("TELEGRAM_WEBHOOK_URL")
@@ -61,6 +62,33 @@ public static class TelegramEndpoints
             return success
                 ? Results.Ok(new { message = $"Webhook registered to {webhookUrl}" })
                 : Results.Problem("Failed to register webhook");
+        })
+        .WithOpenApi();
+
+        group.MapGet("/webhook/register", async (TelegramBotService svc) =>
+        {
+            var webhookUrl = Environment.GetEnvironmentVariable("TELEGRAM_WEBHOOK_URL")
+                ?? "https://api.serago.pro.et/api/telegram/webhook";
+            var success = await svc.RegisterWebhookAsync(webhookUrl);
+            return success
+                ? Results.Ok(new { message = $"Webhook registered to {webhookUrl}" })
+                : Results.Problem("Failed to register webhook");
+        })
+        .WithOpenApi();
+
+        group.MapGet("/webhook/info", async (ITelegramBotClient client) =>
+        {
+            var info = await client.GetWebhookInfo();
+            return Results.Ok(new
+            {
+                url = info.Url,
+                hasCustomCertificate = info.HasCustomCertificate,
+                pendingUpdateCount = info.PendingUpdateCount,
+                lastErrorDate = info.LastErrorDate,
+                lastErrorMessage = info.LastErrorMessage,
+                maxConnections = info.MaxConnections,
+                ipAddress = info.IpAddress
+            });
         })
         .WithOpenApi();
 
@@ -205,12 +233,15 @@ public static class TelegramEndpoints
 
             var options = new System.Text.Json.JsonSerializerOptions
             {
+                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.SnakeCaseLower,
                 PropertyNameCaseInsensitive = true
             };
             var telegramUpdate = System.Text.Json.JsonSerializer.Deserialize<Telegram.Bot.Types.Update>(json, options);
 
             if (telegramUpdate is not null)
             {
+                logger.LogInformation("Processing Telegram webhook update: id={UpdateId}, type={Type}, callbackData={Data}",
+                    telegramUpdate.Id, telegramUpdate.Type, telegramUpdate.CallbackQuery?.Data);
                 await telegramService.HandleMessageAsync(telegramUpdate);
             }
         }

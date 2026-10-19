@@ -249,11 +249,12 @@ public sealed class TelegramBotService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-        // The chat id is stored in the UserSettings JSON blob; a LIKE match is
-        // fine here (a rare, user-initiated command).
-        var needle = $"\"chatId\":{chatId}";
+        var needle1 = $"\"chatId\":{chatId}";
+        var needle2 = $"\"chatId\": {chatId}";
+        var needle3 = $"\"chatId\":\"{chatId}\"";
+        var needle4 = $"\"chatId\": \"{chatId}\"";
         var userId = await db.UserSettings
-            .Where(s => s.Settings.Contains(needle))
+            .Where(s => s.Settings.Contains(needle1) || s.Settings.Contains(needle2) || s.Settings.Contains(needle3) || s.Settings.Contains(needle4))
             .Select(s => s.UserId)
             .FirstOrDefaultAsync();
 
@@ -485,25 +486,31 @@ public sealed class TelegramBotService
     private async Task HandleCallbackQueryAsync(CallbackQuery callbackQuery)
     {
         if (_botClient is null) return;
-        var chatId = callbackQuery.Message?.Chat.Id;
+        var chatId = callbackQuery.Message?.Chat.Id ?? callbackQuery.From.Id;
         var data = callbackQuery.Data;
-        if (chatId is null || string.IsNullOrWhiteSpace(data)) return;
+        if (string.IsNullOrWhiteSpace(data))
+        {
+            try { await _botClient.AnswerCallbackQuery(callbackQuery.Id); } catch { }
+            return;
+        }
+
+        _logger.LogInformation("Telegram CallbackQuery received from chat {ChatId}: {Data}", chatId, data);
 
         if (data == "send_test_alert")
         {
             await _botClient.AnswerCallbackQuery(callbackQuery.Id, text: "Sending latest matching job alert...");
-            await SendTestAlertAsync(chatId.Value);
+            await SendTestAlertAsync(chatId);
             return;
         }
 
         if (data == "stop_telegram_notifs")
         {
             await _botClient.AnswerCallbackQuery(callbackQuery.Id, text: "🔕 Sector notifications stopped");
-            await SetTelegramNotificationsEnabledAsync(chatId.Value, enabled: false);
-            var linkedUser = await FindLinkedUserByChatIdAsync(chatId.Value);
+            await SetTelegramNotificationsEnabledAsync(chatId, enabled: false);
+            var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
             if (linkedUser is not null)
             {
-                await EditOrSendTalentDashboardCardAsync(chatId.Value, callbackQuery.Message?.MessageId, linkedUser.Value.UserId, "🔕 <b>Sector notifications have been paused.</b>");
+                await EditOrSendTalentDashboardCardAsync(chatId, callbackQuery.Message?.MessageId, linkedUser.Value.UserId, "🔕 <b>Sector notifications have been paused.</b>");
             }
             return;
         }
@@ -511,11 +518,11 @@ public sealed class TelegramBotService
         if (data == "start_telegram_notifs")
         {
             await _botClient.AnswerCallbackQuery(callbackQuery.Id, text: "🔔 Sector notifications turned on!");
-            await SetTelegramNotificationsEnabledAsync(chatId.Value, enabled: true);
-            var linkedUser = await FindLinkedUserByChatIdAsync(chatId.Value);
+            await SetTelegramNotificationsEnabledAsync(chatId, enabled: true);
+            var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
             if (linkedUser is not null)
             {
-                await EditOrSendTalentDashboardCardAsync(chatId.Value, callbackQuery.Message?.MessageId, linkedUser.Value.UserId, "🔔 <b>Sector notifications are now active!</b>");
+                await EditOrSendTalentDashboardCardAsync(chatId, callbackQuery.Message?.MessageId, linkedUser.Value.UserId, "🔔 <b>Sector notifications are now active!</b>");
             }
             return;
         }
@@ -523,17 +530,21 @@ public sealed class TelegramBotService
         if (data == "show_dashboard")
         {
             await _botClient.AnswerCallbackQuery(callbackQuery.Id);
-            var linkedUser = await FindLinkedUserByChatIdAsync(chatId.Value);
+            var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
             if (linkedUser is not null)
             {
-                await EditOrSendTalentDashboardCardAsync(chatId.Value, callbackQuery.Message?.MessageId, linkedUser.Value.UserId, null);
+                await EditOrSendTalentDashboardCardAsync(chatId, callbackQuery.Message?.MessageId, linkedUser.Value.UserId, null);
+            }
+            else
+            {
+                await SendUnlinkedWelcomeCardAsync(chatId);
             }
             return;
         }
 
         if (data == "open_sector_picker" || data == "refresh_sectors")
         {
-            var linkedUser = await FindLinkedUserByChatIdAsync(chatId.Value);
+            var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
             if (linkedUser is not null)
             {
                 await _botClient.AnswerCallbackQuery(callbackQuery.Id);
@@ -547,17 +558,28 @@ public sealed class TelegramBotService
                 var pickerText = "🎯 <b>Select your job sector:</b>\n\nTap any sector below to switch your job alerts to that sector:";
                 try
                 {
-                    await _botClient.EditMessageText(
-                        chatId: chatId.Value,
-                        messageId: callbackQuery.Message!.MessageId,
-                        text: pickerText,
-                        parseMode: ParseMode.Html,
-                        replyMarkup: keyboard);
+                    if (callbackQuery.Message is not null)
+                    {
+                        await _botClient.EditMessageText(
+                            chatId: chatId,
+                            messageId: callbackQuery.Message.MessageId,
+                            text: pickerText,
+                            parseMode: ParseMode.Html,
+                            replyMarkup: keyboard);
+                        return;
+                    }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    await _botClient.SendMessage(chatId.Value, pickerText, parseMode: ParseMode.Html, replyMarkup: keyboard);
+                    _logger.LogDebug(ex, "Failed to edit message for sector picker, falling back to SendMessage");
                 }
+
+                await _botClient.SendMessage(chatId, pickerText, parseMode: ParseMode.Html, replyMarkup: keyboard);
+            }
+            else
+            {
+                await _botClient.AnswerCallbackQuery(callbackQuery.Id, text: "⚠️ Please connect your SeraGo account first.", showAlert: true);
+                await SendUnlinkedWelcomeCardAsync(chatId);
             }
             return;
         }
@@ -567,20 +589,31 @@ public sealed class TelegramBotService
             var sectorIdStr = data.Contains(':') ? data[(data.IndexOf(':') + 1)..] : "";
             if (Guid.TryParse(sectorIdStr, out var sectorId))
             {
-                var newSectorName = await SetUserSectorAsync(chatId.Value, sectorId);
+                var newSectorName = await SetUserSectorAsync(chatId, sectorId);
                 if (newSectorName is not null)
                 {
                     await _botClient.AnswerCallbackQuery(callbackQuery.Id, text: $"✅ Sector changed to {newSectorName}!");
-                    var linkedUser = await FindLinkedUserByChatIdAsync(chatId.Value);
+                    var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
                     if (linkedUser is not null)
                     {
                         var notice = $"✅ <b>Sector changed to {Escape(newSectorName)}!</b>";
-                        await EditOrSendTalentDashboardCardAsync(chatId.Value, callbackQuery.Message?.MessageId, linkedUser.Value.UserId, notice);
+                        await EditOrSendTalentDashboardCardAsync(chatId, callbackQuery.Message?.MessageId, linkedUser.Value.UserId, notice);
                     }
                 }
+                else
+                {
+                    await _botClient.AnswerCallbackQuery(callbackQuery.Id, text: "⚠️ Sector could not be updated.");
+                }
+            }
+            else
+            {
+                try { await _botClient.AnswerCallbackQuery(callbackQuery.Id); } catch { }
             }
             return;
         }
+
+        // Always answer callback query if unhandled so client button spinner stops
+        try { await _botClient.AnswerCallbackQuery(callbackQuery.Id); } catch { }
     }
 
     private async Task HandleDocumentUploadAsync(long chatId)
@@ -887,9 +920,12 @@ public sealed class TelegramBotService
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var needle = $"\"chatId\":{chatId}";
+        var needle1 = $"\"chatId\":{chatId}";
+        var needle2 = $"\"chatId\": {chatId}";
+        var needle3 = $"\"chatId\":\"{chatId}\"";
+        var needle4 = $"\"chatId\": \"{chatId}\"";
         var setting = await db.UserSettings.AsNoTracking()
-            .Where(s => s.Settings.Contains(needle))
+            .Where(s => s.Settings.Contains(needle1) || s.Settings.Contains(needle2) || s.Settings.Contains(needle3) || s.Settings.Contains(needle4))
             .Select(s => new { s.UserId })
             .FirstOrDefaultAsync();
 
