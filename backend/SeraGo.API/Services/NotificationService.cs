@@ -561,21 +561,27 @@ public sealed class NotificationService
         try
         {
             var settings = System.Text.Json.JsonSerializer.Deserialize<JsonElement>(settingsJson);
-            var notifSection = settings.GetProperty("notifications");
-            var key = NotificationTypeToSettingsKey(notificationType);
+            var isTelegramLinked = settings.TryGetProperty("telegram", out var tg) &&
+                tg.TryGetProperty("linked", out var linked) && linked.GetBoolean();
 
+            if (!settings.TryGetProperty("notifications", out var notifSection))
+                return new ChannelPreferences(true, true, isTelegramLinked);
+
+            var key = NotificationTypeToSettingsKey(notificationType);
             if (string.IsNullOrEmpty(key))
-                return new ChannelPreferences(true, true, true);
+                return new ChannelPreferences(true, true, isTelegramLinked);
 
             // New format: notifications.{key} = { email, inApp, telegram }
             if (notifSection.TryGetProperty(key, out var typeObj) && typeObj.ValueKind == JsonValueKind.Object)
             {
-                var email = typeObj.TryGetProperty("email", out var e) && e.GetBoolean();
-                var inApp = typeObj.TryGetProperty("inApp", out var i) && i.GetBoolean();
-                var telegram = typeObj.TryGetProperty("telegram", out var t) && t.GetBoolean();
+                var email = !typeObj.TryGetProperty("email", out var e) || e.GetBoolean();
+                var inApp = !typeObj.TryGetProperty("inApp", out var i) || i.GetBoolean();
+                var telegram = typeObj.TryGetProperty("telegram", out var t)
+                    ? t.GetBoolean()
+                    : isTelegramLinked;
 
                 var prefs = new ChannelPreferences(email, inApp, telegram);
-                Console.WriteLine($"[NotificationService] User {userId} type={notificationType} prefs={prefs} settings={settingsJson}");
+                Console.WriteLine($"[NotificationService] User {userId} type={notificationType} prefs={prefs}");
                 return prefs;
             }
 
@@ -587,13 +593,13 @@ public sealed class NotificationService
             if (notifSection.TryGetProperty("email", out var emailSection) && emailSection.TryGetProperty(key, out var emailVal))
                 legacyEmail = emailVal.GetBoolean();
 
-            var legacyPrefs = new ChannelPreferences(legacyEmail, legacyInApp, false);
-            Console.WriteLine($"[NotificationService] User {userId} type={notificationType} LEGACY prefs={legacyPrefs} settings={settingsJson}");
+            var legacyPrefs = new ChannelPreferences(legacyEmail, legacyInApp, isTelegramLinked);
+            Console.WriteLine($"[NotificationService] User {userId} type={notificationType} LEGACY prefs={legacyPrefs}");
             return legacyPrefs;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[NotificationService] Failed to read settings for user {userId}: {ex.Message} settings={settingsJson}");
+            Console.WriteLine($"[NotificationService] Failed to read settings for user {userId}: {ex.Message}");
             return new ChannelPreferences(true, true, true);
         }
     }

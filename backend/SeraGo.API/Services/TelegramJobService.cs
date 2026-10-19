@@ -168,7 +168,7 @@ public sealed class TelegramJobService
 
         if (_options.SyncDmEnabled && (_options.AllowsAiDm || _options.AllowsSectorDm))
         {
-            var syncJobIds = jobIds.Take(_options.SyncDmMaxJobs).ToList();
+            var syncJobIds = jobIds.ToList();
             TryEnqueue(() => BackgroundJob.Enqueue<TelegramJobService>(
                 s => s.DispatchSyncedTalentDmsAsync(syncJobIds)));
         }
@@ -178,6 +178,7 @@ public sealed class TelegramJobService
 
     /// <summary>
     /// Fallback / safety net: posts any live, published jobs not yet broadcast.
+    /// Only considers jobs from the last 24 hours to prevent historical backfill floods.
     /// Shuffles order and paces posts dynamically across the configured window.
     /// </summary>
     [Queue("telegram")]
@@ -192,9 +193,23 @@ public sealed class TelegramJobService
         if (client is null) return;
 
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        // Auto-archive historical jobs older than 24 hours so they never flood the channel
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                @"UPDATE ""Jobs"" SET ""TelegramChannelPostedAt"" = NOW() WHERE ""TelegramChannelPostedAt"" IS NULL AND ""CreatedAt"" < NOW() - INTERVAL '24 hours'");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to auto-archive historical Telegram channel jobs");
+        }
+
+        var cutoff = DateTimeOffset.UtcNow.AddHours(-24);
         var pending = await db.Jobs
             .Include(j => j.Sector)
-            .Where(j => j.Status == JobStatus.Published && j.IsActive && j.TelegramChannelPostedAt == null)
+            .Where(j => j.Status == JobStatus.Published && j.IsActive && j.TelegramChannelPostedAt == null &&
+                        (j.PublishedAt >= cutoff || j.CreatedAt >= cutoff))
             .OrderByDescending(j => j.PublishedAt ?? j.CreatedAt)
             .Take(_options.ChannelMaxPerRun)
             .ToListAsync();
@@ -244,6 +259,7 @@ public sealed class TelegramJobService
     /// <summary>
     /// Dispatches personalized job alerts for synced jobs to talents matching
     /// the jobs' sectors, with anti-spam caps per talent per run.
+    /// Directly delivers rich job cards to connected Telegram chats.
     /// </summary>
     [Queue("telegram")]
     [AutomaticRetry(Attempts = 2)]
@@ -253,54 +269,116 @@ public sealed class TelegramJobService
 
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var client = scope.ServiceProvider.GetService<ITelegramBotClient>();
         var notifications = scope.ServiceProvider.GetRequiredService<NotificationService>();
 
         var jobs = await db.Jobs.AsNoTracking()
+            .Include(j => j.Sector)
             .Where(j => jobIds.Contains(j.Id) && j.Status == JobStatus.Published && j.IsActive && j.SectorId != null)
             .ToListAsync();
 
         if (jobs.Count == 0) return;
 
-        var activeTalentIds = await db.Users
-            .Where(u => u.UserType == UserType.Talent && u.IsActive)
-            .Select(u => u.Id)
+        var jobsBySector = jobs.GroupBy(j => j.SectorId!.Value)
+                               .ToDictionary(g => g.Key, g => g.ToList());
+
+        // Include talents and admins who configured job alert preferences
+        var activeUsers = await db.Users.AsNoTracking()
+            .Where(u => u.IsActive && (u.UserType == UserType.Talent || u.UserType == UserType.Admin))
+            .Select(u => new { u.Id })
             .ToListAsync();
 
-        if (activeTalentIds.Count == 0) return;
+        if (activeUsers.Count == 0) return;
 
+        var activeUserIds = activeUsers.Select(u => u.Id).ToHashSet();
         var userSettings = await db.UserSettings.AsNoTracking()
-            .Where(s => activeTalentIds.Contains(s.UserId))
+            .Where(s => activeUserIds.Contains(s.UserId))
             .Select(s => new { s.UserId, s.Settings })
             .ToListAsync();
 
         var talentSentCounts = new Dictionary<string, int>();
 
-        foreach (var job in jobs)
+        foreach (var setting in userSettings)
         {
-            if (job.SectorId is null) continue;
+            var preferredSectorIds = UserSettingsReader.GetForYouSectorIds(setting.Settings);
+            if (preferredSectorIds.Count == 0) continue;
 
-            foreach (var setting in userSettings)
+            long? chatId = null;
+            var isTelegramAlertsEnabled = true;
+            try
+            {
+                var doc = JsonDocument.Parse(setting.Settings);
+                if (doc.RootElement.TryGetProperty("telegram", out var tg) &&
+                    tg.TryGetProperty("linked", out var linked) && linked.GetBoolean() &&
+                    tg.TryGetProperty("chatId", out var cid))
+                {
+                    chatId = cid.GetInt64();
+                }
+
+                if (doc.RootElement.TryGetProperty("notifications", out var notifs) &&
+                    notifs.TryGetProperty("jobAlerts", out var ja) &&
+                    ja.TryGetProperty("telegram", out var tgToggle))
+                {
+                    isTelegramAlertsEnabled = tgToggle.GetBoolean();
+                }
+            }
+            catch { }
+
+            if (chatId is null || !isTelegramAlertsEnabled)
+            {
+                continue; // User has unlinked or stopped Telegram notifications
+            }
+
+            var matchingJobs = new List<Job>();
+            foreach (var secId in preferredSectorIds)
+            {
+                if (jobsBySector.TryGetValue(secId, out var secJobs))
+                {
+                    matchingJobs.AddRange(secJobs);
+                }
+            }
+
+            if (matchingJobs.Count == 0) continue;
+
+            var jobsToSend = matchingJobs
+                .OrderByDescending(j => j.PublishedAt ?? j.CreatedAt)
+                .Take(_options.TalentDmMaxPerUserPerRun)
+                .ToList();
+
+            foreach (var job in jobsToSend)
             {
                 var currentSent = talentSentCounts.GetValueOrDefault(setting.UserId, 0);
-                if (currentSent >= _options.TalentDmMaxPerUserPerRun)
+                if (currentSent >= _options.TalentDmMaxPerUserPerRun) break;
+
+                var sectorName = job.Sector?.Name ?? job.SectorName ?? "Your Target Sector";
+
+                if (chatId is not null && client is not null)
                 {
-                    continue; // Reached cap for this 15-minute sync batch
+                    try
+                    {
+                        await SendDirectJobAlertToUserAsync(
+                            client,
+                            chatId.Value,
+                            job,
+                            linkBase: _options.JobLinkBase,
+                            sectorName: sectorName);
+                        talentSentCounts[setting.UserId] = currentSent + 1;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to send direct job alert to chatId {ChatId} for job {JobId}", chatId, job.Id);
+                    }
                 }
 
-                var preferredSectorIds = UserSettingsReader.GetForYouSectorIds(setting.Settings);
-                if (!preferredSectorIds.Contains(job.SectorId.Value))
-                {
-                    continue;
-                }
-
-                var title = $"🎯 New Job in your Sector: {job.SectorName ?? "General"}";
-                var body = string.IsNullOrWhiteSpace(job.Location)
-                    ? $"{job.Title} at {job.Company}"
-                    : $"{job.Title} at {job.Company} · {job.Location}";
-                var data = JsonSerializer.Serialize(new { job_id = job.Id, sector = job.SectorName ?? "General" });
-
+                // Also record in-app notification so it appears on the web platform
                 try
                 {
+                    var title = $"🎯 New Job in your Sector: {sectorName}";
+                    var body = string.IsNullOrWhiteSpace(job.Location)
+                        ? $"{job.Title} at {job.Company}"
+                        : $"{job.Title} at {job.Company} · {job.Location}";
+                    var data = JsonSerializer.Serialize(new { job_id = job.Id, sector = sectorName });
+
                     await notifications.CreateAsync(new NotificationService.CreateNotificationRequest(
                         UserId: setting.UserId,
                         Type: NotificationType.JobAlert,
@@ -308,14 +386,9 @@ public sealed class TelegramJobService
                         Body: body,
                         Data: data,
                         SkipEmail: true,
-                        SkipTelegram: false));
-
-                    talentSentCounts[setting.UserId] = currentSent + 1;
+                        SkipTelegram: true)); // Already sent directly to Telegram above
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to dispatch synced job alert for user {UserId}", setting.UserId);
-                }
+                catch { }
             }
         }
 
@@ -421,14 +494,13 @@ public sealed class TelegramJobService
 
     /// <summary>
     /// Active talents whose "For You" sector list contains the job's sector.
-    /// Jobs with no sector produce no targeted alerts (avoids messaging every
-    /// talent on the platform).
+    /// Includes admins testing/monitoring job alerts.
     /// </summary>
     private static async Task<List<string>> LoadSectorEligibleTalentsAsync(
         ApplicationDbContext db, Job job, CancellationToken ct)
     {
         var activeTalentIds = await db.Users
-            .Where(u => u.UserType == UserType.Talent && u.IsActive)
+            .Where(u => (u.UserType == UserType.Talent || u.UserType == UserType.Admin) && u.IsActive)
             .Select(u => u.Id)
             .ToListAsync(ct);
 
@@ -462,28 +534,86 @@ public sealed class TelegramJobService
         string link,
         InlineKeyboardMarkup keyboard)
     {
-        var cardText = BuildChannelCard(job, link, maxSnippetLength: 220);
-        if (cardText.Length > 1020)
+        return await SendDirectJobAlertToUserAsync(
+            client,
+            new ChatId(_options.ChannelId!),
+            job,
+            linkBase: _options.JobLinkBase,
+            header: string.Empty);
+    }
+
+    /// <summary>
+    /// Sends a rich job card with verified source banner, bold title, metadata,
+    /// and 1-click apply button directly to a Telegram chat.
+    /// </summary>
+    public static async Task<Message> SendDirectJobAlertToUserAsync(
+        ITelegramBotClient client,
+        ChatId chatId,
+        Job job,
+        string? linkBase = null,
+        string? sectorName = null,
+        string? header = null)
+    {
+        var baseUrl = (linkBase ?? "https://serago.pro.et/dashboard/talent/jobs").TrimEnd('/');
+        var link = $"{baseUrl}/{job.Id}";
+        var keyboard = new InlineKeyboardMarkup(new[]
         {
-            cardText = BuildChannelCard(job, link, maxSnippetLength: 100);
+            new[] { InlineKeyboardButton.WithUrl("🌐 View on SeraGo & Apply", link) }
+        });
+
+        var sb = new StringBuilder();
+        if (header != null)
+        {
+            if (!string.IsNullOrWhiteSpace(header))
+            {
+                sb.AppendLine(header);
+                sb.AppendLine();
+            }
+        }
+        else
+        {
+            var displaySector = sectorName ?? ResolveSectorName(job) ?? "Your Target Sector";
+            sb.AppendLine($"🎯 <b>Job Alert for your Sector: {Escape(displaySector)}</b>");
+            sb.AppendLine();
+        }
+
+        var card = BuildJobCardText(job, link, maxSnippetLength: 220);
+        sb.Append(card);
+
+        var caption = sb.ToString();
+        if (caption.Length > 1020)
+        {
+            sb.Clear();
+            if (header != null)
+            {
+                if (!string.IsNullOrWhiteSpace(header)) { sb.AppendLine(header); sb.AppendLine(); }
+            }
+            else
+            {
+                var displaySector = sectorName ?? ResolveSectorName(job) ?? "Your Target Sector";
+                sb.AppendLine($"🎯 <b>Job Alert for your Sector: {Escape(displaySector)}</b>");
+                sb.AppendLine();
+            }
+            sb.Append(BuildJobCardText(job, link, maxSnippetLength: 90));
+            caption = sb.ToString();
+            if (caption.Length > 1020) caption = caption[..1015] + "…";
         }
 
         var photoUrl = GetSourceBannerUrl(job.SourceName);
         try
         {
             return await client.SendPhoto(
-                chatId: new ChatId(_options.ChannelId!),
+                chatId: chatId,
                 photo: InputFile.FromUri(photoUrl),
-                caption: cardText,
+                caption: caption,
                 parseMode: ParseMode.Html,
                 replyMarkup: keyboard);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to send Telegram channel post as photo for job {JobId}; falling back to text message", job.Id);
             return await client.SendMessage(
-                chatId: new ChatId(_options.ChannelId!),
-                text: cardText,
+                chatId: chatId,
+                text: caption,
                 parseMode: ParseMode.Html,
                 replyMarkup: keyboard);
         }
@@ -508,7 +638,7 @@ public sealed class TelegramJobService
 
     private string BuildJobLink(Job job) => $"{_options.JobLinkBase}/{job.Id}";
 
-    private string BuildChannelCard(Job job, string link, int maxSnippetLength = 220)
+    public static string BuildJobCardText(Job job, string link, int maxSnippetLength = 220)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"<b>Title:</b> {Escape(job.Title)}");
@@ -545,7 +675,7 @@ public sealed class TelegramJobService
         return sb.ToString();
     }
 
-    private static string? ResolveSectorName(Job job)
+    public static string? ResolveSectorName(Job job)
     {
         if (!string.IsNullOrWhiteSpace(job.SectorName)) return job.SectorName;
         if (!string.IsNullOrWhiteSpace(job.Sector?.Name)) return job.Sector.Name;

@@ -496,23 +496,42 @@ public sealed class NotificationOrchestrator
             }
 
             // Check notification preferences
-            var notifSettings = settings.GetProperty("notifications");
-            if (notifSettings.TryGetProperty("telegram", out var telegramPrefs))
+            if (settings.TryGetProperty("notifications", out var notifSettings))
             {
-                return notificationType switch
+                var key = notificationType switch
                 {
-                    "application_received" => telegramPrefs.GetProperty("newApplications").GetBoolean(),
-                    "application_status_changed" => telegramPrefs.GetProperty("applicationUpdates").GetBoolean(),
-                    "job_alert" or "saved_search_match" => telegramPrefs.GetProperty("jobAlerts").GetBoolean(),
-                    _ => true
+                    "application_received" => "newApplications",
+                    "application_status_changed" => "applicationUpdates",
+                    "job_alert" or "saved_search_match" => "jobAlerts",
+                    "admin_review_result" => "jobStatusChanges",
+                    "system_announcement" => "systemAlerts",
+                    _ => ""
                 };
+
+                // New format: notifications.{key}.telegram
+                if (!string.IsNullOrEmpty(key) &&
+                    notifSettings.TryGetProperty(key, out var typeObj) &&
+                    typeObj.ValueKind == JsonValueKind.Object &&
+                    typeObj.TryGetProperty("telegram", out var tgToggle))
+                {
+                    return tgToggle.GetBoolean();
+                }
+
+                // Legacy format: notifications.telegram.{key}
+                if (notifSettings.TryGetProperty("telegram", out var telegramPrefs) &&
+                    telegramPrefs.ValueKind == JsonValueKind.Object &&
+                    !string.IsNullOrEmpty(key) &&
+                    telegramPrefs.TryGetProperty(key, out var legToggle))
+                {
+                    return legToggle.GetBoolean();
+                }
             }
 
             return true;
         }
         catch
         {
-            return false;
+            return true;
         }
     }
 
