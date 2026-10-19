@@ -2,11 +2,14 @@ using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
+using SeraGo.Core.Domain.Entities;
 using SeraGo.Infrastructure.Context;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace SeraGo.API.Services;
 
@@ -255,22 +258,36 @@ public sealed class TelegramBotService
     }
 
     /// <summary>
-    /// Handles incoming messages from Telegram users.
-    /// Called by the webhook endpoint when the bot receives a message.
+    /// Handles incoming messages and callback queries from Telegram users.
+    /// Called by the webhook endpoint when the bot receives an update.
     /// </summary>
     public async Task HandleMessageAsync(Update update)
     {
-        if (update.Message is not { Text: { } text } message)
+        if (update.CallbackQuery is not null)
+        {
+            await HandleCallbackQueryAsync(update.CallbackQuery);
+            return;
+        }
+
+        if (update.Message is not { } message)
             return;
 
         var chatId = message.Chat.Id;
-        var userId = message.From?.Id;
+
+        // User sent a document (e.g. CV file upload in Telegram)
+        if (message.Document is not null)
+        {
+            await HandleDocumentUploadAsync(chatId);
+            return;
+        }
+
+        var text = message.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(text)) return;
 
         _logger.LogInformation("Telegram message from {ChatId}: {Text}", chatId, text);
 
         if (text.StartsWith("/start", StringComparison.OrdinalIgnoreCase))
         {
-            // Check if there's a linking token
             var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length > 1)
             {
@@ -281,122 +298,394 @@ public sealed class TelegramBotService
                     var linked = await LinkAccountAsync(linkedUserId, chatId);
                     if (linked)
                     {
-                        await _botClient!.SendMessage(chatId,
-                            "✅ Your SeraGo account is linked! You'll receive notifications here.\n\nUse /settings to manage preferences.",
-                            parseMode: ParseMode.Html);
+                        await SendTalentDashboardCardAsync(chatId, linkedUserId, "🎉 <b>Your SeraGo account has been successfully linked!</b>");
                         return;
                     }
                 }
             }
 
-            // Check if user is already linked
-            using (var scope = _scopeFactory.CreateScope())
+            var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
+            if (linkedUser is not null)
             {
-                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-                var needle = $"\"chatId\":{chatId}";
-                var alreadyLinked = await db.UserSettings.AnyAsync(s => s.Settings.Contains(needle));
-                if (alreadyLinked)
-                {
-                    await _botClient!.SendMessage(chatId,
-                        "👋 <b>Welcome back to SeraGo Bot!</b>\n\n" +
-                        "✅ Your account is connected and you'll receive instant job alerts for your preferred sectors.\n\n" +
-                        "Commands:\n" +
-                        "/sectors - View your subscribed job sectors\n" +
-                        "/settings - Manage notification preferences\n" +
-                        "/unlink - Unlink this Telegram chat\n" +
-                        "/help - List available commands",
-                        parseMode: ParseMode.Html);
-                    return;
-                }
+                await SendTalentDashboardCardAsync(chatId, linkedUser.Value.UserId, null);
+                return;
             }
 
-            // Default welcome message
-            await _botClient!.SendMessage(chatId,
-                "👋 Welcome to SeraGo Bot!\n\n" +
-                "To link your SeraGo account:\n" +
-                "1. Open SeraGo in your browser\n" +
-                "2. Go to Settings → Connected Accounts (or Notifications)\n" +
-                "3. Click 'Link Telegram'\n\n" +
-                "Or use /help for available commands.",
-                parseMode: ParseMode.Html);
+            await SendUnlinkedWelcomeCardAsync(chatId);
         }
         else if (text.StartsWith("/sectors", StringComparison.OrdinalIgnoreCase) ||
                  text.StartsWith("/mysectors", StringComparison.OrdinalIgnoreCase))
         {
-            using var scope = _scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-
-            var needle = $"\"chatId\":{chatId}";
-            var settings = await db.UserSettings
-                .Where(s => s.Settings.Contains(needle))
-                .Select(s => s.Settings)
-                .FirstOrDefaultAsync();
-
-            if (settings is null)
+            var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
+            if (linkedUser is not null)
             {
-                await _botClient!.SendMessage(chatId,
-                    "⚠️ Your Telegram account isn't linked to SeraGo yet.\n\nLink your account via <a href=\"https://serago.pro.et/dashboard/settings\">SeraGo Settings</a> to see your sectors and get personalized alerts.",
-                    parseMode: ParseMode.Html);
-                return;
+                await SendTalentDashboardCardAsync(chatId, linkedUser.Value.UserId, null);
             }
-
-            var sectorIds = UserSettingsReader.GetForYouSectorIds(settings);
-            if (sectorIds.Count == 0)
+            else
             {
-                await _botClient!.SendMessage(chatId,
-                    "ℹ️ <b>You haven't selected any preferred sectors yet.</b>\n\n" +
-                    "Select your target job sectors in your SeraGo profile to receive personalized job alerts here!\n\n" +
-                    "👉 <a href=\"https://serago.pro.et/dashboard/talent/profile\">Select Sectors in Profile</a>",
-                    parseMode: ParseMode.Html);
-                return;
+                await SendUnlinkedWelcomeCardAsync(chatId);
             }
-
-            var sectorNames = await db.Sectors
-                .Where(s => sectorIds.Contains(s.Id))
-                .Select(s => s.Name)
-                .ToListAsync();
-
-            var sb = new StringBuilder();
-            sb.AppendLine("📋 <b>Your Subscribed Job Sectors:</b>");
-            sb.AppendLine();
-            foreach (var name in sectorNames)
+        }
+        else if (text.StartsWith("/cv", StringComparison.OrdinalIgnoreCase) ||
+                 text.StartsWith("/resume", StringComparison.OrdinalIgnoreCase))
+        {
+            var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
+            if (linkedUser is not null)
             {
-                sb.AppendLine($"• {name}");
+                await SendCvStatusCardAsync(chatId, linkedUser.Value.UserId);
             }
-            sb.AppendLine();
-            sb.AppendLine("You'll receive personalized alerts with instant AI match insights whenever jobs are published in these sectors.");
-            sb.AppendLine();
-            sb.AppendLine("👉 <a href=\"https://serago.pro.et/dashboard/talent/profile\">Update Sectors in Profile</a>");
-
-            await _botClient!.SendMessage(chatId, sb.ToString(), parseMode: ParseMode.Html);
+            else
+            {
+                await SendUnlinkedWelcomeCardAsync(chatId);
+            }
         }
         else if (text.StartsWith("/unlink", StringComparison.OrdinalIgnoreCase))
         {
             var unlinked = await UnlinkByChatIdAsync(chatId);
             await _botClient!.SendMessage(chatId,
                 unlinked
-                    ? "🔌 Your SeraGo account has been unlinked. You won't receive notifications here."
+                    ? "🔌 Your SeraGo account has been unlinked. You won't receive job alerts here."
                     : "This Telegram chat isn't linked to a SeraGo account.",
                 parseMode: ParseMode.Html);
         }
         else if (text.StartsWith("/settings", StringComparison.OrdinalIgnoreCase))
         {
             await _botClient!.SendMessage(chatId,
-                "⚙️ Manage your notifications in SeraGo:\n" +
+                "⚙️ <b>Manage notifications in SeraGo:</b>\n" +
                 "<a href=\"https://serago.pro.et/dashboard/settings\">Open Settings → Notifications</a>\n\n" +
-                "Keep the <b>Telegram</b> toggle on for job alerts to get matched jobs here.",
+                "Keep the <b>Telegram</b> toggle on for job alerts to receive real-time notifications.",
                 parseMode: ParseMode.Html);
         }
         else if (text.StartsWith("/help", StringComparison.OrdinalIgnoreCase))
         {
-            await _botClient!.SendMessage(chatId,
-                "<b>Available commands:</b>\n\n" +
-                "/start - Welcome message + account linking\n" +
-                "/sectors - View your subscribed job sectors\n" +
-                "/settings - Manage notification preferences\n" +
-                "/unlink - Unlink your SeraGo account\n" +
-                "/help - Show this help message",
-                parseMode: ParseMode.Html);
+            var help =
+                "<b>Available Commands:</b>\n\n" +
+                "/start - Open bot dashboard & CV/sector alerts\n" +
+                "/sectors - View and manage your alert sectors\n" +
+                "/cv - Check your CV upload status & AI matching\n" +
+                "/settings - Notification preferences on SeraGo\n" +
+                "/unlink - Disconnect this Telegram chat\n" +
+                "/help - Show this guide";
+
+            await _botClient!.SendMessage(chatId, help, parseMode: ParseMode.Html);
         }
     }
+
+    private async Task HandleCallbackQueryAsync(CallbackQuery callbackQuery)
+    {
+        if (_botClient is null) return;
+        var chatId = callbackQuery.Message?.Chat.Id;
+        var data = callbackQuery.Data;
+        if (chatId is null || string.IsNullOrWhiteSpace(data)) return;
+
+        if (data.StartsWith("toggle_sector:"))
+        {
+            var sectorIdStr = data["toggle_sector:".Length..];
+            if (Guid.TryParse(sectorIdStr, out var sectorId))
+            {
+                var result = await ToggleUserSectorAsync(chatId.Value, sectorId);
+                if (result is not null)
+                {
+                    var (toggledOn, sectorName, updatedMarkup) = result.Value;
+                    var toast = toggledOn ? $"✅ Subscribed to {sectorName}!" : $"❌ Removed {sectorName}";
+                    try
+                    {
+                        await _botClient.AnswerCallbackQuery(callbackQuery.Id, text: toast);
+                        await _botClient.EditMessageReplyMarkup(
+                            chatId: chatId.Value,
+                            messageId: callbackQuery.Message!.MessageId,
+                            replyMarkup: updatedMarkup);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to update Telegram callback query reply markup");
+                    }
+                }
+            }
+        }
+        else if (data == "refresh_sectors")
+        {
+            var linkedUser = await FindLinkedUserByChatIdAsync(chatId.Value);
+            if (linkedUser is not null)
+            {
+                await _botClient.AnswerCallbackQuery(callbackQuery.Id);
+                await SendTalentDashboardCardAsync(chatId.Value, linkedUser.Value.UserId, null);
+            }
+        }
+    }
+
+    private async Task HandleDocumentUploadAsync(long chatId)
+    {
+        if (_botClient is null) return;
+        var keyboard = new InlineKeyboardMarkup(new[]
+        {
+            new[] { InlineKeyboardButton.WithUrl("📄 Upload CV to SeraGo Profile", "https://serago.pro.et/dashboard/talent/profile") },
+            new[] { InlineKeyboardButton.WithCallbackData("🎯 Pick Target Sectors", "refresh_sectors") }
+        });
+
+        await _botClient.SendMessage(
+            chatId,
+            "📄 <b>Document Received!</b>\n\n" +
+            "To connect your CV for AI job compatibility scoring and 1-click applications, please upload it directly to your profile on SeraGo:\n\n" +
+            "👉 <a href=\"https://serago.pro.et/dashboard/talent/profile\">Upload CV on SeraGo Profile</a>\n\n" +
+            "You can also select your preferred job sectors below right now to start receiving job alerts!",
+            parseMode: ParseMode.Html,
+            replyMarkup: keyboard);
+    }
+
+    private async Task SendTalentDashboardCardAsync(long chatId, string userId, string? headerNotice)
+    {
+        if (_botClient is null) return;
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        var profile = await db.TalentProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.UserId == userId);
+        var settings = await db.UserSettings.AsNoTracking().FirstOrDefaultAsync(s => s.UserId == userId);
+
+        var hasCv = !string.IsNullOrWhiteSpace(profile?.ResumeUrl);
+        var selectedSectorIds = UserSettingsReader.GetForYouSectorIds(settings?.Settings);
+        var allSectors = await db.Sectors.AsNoTracking().Where(s => s.IsActive).OrderBy(s => s.Name).Take(10).ToListAsync();
+
+        var sb = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(headerNotice))
+        {
+            sb.AppendLine(headerNotice);
+            sb.AppendLine();
+        }
+
+        var firstName = !string.IsNullOrWhiteSpace(user?.FirstName) ? user.FirstName : "there";
+        sb.AppendLine($"👋 <b>Welcome to SeraGo Bot, {Escape(firstName)}!</b>");
+        sb.AppendLine();
+
+        if (hasCv)
+        {
+            sb.AppendLine("📄 <b>CV Status:</b> ✅ Uploaded on SeraGo");
+            sb.AppendLine("Your resume is active for AI job compatibility scoring.");
+        }
+        else
+        {
+            sb.AppendLine("📄 <b>CV Status:</b> ⚠️ No CV on file");
+            sb.AppendLine("Upload your CV on SeraGo for AI matching, or pick your job sectors below to receive tailored alerts right here.");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("🎯 <b>Your Job Alert Sectors:</b>");
+        if (selectedSectorIds.Count > 0)
+        {
+            var sectorNames = allSectors.Where(s => selectedSectorIds.Contains(s.Id)).Select(s => s.Name).ToList();
+            var displayNames = sectorNames.Count > 0 ? string.Join(", ", sectorNames) : $"{selectedSectorIds.Count} selected";
+            sb.AppendLine($"Subscribed: <i>{Escape(displayNames)}</i>");
+        }
+        else
+        {
+            sb.AppendLine("<i>No sectors selected yet. Tap buttons below to subscribe:</i>");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("👇 <i>Tap any sector below to toggle job alerts on/off:</i>");
+
+        var keyboard = BuildSectorPickerKeyboard(allSectors, selectedSectorIds.ToHashSet(), hasCv);
+
+        await _botClient.SendMessage(chatId, sb.ToString(), parseMode: ParseMode.Html, replyMarkup: keyboard);
+    }
+
+    private async Task SendCvStatusCardAsync(long chatId, string userId)
+    {
+        if (_botClient is null) return;
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var profile = await db.TalentProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.UserId == userId);
+        var hasCv = !string.IsNullOrWhiteSpace(profile?.ResumeUrl);
+
+        if (hasCv)
+        {
+            var keyboard = new InlineKeyboardMarkup(new[]
+            {
+                new[] { InlineKeyboardButton.WithUrl("🌐 View Profile on SeraGo", "https://serago.pro.et/dashboard/talent/profile") }
+            });
+
+            await _botClient.SendMessage(
+                chatId,
+                "✅ <b>Your CV is connected!</b>\n\n" +
+                "Your resume is active. SeraGo's AI automatically matches incoming jobs with your skills and work experience, delivering personalized alerts right here.\n\n" +
+                "Use /sectors to check or customize the job sectors you want alerts for.",
+                parseMode: ParseMode.Html,
+                replyMarkup: keyboard);
+        }
+        else
+        {
+            var keyboard = new InlineKeyboardMarkup(new[]
+            {
+                new[] { InlineKeyboardButton.WithUrl("📄 Upload CV on SeraGo", "https://serago.pro.et/dashboard/talent/profile") },
+                new[] { InlineKeyboardButton.WithCallbackData("🎯 Pick Alert Sectors Now", "refresh_sectors") }
+            });
+
+            await _botClient.SendMessage(
+                chatId,
+                "📄 <b>No CV on File</b>\n\n" +
+                "You haven't uploaded a CV yet. When you upload your CV on SeraGo, our AI:\n" +
+                "• Calculates your compatibility score for new jobs\n" +
+                "• Highlights matching skills\n" +
+                "• Sends high-confidence job alerts directly to this chat\n\n" +
+                "Upload your CV on SeraGo, or pick your sectors now to receive sector-matched job alerts!",
+                parseMode: ParseMode.Html,
+                replyMarkup: keyboard);
+        }
+    }
+
+    private async Task SendUnlinkedWelcomeCardAsync(long chatId)
+    {
+        if (_botClient is null) return;
+        var keyboard = new InlineKeyboardMarkup(new[]
+        {
+            new[] { InlineKeyboardButton.WithUrl("🚀 Create Free Account", "https://serago.pro.et/signup") },
+            new[] { InlineKeyboardButton.WithUrl("📢 Join SeraGo Job Channel", "https://t.me/SeraGo2026") },
+            new[] { InlineKeyboardButton.WithUrl("🔍 Browse Latest Jobs", "https://serago.pro.et/dashboard/talent/jobs") },
+            new[] { InlineKeyboardButton.WithUrl("🔗 Link Account (Settings)", "https://serago.pro.et/dashboard/settings") }
+        });
+
+        var message =
+            "👋 <b>Welcome to SeraGo Bot!</b>\n\n" +
+            "I am your personal AI Job Alert Assistant for opportunities in Ethiopia.\n\n" +
+            "<b>What I can do:</b>\n" +
+            "• ⚡ Instant alerts when jobs match your sector or CV\n" +
+            "• 🧠 AI compatibility score previews\n" +
+            "• 1-click apply links\n\n" +
+            "To get personalized job alerts:\n" +
+            "1. Create an account on <a href=\"https://serago.pro.et/signup\">SeraGo</a> (or log in with Telegram in 1 click)\n" +
+            "2. Upload your CV or pick your job sectors\n" +
+            "3. Connect your Telegram account in <b>Settings → Connected Accounts</b>";
+
+        await _botClient.SendMessage(chatId, message, parseMode: ParseMode.Html, replyMarkup: keyboard);
+    }
+
+    private async Task<(string UserId, string? FirstName)?> FindLinkedUserByChatIdAsync(long chatId)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var needle = $"\"chatId\":{chatId}";
+        var setting = await db.UserSettings.AsNoTracking()
+            .Where(s => s.Settings.Contains(needle))
+            .Select(s => new { s.UserId })
+            .FirstOrDefaultAsync();
+
+        if (setting is null) return null;
+
+        var user = await db.Users.AsNoTracking()
+            .Where(u => u.Id == setting.UserId)
+            .Select(u => new { u.Id, u.FirstName })
+            .FirstOrDefaultAsync();
+
+        return user is not null ? (user.Id, user.FirstName) : null;
+    }
+
+    private async Task<(bool ToggledOn, string SectorName, InlineKeyboardMarkup UpdatedMarkup)?> ToggleUserSectorAsync(
+        long chatId,
+        Guid sectorId)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var needle = $"\"chatId\":{chatId}";
+        var settingsEntity = await db.UserSettings.FirstOrDefaultAsync(s => s.Settings.Contains(needle));
+        if (settingsEntity is null) return null;
+
+        var sector = await db.Sectors.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sectorId && s.IsActive);
+        if (sector is null) return null;
+
+        var currentIds = UserSettingsReader.GetForYouSectorIds(settingsEntity.Settings);
+        bool toggledOn;
+        if (currentIds.Contains(sectorId))
+        {
+            currentIds.Remove(sectorId);
+            toggledOn = false;
+        }
+        else
+        {
+            currentIds.Add(sectorId);
+            toggledOn = true;
+        }
+
+        settingsEntity.Settings = UpdateForYouSectorIdsInJson(settingsEntity.Settings, currentIds);
+        settingsEntity.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        var profile = await db.TalentProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.UserId == settingsEntity.UserId);
+        var allSectors = await db.Sectors.AsNoTracking().Where(s => s.IsActive).OrderBy(s => s.Name).Take(10).ToListAsync();
+        var hasCv = !string.IsNullOrWhiteSpace(profile?.ResumeUrl);
+
+        var markup = BuildSectorPickerKeyboard(allSectors, currentIds.ToHashSet(), hasCv);
+        return (toggledOn, sector.Name, markup);
+    }
+
+    private static InlineKeyboardMarkup BuildSectorPickerKeyboard(
+        List<Sector> allSectors,
+        HashSet<Guid> selectedSectorIds,
+        bool hasCv)
+    {
+        var rows = new List<InlineKeyboardButton[]>();
+
+        if (!hasCv)
+        {
+            rows.Add(new[]
+            {
+                InlineKeyboardButton.WithUrl("📄 Upload CV on SeraGo (AI Matching)", "https://serago.pro.et/dashboard/talent/profile")
+            });
+        }
+
+        foreach (var s in allSectors)
+        {
+            var isSel = selectedSectorIds.Contains(s.Id);
+            var label = isSel ? $"✅ {s.Name}" : $"➕ {s.Name}";
+            rows.Add(new[] { InlineKeyboardButton.WithCallbackData(label, $"toggle_sector:{s.Id}") });
+        }
+
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithUrl("🌐 Open Profile on SeraGo", "https://serago.pro.et/dashboard/talent/profile")
+        });
+
+        return new InlineKeyboardMarkup(rows);
+    }
+
+    private static string UpdateForYouSectorIdsInJson(string? settingsJson, List<Guid> sectorIds)
+    {
+        JsonNode root;
+        if (string.IsNullOrWhiteSpace(settingsJson))
+        {
+            root = new JsonObject();
+        }
+        else
+        {
+            try { root = JsonNode.Parse(settingsJson) ?? new JsonObject(); }
+            catch { root = new JsonObject(); }
+        }
+
+        var forYou = root["forYou"] as JsonObject;
+        if (forYou is null)
+        {
+            forYou = new JsonObject();
+            root["forYou"] = forYou;
+        }
+
+        var arr = new JsonArray();
+        foreach (var id in sectorIds)
+        {
+            arr.Add(id.ToString());
+        }
+        forYou["sectorIds"] = arr;
+        forYou["onboardingCompleted"] = true;
+
+        if (root["notifications"] is JsonObject notifs && notifs["jobAlerts"] is JsonObject jobAlerts)
+        {
+            jobAlerts["telegram"] = true;
+        }
+
+        return root.ToJsonString();
+    }
+
+    private static string Escape(string? text) => string.IsNullOrEmpty(text)
+        ? string.Empty
+        : text.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 }

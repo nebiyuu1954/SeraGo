@@ -103,7 +103,7 @@ public sealed class TelegramJobService
         if (client is null) return;
 
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId);
+        var job = await db.Jobs.Include(j => j.Sector).FirstOrDefaultAsync(j => j.Id == jobId);
         if (job is null || job.TelegramChannelPostedAt != null || !job.IsActive || job.Status != JobStatus.Published)
         {
             return;
@@ -117,11 +117,7 @@ public sealed class TelegramJobService
 
         try
         {
-            var message = await client.SendMessage(
-                chatId: new ChatId(_options.ChannelId!),
-                text: BuildChannelCard(job, link),
-                parseMode: ParseMode.Html,
-                replyMarkup: keyboard);
+            var message = await SendChannelPostAsync(client, job, link, keyboard);
 
             job.TelegramChannelPostedAt = DateTimeOffset.UtcNow;
             job.TelegramChannelMessageId = message.MessageId;
@@ -197,6 +193,7 @@ public sealed class TelegramJobService
 
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var pending = await db.Jobs
+            .Include(j => j.Sector)
             .Where(j => j.Status == JobStatus.Published && j.IsActive && j.TelegramChannelPostedAt == null)
             .OrderByDescending(j => j.PublishedAt ?? j.CreatedAt)
             .Take(_options.ChannelMaxPerRun)
@@ -222,11 +219,7 @@ public sealed class TelegramJobService
 
             try
             {
-                var message = await client.SendMessage(
-                    chatId: new ChatId(_options.ChannelId!),
-                    text: BuildChannelCard(job, link),
-                    parseMode: ParseMode.Html,
-                    replyMarkup: keyboard);
+                var message = await SendChannelPostAsync(client, job, link, keyboard);
 
                 job.TelegramChannelPostedAt = DateTimeOffset.UtcNow;
                 job.TelegramChannelMessageId = message.MessageId;
@@ -463,12 +456,56 @@ public sealed class TelegramJobService
 
     // ── Message building ─────────────────────────────────────────────────
 
+    private async Task<Message> SendChannelPostAsync(
+        ITelegramBotClient client,
+        Job job,
+        string link,
+        InlineKeyboardMarkup keyboard)
+    {
+        var cardText = BuildChannelCard(job, link, maxSnippetLength: 220);
+        if (cardText.Length > 1020)
+        {
+            cardText = BuildChannelCard(job, link, maxSnippetLength: 100);
+        }
+
+        var photoUrl = GetSourceBannerUrl(job.SourceName);
+        try
+        {
+            return await client.SendPhoto(
+                chatId: new ChatId(_options.ChannelId!),
+                photo: InputFile.FromUri(photoUrl),
+                caption: cardText,
+                parseMode: ParseMode.Html,
+                replyMarkup: keyboard);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send Telegram channel post as photo for job {JobId}; falling back to text message", job.Id);
+            return await client.SendMessage(
+                chatId: new ChatId(_options.ChannelId!),
+                text: cardText,
+                parseMode: ParseMode.Html,
+                replyMarkup: keyboard);
+        }
+    }
+
+    public static string GetSourceBannerUrl(string? sourceName)
+    {
+        var normalized = (sourceName ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Contains("ethio"))
+            return "https://pub-98f6c3da395d48cabfc63e4c7f8c9623.r2.dev/sources/ethiojobs.png";
+        if (normalized.Contains("hahu"))
+            return "https://pub-98f6c3da395d48cabfc63e4c7f8c9623.r2.dev/sources/hahujobs.png";
+
+        return "https://pub-98f6c3da395d48cabfc63e4c7f8c9623.r2.dev/sources/serago-banner.png";
+    }
+
     private string BuildJobLink(Job job) => $"{_options.JobLinkBase}/{job.Id}";
 
-    private string BuildChannelCard(Job job, string link)
+    private string BuildChannelCard(Job job, string link, int maxSnippetLength = 220)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"🚀 <b>{Escape(job.Title)}</b>");
+        sb.AppendLine($"<b>Title:</b> {Escape(job.Title)}");
         sb.AppendLine();
 
         var meta = new List<string>();
@@ -477,12 +514,18 @@ public sealed class TelegramJobService
         meta.Add($"🧭 <b>Type:</b> {Humanize(job.JobType)} · {Humanize(job.WorkMode)}");
         if (!string.IsNullOrWhiteSpace(job.ExperienceLevel)) meta.Add($"🎯 <b>Experience:</b> {Escape(job.ExperienceLevel)}");
         if (!string.IsNullOrWhiteSpace(job.Salary)) meta.Add($"💰 <b>Salary:</b> {Escape(job.Salary)}");
-        if (!string.IsNullOrWhiteSpace(job.SectorName)) meta.Add($"🏷️ <b>Sector:</b> {Escape(job.SectorName)}");
+        
+        var sector = ResolveSectorName(job);
+        if (!string.IsNullOrWhiteSpace(sector)) meta.Add($"🏷️ <b>Sector:</b> {Escape(sector)}");
+        
         if (job.Deadline is not null) meta.Add($"⏳ <b>Closes:</b> {job.Deadline:dd MMM yyyy}");
+
+        var sourceDisplay = !string.IsNullOrWhiteSpace(job.SourceName) ? job.SourceName : "SeraGo";
+        meta.Add($"🌐 <b>Source:</b> {Escape(sourceDisplay)}");
 
         foreach (var line in meta) sb.AppendLine(line);
 
-        var snippet = Snippet(job.Description, 280);
+        var snippet = Snippet(job.Description, maxSnippetLength);
         if (!string.IsNullOrEmpty(snippet))
         {
             sb.AppendLine();
@@ -490,10 +533,20 @@ public sealed class TelegramJobService
         }
 
         sb.AppendLine();
-        sb.AppendLine(BuildSectorHashtags(job.SectorName));
+        sb.AppendLine(BuildSectorHashtags(sector));
         sb.AppendLine();
         sb.AppendLine($"🔗 <a href=\"{link}\">View full details and apply on SeraGo</a>");
         return sb.ToString();
+    }
+
+    private static string? ResolveSectorName(Job job)
+    {
+        if (!string.IsNullOrWhiteSpace(job.SectorName)) return job.SectorName;
+        if (!string.IsNullOrWhiteSpace(job.Sector?.Name)) return job.Sector.Name;
+        if (!string.IsNullOrWhiteSpace(job.SubSectorName)) return job.SubSectorName;
+        if (!string.IsNullOrWhiteSpace(job.SourceSectors)) return job.SourceSectors;
+        if (!string.IsNullOrWhiteSpace(job.SourceCategories)) return job.SourceCategories;
+        return null;
     }
 
     private static string BuildSectorHashtags(string? sectorName)
