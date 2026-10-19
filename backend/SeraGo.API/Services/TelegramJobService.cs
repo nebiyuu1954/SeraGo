@@ -468,7 +468,7 @@ public sealed class TelegramJobService
             cardText = BuildChannelCard(job, link, maxSnippetLength: 100);
         }
 
-        var photoUrl = GetSourceBannerUrl(job.SourceName);
+        var photoUrl = GetJobPhotoUrl(job);
         try
         {
             return await client.SendPhoto(
@@ -489,15 +489,33 @@ public sealed class TelegramJobService
         }
     }
 
+    public static string GetJobPhotoUrl(Job job)
+    {
+        if (!string.IsNullOrWhiteSpace(job.CompanyLogoUrl) &&
+            (job.CompanyLogoUrl.StartsWith("http://") || job.CompanyLogoUrl.StartsWith("https://")) &&
+            !job.CompanyLogoUrl.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+        {
+            return job.CompanyLogoUrl;
+        }
+
+        return GetSourceBannerUrl(job.SourceName);
+    }
+
     public static string GetSourceBannerUrl(string? sourceName)
     {
-        var normalized = (sourceName ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalized.Contains("ethio"))
-            return "https://pub-98f6c3da395d48cabfc63e4c7f8c9623.r2.dev/sources/ethiojobs.png";
+        var normalized = (sourceName ?? string.Empty).Trim().ToLowerInvariant().Replace(" ", "");
+        if (normalized.Contains("ethiojob"))
+            return "https://serago.pro.et/sources/ethiojobs.png";
         if (normalized.Contains("hahu"))
-            return "https://pub-98f6c3da395d48cabfc63e4c7f8c9623.r2.dev/sources/hahujobs.png";
+            return "https://serago.pro.et/sources/hahujobs.png";
+        if (normalized.Contains("afriwork"))
+            return "https://serago.pro.et/sources/afriwork.png";
+        if (normalized.Contains("geez"))
+            return "https://serago.pro.et/sources/geezjobs.png";
+        if (normalized.Contains("reporter"))
+            return "https://serago.pro.et/sources/ethioreporterjobs.png";
 
-        return "https://pub-98f6c3da395d48cabfc63e4c7f8c9623.r2.dev/sources/serago-banner.png";
+        return "https://serago.pro.et/sources/hahujobs.png";
     }
 
     private string BuildJobLink(Job job) => $"{_options.JobLinkBase}/{job.Id}";
