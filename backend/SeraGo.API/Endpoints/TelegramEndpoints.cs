@@ -10,7 +10,8 @@ namespace SeraGo.API.Endpoints;
 /// <summary>
 /// Telegram account linking endpoints.
 ///
-/// POST /api/telegram/link       — link Telegram account with a token
+/// GET  /api/telegram/link       — get a t.me deep link that starts linking
+/// POST /api/telegram/link       — validate a linking token (legacy flow)
 /// POST /api/telegram/unlink     — unlink Telegram account
 /// GET  /api/telegram/status     — check if Telegram is linked
 /// POST /api/telegram/webhook    — Telegram bot webhook (no auth)
@@ -22,6 +23,12 @@ public static class TelegramEndpoints
         var group = app.MapGroup("/api/telegram").WithTags("Telegram");
 
         group.MapPost("/link", LinkAccountAsync)
+            .RequireAuthorization()
+            .WithOpenApi();
+
+        // GET returns a ready-to-open t.me deep link (token embedded) — the flow
+        // the frontend uses, instead of asking the user to copy a token.
+        group.MapGet("/link", GetLinkAsync)
             .RequireAuthorization()
             .WithOpenApi();
 
@@ -38,6 +45,30 @@ public static class TelegramEndpoints
             .WithOpenApi();
 
         return app;
+    }
+
+    // ── GET /api/telegram/link ──
+
+    private static async Task<IResult> GetLinkAsync(
+        TelegramBotService telegramService,
+        HttpContext context)
+    {
+        var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? context.User.FindFirstValue("sub");
+
+        if (userId is null)
+            return Results.Unauthorized();
+
+        var username = await telegramService.GetBotUsernameAsync();
+        if (string.IsNullOrWhiteSpace(username))
+            return Results.Problem(
+                "Telegram bot is not configured.",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+
+        var token = telegramService.GenerateLinkingToken(userId);
+        var url = $"https://t.me/{username}?start={token}";
+
+        return Results.Ok(new { url, token });
     }
 
     // ── POST /api/telegram/link ──

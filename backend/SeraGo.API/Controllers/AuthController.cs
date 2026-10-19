@@ -210,9 +210,213 @@ public class AuthController : ControllerBase
 
     [HttpGet("external/providers")]
     [AllowAnonymous]
-    public IActionResult ExternalProviders()
+    public async Task<IActionResult> ExternalProviders([FromServices] IServiceProvider sp)
     {
-        return Ok(new { providers = new[] { "Google" } });
+        var providers = new List<string> { "Google" };
+        string? telegramBotUsername = null;
+
+        var botService = sp.GetService<TelegramBotService>();
+        if (botService != null)
+        {
+            telegramBotUsername = await botService.GetBotUsernameAsync();
+            if (!string.IsNullOrWhiteSpace(telegramBotUsername))
+            {
+                providers.Add("Telegram");
+            }
+        }
+        else
+        {
+            var token = _config["TELEGRAM_BOT_TOKEN"] ?? Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN");
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                providers.Add("Telegram");
+            }
+        }
+
+        return Ok(new
+        {
+            providers = providers.ToArray(),
+            telegramBotUsername
+        });
+    }
+
+    [HttpPost("telegram/login")]
+    [AllowAnonymous]
+    public async Task<IActionResult> TelegramLogin(
+        [FromBody] TelegramLoginRequest req,
+        [FromServices] ITelegramAuthService telegramAuth)
+    {
+        if (req == null)
+            return BadRequest(new { message = "Invalid request payload." });
+
+        var payload = new TelegramAuthPayload(
+            req.Id, req.FirstName, req.LastName, req.Username, req.PhotoUrl, req.AuthDate, req.Hash);
+
+        if (!telegramAuth.Verify(payload))
+        {
+            return BadRequest(new { message = "Invalid or expired Telegram authentication signature." });
+        }
+
+        var user = await _userManager.FindByLoginAsync("Telegram", req.Id.ToString());
+        if (user == null)
+        {
+            var signupToken = telegramAuth.GenerateStateToken(payload);
+            return BadRequest(new
+            {
+                message = "User not found",
+                signupToken,
+                telegramUser = new
+                {
+                    id = req.Id,
+                    firstName = req.FirstName ?? string.Empty,
+                    lastName = req.LastName ?? string.Empty,
+                    username = req.Username ?? string.Empty,
+                    photoUrl = req.PhotoUrl ?? string.Empty,
+                }
+            });
+        }
+
+        if (!user.IsActive)
+        {
+            return Unauthorized(new { message = "Account is inactive or deactivated." });
+        }
+
+        var token = await GenerateJwtTokenAsync(user);
+        return Ok(new SeraGoAuthTokenResponse { AccessToken = token, ExpiresIn = 3600 });
+    }
+
+    [HttpPost("telegram/signup")]
+    [AllowAnonymous]
+    public async Task<IActionResult> TelegramSignUp(
+        [FromBody] TelegramSignUpRequest req,
+        [FromServices] ITelegramAuthService telegramAuth)
+    {
+        if (req == null)
+            return BadRequest(new { message = "Invalid request payload." });
+
+        TelegramAuthPayload? payload = null;
+        if (!string.IsNullOrWhiteSpace(req.SignupToken))
+        {
+            payload = telegramAuth.ValidateStateToken(req.SignupToken);
+        }
+        else if (req.AuthPayload != null)
+        {
+            if (telegramAuth.Verify(req.AuthPayload))
+            {
+                payload = req.AuthPayload;
+            }
+        }
+
+        if (payload == null)
+        {
+            return BadRequest(new { message = "Invalid or expired Telegram signup session. Please start sign up again." });
+        }
+
+        var existingLogin = await _userManager.FindByLoginAsync("Telegram", payload.Id.ToString());
+        if (existingLogin != null)
+        {
+            return BadRequest(new { message = "This Telegram account is already registered. Please sign in instead." });
+        }
+
+        var email = (req.Email ?? string.Empty).Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
+        {
+            return BadRequest(new { message = "A valid email address is required." });
+        }
+
+        var existingUser = await _userManager.FindByEmailAsync(email);
+        if (existingUser != null)
+        {
+            return BadRequest(new { message = "An account with this email already exists. Please sign in and connect Telegram in Settings." });
+        }
+
+        if (string.IsNullOrWhiteSpace(req.Password))
+        {
+            return BadRequest(new { message = "Password is required." });
+        }
+
+        var normalizedPhone = NormalizeEthiopianPhone(req.PhoneNumber);
+        if (string.IsNullOrWhiteSpace(normalizedPhone))
+        {
+            return BadRequest(new { message = "A valid Ethiopian phone number is required (e.g. 0910101010 or 910101010)." });
+        }
+
+        var firstName = !string.IsNullOrWhiteSpace(req.FirstName)
+            ? req.FirstName.Trim()
+            : (payload.FirstName ?? string.Empty);
+
+        var lastName = !string.IsNullOrWhiteSpace(req.LastName)
+            ? req.LastName.Trim()
+            : (payload.LastName ?? string.Empty);
+
+        var middleName = (req.MiddleName ?? string.Empty).Trim();
+        var avatarUrl = !string.IsNullOrWhiteSpace(payload.PhotoUrl) ? payload.PhotoUrl : string.Empty;
+
+        var isRecruiter = string.Equals(req.Role, "Recruiter", StringComparison.OrdinalIgnoreCase);
+        var userType = isRecruiter ? UserType.Recruiter : UserType.Talent;
+
+        var user = new ApplicationUser
+        {
+            UserName = email,
+            Email = email,
+            EmailConfirmed = true,
+            FirstName = firstName,
+            MiddleName = middleName,
+            LastName = lastName,
+            PhoneNumber = normalizedPhone,
+            AvatarUrl = avatarUrl,
+            UserType = userType
+        };
+
+        var createResult = await _userManager.CreateAsync(user, req.Password);
+        if (!createResult.Succeeded)
+        {
+            return BadRequest(new { message = string.Join(", ", createResult.Errors.Select(e => e.Description)) });
+        }
+
+        await _userManager.AddLoginAsync(user, new UserLoginInfo("Telegram", payload.Id.ToString(), "Telegram"));
+
+        var role = isRecruiter ? "Recruiter" : "Talent";
+        await _userManager.AddToRoleAsync(user, role);
+
+        if (isRecruiter)
+        {
+            if (!await _db.RecruiterProfiles.AnyAsync(p => p.UserId == user.Id))
+            {
+                _db.RecruiterProfiles.Add(new RecruiterProfile { UserId = user.Id });
+            }
+        }
+        else
+        {
+            if (!await _db.TalentProfiles.AnyAsync(p => p.UserId == user.Id))
+            {
+                _db.TalentProfiles.Add(new TalentProfile { UserId = user.Id });
+            }
+        }
+
+        var settingsDict = new Dictionary<string, object>
+        {
+            ["telegram"] = new Dictionary<string, object>
+            {
+                ["linked"] = true,
+                ["chatId"] = payload.Id,
+                ["username"] = payload.Username ?? string.Empty,
+                ["linkedAt"] = DateTimeOffset.UtcNow.ToString("O")
+            }
+        };
+
+        _db.UserSettings.Add(new UserSettings
+        {
+            UserId = user.Id,
+            Settings = System.Text.Json.JsonSerializer.Serialize(settingsDict),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        });
+
+        await _db.SaveChangesAsync();
+
+        var token = await GenerateJwtTokenAsync(user);
+        return Ok(new SeraGoAuthTokenResponse { AccessToken = token, ExpiresIn = 3600 });
     }
 
     [HttpGet("external/challenge/{provider}")]
@@ -450,4 +654,28 @@ public class SeraGoAuthTokenResponse
 
     [System.Text.Json.Serialization.JsonPropertyName("RefreshToken")]
     public string? RefreshToken { get; set; }
+}
+
+public sealed class TelegramLoginRequest
+{
+    public long Id { get; set; }
+    public string? FirstName { get; set; }
+    public string? LastName { get; set; }
+    public string? Username { get; set; }
+    public string? PhotoUrl { get; set; }
+    public long AuthDate { get; set; }
+    public string Hash { get; set; } = string.Empty;
+}
+
+public sealed class TelegramSignUpRequest
+{
+    public string? SignupToken { get; set; }
+    public TelegramAuthPayload? AuthPayload { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public string PhoneNumber { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
+    public string? FirstName { get; set; }
+    public string? MiddleName { get; set; }
+    public string? LastName { get; set; }
+    public string? Role { get; set; }
 }

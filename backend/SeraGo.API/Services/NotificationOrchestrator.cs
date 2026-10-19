@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using SeraGo.Infrastructure.Context;
 using StackExchange.Redis;
 using Telegram.Bot;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace SeraGo.API.Services;
 
@@ -166,7 +167,29 @@ public sealed class NotificationOrchestrator
         try
         {
             var message = BuildTelegramMessage(notification);
-            await telegramClient.SendMessage(chatId.Value, message, parseMode: Telegram.Bot.Types.Enums.ParseMode.Html);
+            InlineKeyboardMarkup? replyMarkup = null;
+
+            if (notification.Type == "job_alert")
+            {
+                var data = notification.Data ?? "{}";
+                var dataObj = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(data) ?? new();
+                var jobUrl = dataObj.TryGetValue("job_id", out var jobId)
+                    && jobId.ValueKind == JsonValueKind.String
+                    && Guid.TryParse(jobId.GetString(), out _)
+                        ? $"https://serago.pro.et/dashboard/talent/jobs/{jobId.GetString()}"
+                        : "https://serago.pro.et/dashboard/jobs";
+
+                replyMarkup = new InlineKeyboardMarkup(new[]
+                {
+                    new[] { InlineKeyboardButton.WithUrl("⚡ View & Check AI Match on SeraGo", jobUrl) }
+                });
+            }
+
+            await telegramClient.SendMessage(
+                chatId: chatId.Value,
+                text: message,
+                parseMode: Telegram.Bot.Types.Enums.ParseMode.Html,
+                replyMarkup: replyMarkup);
 
             notification.TelegramSent = true;
             notification.TelegramSentAt = DateTimeOffset.UtcNow;
@@ -530,15 +553,15 @@ public sealed class NotificationOrchestrator
         // Add action buttons based on type
         if (notification.Type == "application_received" && dataObj.TryGetValue("job_id", out var jobId))
         {
-            sb.AppendLine($"<p><a href='https://serago.et/dashboard/applications' style='display: inline-block; background: #6750A4; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;'>View Application</a></p>");
+            sb.AppendLine($"<p><a href='https://serago.pro.et/dashboard/applications' style='display: inline-block; background: #6750A4; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;'>View Application</a></p>");
         }
         else if (notification.Type == "job_alert")
         {
-            sb.AppendLine($"<p><a href='https://serago.et/dashboard/jobs' style='display: inline-block; background: #6750A4; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;'>View Jobs</a></p>");
+            sb.AppendLine($"<p><a href='https://serago.pro.et/dashboard/jobs' style='display: inline-block; background: #6750A4; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;'>View Jobs</a></p>");
         }
 
         sb.AppendLine("<hr style='border: none; border-top: 1px solid #eee; margin: 20px 0;'>");
-        sb.AppendLine("<p style='color: #999; font-size: 12px;'>SeraGo Job Board · <a href='https://serago.et/dashboard/settings'>Manage notification preferences</a></p>");
+        sb.AppendLine("<p style='color: #999; font-size: 12px;'>SeraGo Job Board · <a href='https://serago.pro.et/dashboard/settings'>Manage notification preferences</a></p>");
         sb.AppendLine("</body></html>");
 
         return sb.ToString();
@@ -565,9 +588,9 @@ public sealed class NotificationOrchestrator
             sb.AppendLine($"<p style='color: #999;'>... and {notifications.Count - 20} more</p>");
         }
 
-        sb.AppendLine($"<p style='margin-top: 20px;'><a href='https://serago.et/dashboard/notifications' style='display: inline-block; background: #6750A4; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;'>View All Notifications</a></p>");
+        sb.AppendLine($"<p style='margin-top: 20px;'><a href='https://serago.pro.et/dashboard/notifications' style='display: inline-block; background: #6750A4; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;'>View All Notifications</a></p>");
         sb.AppendLine("<hr style='border: none; border-top: 1px solid #eee; margin: 20px 0;'>");
-        sb.AppendLine("<p style='color: #999; font-size: 12px;'>SeraGo Job Board · <a href='https://serago.et/dashboard/settings'>Manage notification preferences</a></p>");
+        sb.AppendLine("<p style='color: #999; font-size: 12px;'>SeraGo Job Board · <a href='https://serago.pro.et/dashboard/settings'>Manage notification preferences</a></p>");
         sb.AppendLine("</body></html>");
 
         return sb.ToString();
@@ -580,16 +603,20 @@ public sealed class NotificationOrchestrator
         sb.AppendLine();
         sb.AppendLine(EscapeHtml(notification.Body));
 
-        // Add action links
+        // Add action links, deep-linking to the specific job when we have it.
+        var data = notification.Data ?? "{}";
+        var dataObj = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(data) ?? new();
+
         if (notification.Type == "application_received")
         {
             sb.AppendLine();
-            sb.AppendLine("<a href='https://serago.et/dashboard/applications'>View Application →</a>");
+            sb.AppendLine("<a href='https://serago.pro.et/dashboard/applications'>View Application →</a>");
         }
         else if (notification.Type == "job_alert")
         {
             sb.AppendLine();
-            sb.AppendLine("<a href='https://serago.et/dashboard/jobs'>View Jobs →</a>");
+            sb.AppendLine("🧠 <i>Want to check your AI compatibility score?</i>");
+            sb.AppendLine("See how your skills and experience match this role on SeraGo!");
         }
 
         sb.AppendLine();

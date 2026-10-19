@@ -990,7 +990,8 @@ public static class JobEndpoints
         ClaimsPrincipal claims,
         UserManager<ApplicationUser> userManager,
         ApplicationDbContext db,
-        NotificationService notificationService)
+        NotificationService notificationService,
+        TelegramJobService telegramJobs)
     {
         var user = await userManager.GetUserAsync(claims);
         if (user is null)
@@ -1101,10 +1102,11 @@ public static class JobEndpoints
         db.Jobs.Add(job);
         await db.SaveChangesAsync();
 
-        // If job was published immediately (admin), notify matching talents
+        // If job was published immediately (admin), broadcast to Telegram +
+        // notify matching talents.
         if (status == JobStatus.Published)
         {
-            await NotifyMatchingTalentsAsync(db, notificationService, job);
+            await telegramJobs.PublishAsync(job.Id, allowChannel: true);
         }
 
         // If job was submitted for review, notify all admins
@@ -1395,7 +1397,8 @@ public static class JobEndpoints
         Guid id,
         ApplicationDbContext db,
         NotificationService notificationService,
-        MatchingClient matchingClient)
+        MatchingClient matchingClient,
+        TelegramJobService telegramJobs)
     {
         var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id);
         if (job is null)
@@ -1427,9 +1430,6 @@ public static class JobEndpoints
                 SkipTelegram: true
             ));
         }
-
-        // Notify matching talents about the new job
-        await NotifyMatchingTalentsAsync(db, notificationService, job);
 
         // ── AI Matching: score this job against eligible talents ──
         // Only talents whose "For You" settings cover this job (any For You
@@ -1481,6 +1481,9 @@ public static class JobEndpoints
             experienceMinYears: job.ExperienceMinYears,
             experienceMaxYears: job.ExperienceMaxYears,
             eligibleTalents: eligibleTalentModels);
+
+        // Broadcast the now-live job to Telegram (channel + personalized DMs).
+        await telegramJobs.PublishAsync(job.Id, allowChannel: true);
 
         return Results.Ok(ToResponse(job, string.Empty));
     }
@@ -1805,69 +1808,5 @@ public static class JobEndpoints
         }
 
         return forYouByUser.Take(500).ToDictionary(kv => kv.Key, kv => kv.Value);
-    }
-
-    /// <summary>
-    /// Notify all talents whose sector preference matches the new job.
-    /// In production, the Django AI service handles this via the batch endpoint.
-    /// This is the fallback for SeraGo-posted jobs.
-    /// </summary>
-    private static async Task NotifyMatchingTalentsAsync(
-        ApplicationDbContext db,
-        NotificationService notificationService,
-        Job job)
-    {
-        try
-        {
-            // Active talents + their settings (the "For you" sectors live there now).
-            var activeTalentIds = await db.Users
-                .Where(u => u.UserType == Core.Domain.Enums.UserType.Talent && u.IsActive)
-                .Select(u => u.Id)
-                .ToListAsync();
-
-            var settingsByUser = await db.UserSettings.AsNoTracking()
-                .Where(s => activeTalentIds.Contains(s.UserId))
-                .Select(s => new { s.UserId, s.Settings })
-                .ToListAsync();
-
-            var settingsMap = settingsByUser.ToDictionary(x => x.UserId, x => x.Settings);
-
-            List<string> userIds;
-            if (job.SectorId is not null)
-            {
-                // Talents whose "For you" sectors include this job's sector
-                userIds = activeTalentIds
-                    .Where(id => UserSettingsReader.GetForYouSectorIds(
-                        settingsMap.GetValueOrDefault(id)).Contains(job.SectorId.Value))
-                    .Take(500) // cap at 500
-                    .ToList();
-            }
-            else
-            {
-                // No sector info — notify all active talents
-                userIds = activeTalentIds.Take(500).ToList();
-            }
-
-            if (userIds.Count == 0) return;
-
-            // Create individual notifications (not batch — these are real-time alerts)
-            foreach (var userId in userIds)
-            {
-                await notificationService.CreateAsync(new NotificationService.CreateNotificationRequest(
-                    UserId: userId,
-                    Type: NotificationType.JobAlert,
-                    Title: "New job posted",
-                    Body: $"{job.Title} at {job.Company} in {job.Location}",
-                    Data: $"{{\"job_id\":\"{job.Id}\",\"sector\":\"{job.SectorName ?? "General"}\"}}",
-                    SkipEmail: true, // defer email to digest
-                    SkipTelegram: true
-                ));
-            }
-        }
-        catch (Exception ex)
-        {
-            // Don't fail the request if notifications fail
-            // Log would go here in production
-        }
     }
 }

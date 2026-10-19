@@ -414,6 +414,15 @@ if (SeraGo.API.Extensions.ServicesExtensions.HangfireEnabled)
                 o => o.SyncRedisCounters(),
                 "0 * * * *",  // hourly
                 new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+            // Backfill/safety net for the Telegram job channel: posts live jobs
+            // that were never broadcast (the bulk of them arrive via the scraper
+            // sync), spaced to respect Telegram's per-chat rate limit.
+            recurringJobs.AddOrUpdate<TelegramJobService>(
+                "telegram-channel-sweep",
+                s => s.SweepPendingChannelJobsAsync(),
+                "*/10 * * * *",  // every 10 minutes
+                new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
             break;
         }
         catch (PostgreSqlDistributedLockException ex) when (attempt < maxAttempts)

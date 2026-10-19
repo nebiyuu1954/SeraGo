@@ -130,6 +130,36 @@ public class MatchingClient
     }
 
     /// <summary>
+    /// Fetch the talent userIds whose stored 0-100 match score for one job is at
+    /// or above <paramref name="threshold"/> — used to pick AI-matched talents
+    /// for Telegram job DMs. Best-effort: empty list on any failure.
+    /// </summary>
+    public async Task<List<string>> GetJobMatchesAsync(
+        Guid jobId, double threshold, int limit, CancellationToken ct = default)
+    {
+        try
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(15));
+
+            var payload = new { jobId = jobId.ToString(), threshold, limit };
+            var response = await SendJsonAsync("api/matching/job-matches", payload, timeoutCts.Token);
+            response.EnsureSuccessStatusCode();
+            var result = await response.Content.ReadFromJsonAsync<JobMatchesResponse>(JsonOpts, timeoutCts.Token);
+
+            return result?.Matches?
+                .Where(m => !string.IsNullOrWhiteSpace(m.UserId))
+                .Select(m => m.UserId!)
+                .ToList() ?? [];
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to fetch AI job matches for job {JobId}", jobId);
+            return [];
+        }
+    }
+
+    /// <summary>
     /// Fetch the stored 0-100 scores for a list of applications (used by the
     /// recruiter applications pages). Best-effort.
     /// </summary>
@@ -518,6 +548,22 @@ public class MatchingClient
     {
         [JsonPropertyName("scores")]
         public Dictionary<string, JobScore>? Scores { get; set; }
+    }
+
+    private sealed class JobMatchesResponse
+    {
+        [JsonPropertyName("matches")]
+        public List<JobMatch>? Matches { get; set; }
+    }
+
+    /// <summary>One talent-job match: the talent's userId and their 0-100 score.</summary>
+    public sealed class JobMatch
+    {
+        [JsonPropertyName("userId")]
+        public string? UserId { get; set; }
+
+        [JsonPropertyName("score")]
+        public double? Score { get; set; }
     }
 
     private sealed class ApplicationScoreBatchResponse

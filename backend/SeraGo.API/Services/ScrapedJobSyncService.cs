@@ -108,6 +108,7 @@ public sealed class ScrapedJobSyncService
         var deactivated = 0;
         var unknownSectors = new SortedSet<string>();
         var seenKeys = new HashSet<string>();
+        var insertedIds = new HashSet<Guid>();
         DateTime? maxUpdatedAt = null;
 
         // Load every existing scraped-sourced job ONCE, then match in memory.
@@ -414,6 +415,7 @@ public sealed class ScrapedJobSyncService
                 jobsByKey[(sourceName, externalId)] = newJob;
                 inserted++;
                 touchedIds.Add(newJob.Id);
+                insertedIds.Add(newJob.Id);
             }
 
             if ((inserted + updated + unchanged) % 100 == 0)
@@ -488,6 +490,22 @@ public sealed class ScrapedJobSyncService
         // unchanged, already-classified jobs are not re-sent.
         var touchedJobs = jobsByKey.Values.Where(j => touchedIds.Contains(j.Id)).ToList();
         await ClassifyTouchedJobsAsync(db, touchedJobs, aiClient, saveService, ct);
+
+        // Broadcast the newly imported jobs to Telegram: enqueue the rate-limited
+        // channel sweep (and, only when opted in, personalized DMs). Best-effort —
+        // a Telegram/Hangfire hiccup must not fail the sync.
+        try
+        {
+            var telegramJobs = scope.ServiceProvider.GetService<TelegramJobService>();
+            if (telegramJobs is not null)
+            {
+                await telegramJobs.BroadcastSyncedJobsAsync(insertedIds);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to queue Telegram broadcast for {Count} synced jobs", insertedIds.Count);
+        }
 
         return new SyncResult(
             inserted, updated, unchanged, uncategorized,

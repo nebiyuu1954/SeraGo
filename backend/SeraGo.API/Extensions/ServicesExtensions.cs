@@ -326,8 +326,9 @@ public static class ServicesExtensions
         services.AddScoped<NotificationOrchestrator>();
 
         // ── Telegram Bot ──
-        // Only registered when TELEGRAM_BOT_TOKEN is set.
-        // When absent, Telegram endpoints are not mapped (see Program.cs).
+        // The bot client is only registered when TELEGRAM_BOT_TOKEN is set.
+        // When absent, Telegram endpoints are not mapped (see Program.cs) and
+        // TelegramJobService simply skips its Telegram sends.
         var telegramToken = configuration["TELEGRAM_BOT_TOKEN"]
             ?? Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN");
 
@@ -336,6 +337,12 @@ public static class ServicesExtensions
             services.AddSingleton<ITelegramBotClient>(new TelegramBotClient(telegramToken));
             services.AddScoped<TelegramBotService>();
         }
+
+        // Job broadcast / personalized DMs run regardless of the token — without
+        // a bot client they degrade to in-app job alerts only.
+        services.AddSingleton<TelegramOptions>();
+        services.AddScoped<TelegramJobService>();
+        services.AddSingleton<ITelegramAuthService, TelegramAuthService>();
 
         // ── Authorization policies ──
         // Roles come from ASP.NET Core Identity (added by Aufy via
