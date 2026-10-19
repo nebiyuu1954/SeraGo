@@ -468,7 +468,7 @@ public sealed class TelegramJobService
             cardText = BuildChannelCard(job, link, maxSnippetLength: 100);
         }
 
-        var photoUrl = GetJobPhotoUrl(job);
+        var photoUrl = GetSourceBannerUrl(job.SourceName);
         try
         {
             return await client.SendPhoto(
@@ -489,18 +489,6 @@ public sealed class TelegramJobService
         }
     }
 
-    public static string GetJobPhotoUrl(Job job)
-    {
-        if (!string.IsNullOrWhiteSpace(job.CompanyLogoUrl) &&
-            (job.CompanyLogoUrl.StartsWith("http://") || job.CompanyLogoUrl.StartsWith("https://")) &&
-            !job.CompanyLogoUrl.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
-        {
-            return job.CompanyLogoUrl;
-        }
-
-        return GetSourceBannerUrl(job.SourceName);
-    }
-
     public static string GetSourceBannerUrl(string? sourceName)
     {
         var normalized = (sourceName ?? string.Empty).Trim().ToLowerInvariant().Replace(" ", "");
@@ -515,7 +503,7 @@ public sealed class TelegramJobService
         if (normalized.Contains("reporter"))
             return "https://serago.pro.et/sources/ethioreporterjobs.png";
 
-        return "https://serago.pro.et/sources/hahujobs.png";
+        return "https://serago.pro.et/sources/serago.png";
     }
 
     private string BuildJobLink(Job job) => $"{_options.JobLinkBase}/{job.Id}";
