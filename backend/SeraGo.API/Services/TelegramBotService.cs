@@ -440,6 +440,8 @@ public sealed class TelegramBotService
     /// </summary>
     public async Task HandleMessageAsync(Update update)
     {
+        if (_botClient is null) return;
+
         if (update.CallbackQuery is not null)
         {
             await HandleCallbackQueryAsync(update.CallbackQuery);
@@ -1256,12 +1258,12 @@ public sealed class TelegramBotService
         try
         {
             var (stream, contentType, fileName) = await storage.DownloadFileAsync(profile.ResumeUrl);
+            var rawFileName = fileName.Split('/').LastOrDefault() ?? "Resume.pdf";
+            var cleanFileName = Regex.Replace(rawFileName, @"^\d{8}_\d{6}_", "");
+            if (string.IsNullOrWhiteSpace(cleanFileName)) cleanFileName = "Resume.pdf";
+
             await using (stream)
             {
-                var rawFileName = fileName.Split('/').LastOrDefault() ?? "Resume.pdf";
-                var cleanFileName = Regex.Replace(rawFileName, @"^\d{8}_\d{6}_", "");
-                if (string.IsNullOrWhiteSpace(cleanFileName)) cleanFileName = "Resume.pdf";
-
                 await _botClient.SendDocument(
                     chatId: chatId,
                     document: InputFile.FromStream(stream, cleanFileName),
