@@ -14,6 +14,7 @@ using SeraGo.API.Services;
 using SeraGo.Infrastructure;
 using SeraGo.Infrastructure.Context;
 using SeraGo.Infrastructure.Data;
+using Telegram.Bot;
 
 // Load .env before configuration is built — .NET has no native .env support.
 // Searches up from BOTH the working directory and the assembly location
@@ -441,7 +442,7 @@ if (SeraGo.API.Extensions.ServicesExtensions.HangfireEnabled)
 }
 
 // Ensure the Telegram bot webhook is registered on startup
-var telegramBotClient = app.Services.GetService<Telegram.Bot.ITelegramBotClient>();
+var telegramBotClient = app.Services.GetService<ITelegramBotClient>();
 if (telegramBotClient is not null)
 {
     var webhookUrl = Environment.GetEnvironmentVariable("TELEGRAM_WEBHOOK_URL")
