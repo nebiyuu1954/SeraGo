@@ -195,12 +195,117 @@ export function fetchExternalInfo(): Promise<ExternalAuthInfo> {
 
 /**
  * Lists the OAuth providers the backend has registered (has non-blank
- * credentials), e.g. { providers: ['Google'] }.
+ * credentials), e.g. { providers: ['Google', 'Telegram'], telegramBotUsername: 'serago_bot' }.
  *
  * GET /api/auth/external/providers
  */
-export function fetchExternalProviders(): Promise<{ providers: string[] }> {
-  return request<{ providers: string[] }>(API_ENDPOINTS.auth.external.providers)
+export function fetchExternalProviders(): Promise<{
+  providers: string[]
+  telegramBotUsername?: string | null
+}> {
+  return request<{ providers: string[]; telegramBotUsername?: string | null }>(
+    API_ENDPOINTS.auth.external.providers,
+  )
+}
+
+export interface TelegramAuthPayload {
+  id: number
+  first_name?: string
+  last_name?: string
+  username?: string
+  photo_url?: string
+  auth_date: number
+  hash: string
+}
+
+export interface TelegramSignUpRequest {
+  signupToken?: string
+  authPayload?: TelegramAuthPayload
+  email: string
+  phoneNumber: string
+  password: string
+  firstName?: string
+  middleName?: string
+  lastName?: string
+  role?: string
+}
+
+export interface ConnectedAccountItem {
+  provider: 'Google' | 'Telegram' | string
+  displayName: string
+  connected: boolean
+  email?: string | null
+  username?: string | null
+  id?: string | null
+}
+
+export interface ConnectedAccountsResponse {
+  hasPassword: boolean
+  accounts: ConnectedAccountItem[]
+}
+
+/**
+ * Sign in using verified Telegram widget payload.
+ *
+ * POST /api/auth/telegram/login
+ */
+export function signInTelegram(payload: TelegramAuthPayload): Promise<AuthTokenResponse> {
+  return request<AuthTokenResponse>(API_ENDPOINTS.auth.telegram.login, {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+/**
+ * Complete sign up for brand-new Telegram user.
+ *
+ * POST /api/auth/telegram/signup
+ */
+export function signUpTelegram(payload: TelegramSignUpRequest): Promise<AuthTokenResponse> {
+  return request<AuthTokenResponse>(API_ENDPOINTS.auth.telegram.signup, {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+/**
+ * Fetches third-party connected accounts (Google, Telegram) for the current user.
+ *
+ * GET /api/account/connected-accounts
+ */
+export function fetchConnectedAccounts(accessToken: string): Promise<ConnectedAccountsResponse> {
+  return request<ConnectedAccountsResponse>(API_ENDPOINTS.account.connectedAccounts, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+}
+
+/**
+ * Links a Telegram account to the signed-in user.
+ *
+ * POST /api/account/connected-accounts/telegram/link
+ */
+export function linkTelegramAccount(
+  accessToken: string,
+  payload: TelegramAuthPayload,
+): Promise<{ message: string; username?: string; id?: string }> {
+  return request(API_ENDPOINTS.account.linkTelegram, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: payload,
+  })
+}
+
+/**
+ * Disconnects the linked Telegram account.
+ *
+ * POST /api/account/connected-accounts/telegram/unlink
+ */
+export function unlinkTelegramAccount(accessToken: string): Promise<{ message: string }> {
+  return request(API_ENDPOINTS.account.unlinkTelegram, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
 }
 
 /**

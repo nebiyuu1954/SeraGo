@@ -72,12 +72,23 @@ export {
   getStoredAuthTokens,
   signIn,
   signInExternal,
+  signInTelegram,
   signOut,
   signUp,
   signUpExternal,
+  signUpTelegram,
   storeAuthTokens,
+  fetchConnectedAccounts,
+  linkTelegramAccount,
+  unlinkTelegramAccount,
 } from './auth.ts'
-export type { StoredAuthTokens } from './auth.ts'
+export type {
+  StoredAuthTokens,
+  TelegramAuthPayload,
+  TelegramSignUpRequest,
+  ConnectedAccountItem,
+  ConnectedAccountsResponse,
+} from './auth.ts'
 export {
   uploadFile,
   getPresignedDownloadUrl,
@@ -87,3 +98,9 @@ export {
   updateSettings,
   patchSettingsCategory,
 } from './settings.ts'
+export {
+  fetchTelegramLinkUrl,
+  fetchTelegramStatus,
+  unlinkTelegram,
+} from './telegram.ts'
+export type { TelegramLinkData, TelegramStatusData } from './telegram.ts'

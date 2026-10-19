@@ -23,6 +23,12 @@ export const API_ENDPOINTS = {
       /** GET (cookie) — gets verified external profile claims (Google email, name, avatar). */
       info: '/auth/external/info',
     },
+    telegram: {
+      /** POST — login with verified Telegram widget payload. */
+      login: '/auth/telegram/login',
+      /** POST — complete sign-up with verified Telegram payload or signup token. */
+      signup: '/auth/telegram/signup',
+    },
   },
   account: {
     info: '/account/info',
@@ -30,6 +36,12 @@ export const API_ENDPOINTS = {
     passwordForgot: '/account/password/forgot',
     passwordReset: '/account/password/reset',
     passwordSet: '/account/password/set',
+    /** GET — list third-party connected accounts (Google, Telegram) and password status. */
+    connectedAccounts: '/account/connected-accounts',
+    /** POST — link a Telegram account to the current user. */
+    linkTelegram: '/account/connected-accounts/telegram/link',
+    /** POST — unlink a Telegram account from the current user. */
+    unlinkTelegram: '/account/connected-accounts/telegram/unlink',
     /** GET/PUT/PATCH /api/account/settings — user settings (versioned JSON blob). */
     settings: '/account/settings',
     /** GET — confirm email from the emailed link: ?code=…&userId=… */
@@ -103,6 +115,14 @@ export const API_ENDPOINTS = {
     read: '/notifications/read',
     /** PATCH /api/notifications/read-all — mark all as read. */
     readAll: '/notifications/read-all',
+  },
+  telegram: {
+    /** GET /api/telegram/link — t.me deep link that starts account linking. */
+    link: '/telegram/link',
+    /** POST /api/telegram/unlink — disconnect the linked Telegram account. */
+    unlink: '/telegram/unlink',
+    /** GET /api/telegram/status — { linked } for the signed-in account. */
+    status: '/telegram/status',
   },
   scraper: {
     /** GET /api/admin/scraper/week-stats — list of scraper weeks. */

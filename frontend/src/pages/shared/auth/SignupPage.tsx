@@ -17,6 +17,7 @@ import PasswordInput from '../../../components/auth/PasswordInput.tsx'
 import SubmitButton from '../../../components/auth/SubmitButton.tsx'
 import Divider from '../../../components/auth/Divider.tsx'
 import GoogleButton from '../../../components/auth/GoogleButton.tsx'
+import TelegramButton from '../../../components/auth/TelegramButton.tsx'
 import AuthSuccess from '../../../components/auth/AuthSuccess.tsx'
 import EthiopianPhoneInput from '../../../components/auth/EthiopianPhoneInput.tsx'
 import { isValidEthiopianPhone, normalizeEthiopianPhone } from '../../../lib/phoneUtils.ts'
@@ -340,6 +341,7 @@ export default function SignupPage() {
             <Divider />
 
             <GoogleButton label="Sign up with Google" />
+            <TelegramButton label="Sign up with Telegram" />
           </form>
 
           <p className="mt-5 text-center font-label-sm text-label-sm leading-relaxed text-on-surface-variant">

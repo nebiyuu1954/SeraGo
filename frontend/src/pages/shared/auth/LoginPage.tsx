@@ -10,6 +10,7 @@ import PasswordInput from '../../../components/auth/PasswordInput.tsx'
 import SubmitButton from '../../../components/auth/SubmitButton.tsx'
 import Divider from '../../../components/auth/Divider.tsx'
 import GoogleButton from '../../../components/auth/GoogleButton.tsx'
+import TelegramButton from '../../../components/auth/TelegramButton.tsx'
 import { trackEvent } from '../../../lib/analytics'
 
 interface LoginValues {
@@ -180,6 +181,7 @@ export default function LoginPage() {
         <Divider />
 
         <GoogleButton label="Log in with Google" />
+        <TelegramButton label="Log in with Telegram" />
       </form>
     </AuthShell>
   )

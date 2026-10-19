@@ -13,6 +13,7 @@ import ForgotPasswordPage from './pages/shared/auth/ForgotPasswordPage.tsx'
 import ResetPasswordPage from './pages/shared/auth/ResetPasswordPage.tsx'
 import ConfirmEmailPage from './pages/shared/auth/ConfirmEmailPage.tsx'
 import GoogleCallbackPage from './pages/shared/auth/GoogleCallbackPage.tsx'
+import TelegramCallbackPage from './pages/shared/auth/TelegramCallbackPage.tsx'
 import DashboardRedirect from './pages/shared/dashboard/DashboardRedirect.tsx'
 import TalentJobsPage from './pages/talent/jobs/JobsPage.tsx'
 import JobDetailPage from './pages/talent/jobs/JobDetailPage.tsx'
@@ -123,6 +124,7 @@ function App() {
         <Route path="reset-password" element={<ResetPasswordPage />} />
         <Route path="confirm-email" element={<ConfirmEmailPage />} />
         <Route path="auth/google/callback" element={<GoogleCallbackPage />} />
+        <Route path="auth/telegram/callback" element={<TelegramCallbackPage />} />
       </Routes>
     </>
   )
