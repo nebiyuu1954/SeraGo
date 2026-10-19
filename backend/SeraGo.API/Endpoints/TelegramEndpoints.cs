@@ -44,6 +44,14 @@ public static class TelegramEndpoints
         group.MapPost("/webhook", HandleWebhookAsync)
             .WithOpenApi();
 
+        // Manual trigger for channel sweep
+        group.MapPost("/sweep", () =>
+        {
+            Hangfire.BackgroundJob.Enqueue<TelegramJobService>(s => s.SweepPendingChannelJobsAsync());
+            return Results.Ok(new { message = "Channel sweep enqueued successfully" });
+        })
+        .WithOpenApi();
+
         return app;
     }
 

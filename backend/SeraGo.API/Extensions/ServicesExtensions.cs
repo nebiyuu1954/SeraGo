@@ -224,7 +224,7 @@ public static class ServicesExtensions
 
             services.AddHangfireServer(options =>
             {
-                options.Queues = ["email", "telegram", "maintenance"];
+                options.Queues = ["default", "email", "telegram", "maintenance"];
                 // Fixed small count instead of ProcessorCount * 2: these queues
                 // carry emails/telegram sends/maintenance — light workloads where
                 // extra workers only add DB connections and Neon wakeups. Must

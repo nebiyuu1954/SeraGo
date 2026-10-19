@@ -423,6 +423,9 @@ if (SeraGo.API.Extensions.ServicesExtensions.HangfireEnabled)
                 s => s.SweepPendingChannelJobsAsync(),
                 "*/10 * * * *",  // every 10 minutes
                 new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+            // Trigger an initial sweep on boot so unposted jobs broadcast immediately
+            BackgroundJob.Enqueue<TelegramJobService>(s => s.SweepPendingChannelJobsAsync());
             break;
         }
         catch (PostgreSqlDistributedLockException ex) when (attempt < maxAttempts)
