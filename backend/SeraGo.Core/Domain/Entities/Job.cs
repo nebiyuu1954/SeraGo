@@ -212,6 +212,18 @@ public class Job
     /// </summary>
     public Guid? ClassificationId { get; set; }
 
+    // --------------------------------------------------- Telegram broadcast
+
+    /// <summary>
+    /// When this job was last posted to the public Telegram channel. Null =
+    /// never posted. Used as the idempotency guard so a job (which the scraper
+    /// may insert/update many times) is broadcast to the channel at most once.
+    /// </summary>
+    public DateTimeOffset? TelegramChannelPostedAt { get; set; }
+
+    /// <summary>The Telegram message id of the channel post (null when not posted).</summary>
+    public long? TelegramChannelMessageId { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

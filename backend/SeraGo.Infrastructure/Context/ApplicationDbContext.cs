@@ -111,6 +111,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
                 v => v);
             entity.Property(j => j.PublishedAt).HasConversion(utcDateTimeOffset);
             entity.Property(j => j.Deadline).HasConversion(utcDateTimeOffset);
+            entity.Property(j => j.TelegramChannelPostedAt).HasConversion(utcDateTimeOffset);
+
+            // "Jobs not yet broadcast to the channel" — the pending-scan the
+            // channel poster walks. Narrowed to live, published jobs.
+            entity.HasIndex(j => new { j.Status, j.IsActive, j.TelegramChannelPostedAt })
+                .HasDatabaseName("IX_jobs_telegram_pending");
         });
 
         // A user's saved jobs — a lightweight snapshot that survives the job's
