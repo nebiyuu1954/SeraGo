@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -31,6 +32,7 @@ public sealed class TelegramBotService
     private readonly ILogger<TelegramBotService> _logger;
     private readonly ITelegramBotClient? _botClient;
     private string? _botUsername; // cached from getMe
+    private readonly ConcurrentDictionary<long, int> _pendingUploadPromptMessageIds = new();
 
     public TelegramBotService(
         IServiceScopeFactory scopeFactory,
@@ -290,16 +292,49 @@ public sealed class TelegramBotService
     }
 
     /// <summary>
+    /// Fetches the Telegram chat info (username, first name) for a given chat id.
+    /// </summary>
+    public async Task<(string? Username, string? FirstName)?> GetChatInfoAsync(long chatId)
+    {
+        if (_botClient is null) return null;
+        try
+        {
+            var chat = await _botClient.GetChat(chatId);
+            return (chat.Username, chat.FirstName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not fetch Telegram chat details for chatId {ChatId}", chatId);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Links a Telegram chat_id to a user's SeraGo account.
     /// Stores the chat_id in the UserSettings JSON blob.
     /// </summary>
-    public async Task<bool> LinkAccountAsync(string userId, long chatId)
+    public async Task<bool> LinkAccountAsync(string userId, long chatId, string? username = null, string? firstName = null)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
         var settings = await db.UserSettings.FirstOrDefaultAsync(s => s.UserId == userId);
         if (settings is null) return false;
+
+        // If username/firstName wasn't provided, try resolving from Telegram
+        if (string.IsNullOrWhiteSpace(username) && string.IsNullOrWhiteSpace(firstName) && _botClient is not null)
+        {
+            try
+            {
+                var chat = await _botClient.GetChat(chatId);
+                username = chat.Username;
+                firstName = chat.FirstName;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Could not fetch Telegram chat details for chatId {ChatId}", chatId);
+            }
+        }
 
         JsonNode root;
         if (string.IsNullOrWhiteSpace(settings.Settings))
@@ -319,6 +354,14 @@ public sealed class TelegramBotService
             ["chatId"] = chatId,
             ["linkedAt"] = DateTimeOffset.UtcNow.ToString("O")
         };
+        if (!string.IsNullOrWhiteSpace(username))
+        {
+            telegramNode["username"] = username;
+        }
+        if (!string.IsNullOrWhiteSpace(firstName))
+        {
+            telegramNode["firstName"] = firstName;
+        }
         root["telegram"] = telegramNode;
 
         // Ensure notifications section has telegram enabled for jobAlerts and applicationUpdates
@@ -449,7 +492,7 @@ public sealed class TelegramBotService
                         return;
                     }
 
-                    var linked = await LinkAccountAsync(linkedUserId, chatId);
+                    var linked = await LinkAccountAsync(linkedUserId, chatId, message.From?.Username, message.From?.FirstName);
                     if (linked)
                     {
                         await SendTalentDashboardCardAsync(chatId, linkedUserId, "🎉 <b>Your SeraGo account has been successfully linked!</b>");
@@ -577,6 +620,7 @@ public sealed class TelegramBotService
 
         if (data == "show_dashboard")
         {
+            _pendingUploadPromptMessageIds.TryRemove(chatId, out _);
             await _botClient.AnswerCallbackQuery(callbackQuery.Id);
             var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
             if (linkedUser is not null)
@@ -612,7 +656,7 @@ public sealed class TelegramBotService
             if (linkedUser is not null)
             {
                 await _botClient.AnswerCallbackQuery(callbackQuery.Id, text: "📥 Fetching your CV...");
-                await DownloadAndSendCvAsync(chatId, linkedUser.Value.UserId);
+                await DownloadAndSendCvAsync(chatId, linkedUser.Value.UserId, callbackQuery.Message?.MessageId);
             }
             else
             {
@@ -837,23 +881,18 @@ public sealed class TelegramBotService
                 catch { }
             });
 
-            // 6. Delete progress message and send success card
+            // 6. Delete progress message and prompt message
             try { await _botClient.DeleteMessage(chatId, progressMsg.MessageId); } catch { }
-
-            var successKeyboard = new InlineKeyboardMarkup(new[]
+            if (_pendingUploadPromptMessageIds.TryRemove(chatId, out var uploadPromptId))
             {
-                new[] { InlineKeyboardButton.WithCallbackData("📄 Manage CV", "manage_cv") },
-                new[] { InlineKeyboardButton.WithCallbackData("✏️ Change Sector", "open_sector_picker") }
-            });
+                try { await _botClient.DeleteMessage(chatId, uploadPromptId); } catch { }
+            }
 
             var fileSizeKb = Math.Round((double)(document.FileSize ?? 0) / 1024, 1);
-            await _botClient.SendMessage(
+            await SendTalentDashboardCardAsync(
                 chatId,
-                "🎉 <b>CV Successfully Updated!</b>\n\n" +
-                $"📄 <b>File:</b> <code>{Escape(fileName)}</code> ({fileSizeKb} KB)\n\n" +
-                "✅ Your previous CV was replaced, and your new resume is now active for AI job compatibility scoring and tailored alerts.",
-                parseMode: ParseMode.Html,
-                replyMarkup: successKeyboard);
+                linkedUser.Value.UserId,
+                $"🎉 <b>Successfully updated CV:</b> <code>{Escape(fileName)}</code> ({fileSizeKb} KB)");
         }
         catch (Exception ex)
         {
@@ -1165,6 +1204,7 @@ public sealed class TelegramBotService
                     text: text,
                     parseMode: ParseMode.Html,
                     replyMarkup: keyboard);
+                _pendingUploadPromptMessageIds[chatId] = messageId.Value;
                 return;
             }
             catch (Exception ex)
@@ -1173,15 +1213,22 @@ public sealed class TelegramBotService
             }
         }
 
-        await _botClient.SendMessage(chatId, text, parseMode: ParseMode.Html, replyMarkup: keyboard);
+        var sentPrompt = await _botClient.SendMessage(chatId, text, parseMode: ParseMode.Html, replyMarkup: keyboard);
+        _pendingUploadPromptMessageIds[chatId] = sentPrompt.MessageId;
     }
 
-    public async Task DownloadAndSendCvAsync(long chatId, string userId)
+    public async Task DownloadAndSendCvAsync(long chatId, string userId, int? promptMessageId = null)
     {
         if (_botClient is null) return;
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var storage = scope.ServiceProvider.GetService<R2StorageService>();
+
+        if (promptMessageId is not null)
+        {
+            try { await _botClient.DeleteMessage(chatId, promptMessageId.Value); }
+            catch (Exception ex) { _logger.LogDebug(ex, "Could not delete Manage CV prompt message {MessageId}", promptMessageId); }
+        }
 
         var profile = await db.TalentProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.UserId == userId);
         if (string.IsNullOrWhiteSpace(profile?.ResumeUrl))
@@ -1218,9 +1265,14 @@ public sealed class TelegramBotService
                 await _botClient.SendDocument(
                     chatId: chatId,
                     document: InputFile.FromStream(stream, cleanFileName),
-                    caption: $"📄 <b>Here is your current CV on file with SeraGo:</b>\n<code>{Escape(cleanFileName)}</code>",
+                    caption: $"📄 <code>{Escape(cleanFileName)}</code>",
                     parseMode: ParseMode.Html);
             }
+
+            await SendTalentDashboardCardAsync(
+                chatId,
+                userId,
+                $"✅ <b>Successfully downloaded CV:</b> <code>{Escape(cleanFileName)}</code>");
         }
         catch (Exception ex)
         {

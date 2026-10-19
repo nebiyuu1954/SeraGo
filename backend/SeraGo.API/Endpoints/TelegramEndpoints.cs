@@ -184,6 +184,7 @@ public static class TelegramEndpoints
 
     private static async Task<IResult> GetStatusAsync(
         [FromServices] ApplicationDbContext db,
+        TelegramBotService telegramService,
         HttpContext context)
     {
         var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier)
@@ -198,6 +199,10 @@ public static class TelegramEndpoints
             .FirstOrDefaultAsync();
 
         var isLinked = false;
+        string? username = null;
+        string? firstName = null;
+        long? chatId = null;
+
         if (!string.IsNullOrWhiteSpace(settingsJson))
         {
             try
@@ -205,13 +210,45 @@ public static class TelegramEndpoints
                 var settings = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(settingsJson);
                 if (settings.TryGetProperty("telegram", out var telegram))
                 {
-                    isLinked = telegram.GetProperty("linked").GetBoolean();
+                    isLinked = telegram.TryGetProperty("linked", out var linkedProp) && linkedProp.GetBoolean();
+                    if (telegram.TryGetProperty("username", out var u) && u.ValueKind == System.Text.Json.JsonValueKind.String)
+                        username = u.GetString();
+                    if (telegram.TryGetProperty("firstName", out var f) && f.ValueKind == System.Text.Json.JsonValueKind.String)
+                        firstName = f.GetString();
+                    if (telegram.TryGetProperty("chatId", out var c))
+                    {
+                        if (c.ValueKind == System.Text.Json.JsonValueKind.Number && c.TryGetInt64(out var idNum))
+                            chatId = idNum;
+                        else if (c.ValueKind == System.Text.Json.JsonValueKind.String && long.TryParse(c.GetString(), out var idParsed))
+                            chatId = idParsed;
+                    }
                 }
             }
             catch { }
         }
 
-        return Results.Ok(new { linked = isLinked });
+        // If currently linked and username/firstName wasn't stored yet, query bot for chat info
+        if (isLinked && chatId.HasValue && string.IsNullOrWhiteSpace(username) && string.IsNullOrWhiteSpace(firstName))
+        {
+            var info = await telegramService.GetChatInfoAsync(chatId.Value);
+            if (info is not null)
+            {
+                username = info.Value.Username;
+                firstName = info.Value.FirstName;
+            }
+        }
+
+        var formattedUsername = !string.IsNullOrWhiteSpace(username)
+            ? (username.StartsWith("@") ? username : $"@{username}")
+            : null;
+
+        return Results.Ok(new
+        {
+            linked = isLinked,
+            username = formattedUsername,
+            firstName,
+            chatId
+        });
     }
 
     // ── POST /api/telegram/webhook ──

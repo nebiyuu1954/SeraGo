@@ -16,6 +16,9 @@ export interface TelegramLinkData {
 /** GET /api/telegram/status payload. */
 export interface TelegramStatusData {
   linked: boolean
+  username?: string | null
+  firstName?: string | null
+  chatId?: number | null
 }
 
 /**

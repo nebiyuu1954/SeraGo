@@ -217,22 +217,12 @@ export default function TelegramConnectPage() {
             <p className="mt-2 font-body-md text-body-md text-on-surface-variant max-w-sm mx-auto">
               This Telegram chat is already connected to a different SeraGo account. Only one account can be connected per bot.
             </p>
-            <p className="mt-3 font-body-sm text-body-sm text-on-surface-variant/80 max-w-xs mx-auto">
-              To link a different account, open @My_Serago_Bot in Telegram, send <code>/unlink</code> to disconnect your previous account, and try again.
-            </p>
 
             <div className="mt-8 flex flex-col gap-3">
-              <a
-                href="https://t.me/My_Serago_Bot"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3.5 font-label-lg text-label-lg font-semibold text-on-primary transition-opacity hover:opacity-90 shadow-sm"
-              >
-                <span className="material-symbols-outlined text-xl">send</span>
-                Open Telegram Bot
-              </a>
               <button
                 type="button"
                 onClick={handleSwitchAccount}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-surface-variant px-6 py-3.5 font-label-lg text-label-lg font-semibold text-on-surface transition-colors hover:bg-surface-variant/30"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3.5 font-label-lg text-label-lg font-semibold text-on-primary transition-opacity hover:opacity-90 shadow-sm"
               >
                 <span className="material-symbols-outlined text-xl">switch_account</span>
                 Log In with a Different Account
@@ -254,57 +244,18 @@ export default function TelegramConnectPage() {
             Account Already Has a Bot Connected
           </h1>
           <p className="mt-2 font-body-md text-body-md text-on-surface-variant max-w-sm mx-auto">
-            The SeraGo account you signed in with already has a Telegram bot connected. Only <b>one bot per account</b> is allowed.
-          </p>
-
-          {/* Settings Card Preview */}
-          <div className="my-6 rounded-xl border border-surface-variant bg-surface-variant/20 p-4 text-left">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-label-md text-label-md font-semibold text-on-surface flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-lg text-primary">smart_toy</span>
-                  Telegram bot
-                </p>
-                <p className="mt-0.5 font-label-sm text-label-sm text-on-surface-variant/70">
-                  Connected — matched jobs can be sent to your Telegram chat.
-                </p>
-              </div>
-
-              <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-label-xs font-semibold text-primary">
-                Linked
-              </span>
-            </div>
-          </div>
-
-          <p className="font-body-sm text-body-sm text-on-surface-variant/80 max-w-sm mx-auto">
-            If you wish to connect this new Telegram chat to this account, open your SeraGo Settings and click <b>Disconnect</b> under Telegram bot first.
+            The SeraGo account you signed in with already has a Telegram bot connected. Only one bot per account is allowed.
           </p>
 
           <div className="mt-8 flex flex-col gap-3">
-            <Link
-              to="/dashboard/settings#telegram"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3.5 font-label-lg text-label-lg font-semibold text-on-primary transition-opacity hover:opacity-90 shadow-sm"
-            >
-              <span className="material-symbols-outlined text-xl">settings</span>
-              Manage Telegram in Settings
-            </Link>
-
             <button
               type="button"
               onClick={handleSwitchAccount}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-surface-variant px-6 py-3.5 font-label-lg text-label-lg font-semibold text-on-surface transition-colors hover:bg-surface-variant/30"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3.5 font-label-lg text-label-lg font-semibold text-on-primary transition-opacity hover:opacity-90 shadow-sm"
             >
               <span className="material-symbols-outlined text-xl">switch_account</span>
               Log In with a Different Account
             </button>
-
-            <a
-              href="https://t.me/My_Serago_Bot"
-              className="inline-flex w-full items-center justify-center gap-1.5 pt-2 font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors"
-            >
-              <span className="material-symbols-outlined text-base">arrow_back</span>
-              Return to Telegram Bot
-            </a>
           </div>
         </div>
       </AuthShell>

@@ -23,6 +23,10 @@ export default function TelegramLinkCard() {
   const [state, setState] = useState<LinkState>(() =>
     getStoredAuthTokens() ? 'loading' : 'offline',
   )
+  const [telegramUser, setTelegramUser] = useState<{
+    username?: string | null
+    firstName?: string | null
+  } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -32,8 +36,11 @@ export default function TelegramLinkCard() {
 
     let cancelled = false
     fetchTelegramStatus(tokens.accessToken)
-      .then(({ linked }) => {
-        if (!cancelled) setState(linked ? 'linked' : 'unlinked')
+      .then((data) => {
+        if (!cancelled) {
+          setState(data.linked ? 'linked' : 'unlinked')
+          setTelegramUser(data.linked ? { username: data.username, firstName: data.firstName } : null)
+        }
       })
       .catch(() => {
         if (!cancelled) setState('offline')
@@ -59,8 +66,9 @@ export default function TelegramLinkCard() {
       return
     }
     try {
-      const { linked } = await fetchTelegramStatus(tokens.accessToken)
-      setState(linked ? 'linked' : 'unlinked')
+      const data = await fetchTelegramStatus(tokens.accessToken)
+      setState(data.linked ? 'linked' : 'unlinked')
+      setTelegramUser(data.linked ? { username: data.username, firstName: data.firstName } : null)
     } catch {
       setState('offline')
     }
@@ -89,6 +97,7 @@ export default function TelegramLinkCard() {
       if (!tokens) throw new Error('Please sign in again to unlink Telegram.')
       await unlinkTelegram(tokens.accessToken)
       setState('unlinked')
+      setTelegramUser(null)
     } catch (e) {
       setError(getApiErrorMessage(e))
     } finally {
@@ -108,6 +117,16 @@ export default function TelegramLinkCard() {
               ? 'Connected — matched jobs can be sent to your Telegram chat.'
               : 'Connect Telegram to receive job alerts in chat.'}
           </p>
+
+          {state === 'linked' && (telegramUser?.username || telegramUser?.firstName) && (
+            <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-0.5 font-label-xs text-label-xs font-medium text-primary">
+              <span className="material-symbols-outlined text-sm">person</span>
+              <span>
+                Connected to {telegramUser.username ?? telegramUser.firstName}
+                {telegramUser.firstName && telegramUser.username ? ` (${telegramUser.firstName})` : ''}
+              </span>
+            </div>
+          )}
         </div>
 
         <span
