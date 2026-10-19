@@ -371,7 +371,7 @@ public sealed class TelegramBotService
         {
             await _botClient!.SendMessage(chatId,
                 "⚙️ <b>Manage notifications in SeraGo:</b>\n" +
-                "<a href=\"https://serago.pro.et/dashboard/settings\">Open Settings → Notifications</a>\n\n" +
+                "<a href=\"https://serago.pro.et/dashboard/settings#telegram\">Open Settings → Notifications</a>\n\n" +
                 "Keep the <b>Telegram</b> toggle on for job alerts to receive real-time notifications.",
                 parseMode: ParseMode.Html);
         }
@@ -558,23 +558,21 @@ public sealed class TelegramBotService
         if (_botClient is null) return;
         var keyboard = new InlineKeyboardMarkup(new[]
         {
+            new[] { InlineKeyboardButton.WithUrl("🔗 Connect SeraGo Account", "https://serago.pro.et/dashboard/settings#telegram") },
             new[] { InlineKeyboardButton.WithUrl("🚀 Create Free Account", "https://serago.pro.et/signup") },
             new[] { InlineKeyboardButton.WithUrl("📢 Join SeraGo Job Channel", "https://t.me/SeraGo2026") },
-            new[] { InlineKeyboardButton.WithUrl("🔍 Browse Latest Jobs", "https://serago.pro.et/dashboard/talent/jobs") },
-            new[] { InlineKeyboardButton.WithUrl("🔗 Link Account (Settings)", "https://serago.pro.et/dashboard/settings") }
+            new[] { InlineKeyboardButton.WithUrl("🔍 Browse Latest Jobs", "https://serago.pro.et/dashboard/talent/jobs") }
         });
 
         var message =
             "👋 <b>Welcome to SeraGo Bot!</b>\n\n" +
-            "I am your personal AI Job Alert Assistant for opportunities in Ethiopia.\n\n" +
-            "<b>What I can do:</b>\n" +
-            "• ⚡ Instant alerts when jobs match your sector or CV\n" +
-            "• 🧠 AI compatibility score previews\n" +
-            "• 1-click apply links\n\n" +
-            "To get personalized job alerts:\n" +
-            "1. Create an account on <a href=\"https://serago.pro.et/signup\">SeraGo</a> (or log in with Telegram in 1 click)\n" +
-            "2. Upload your CV or pick your job sectors\n" +
-            "3. Connect your Telegram account in <b>Settings → Connected Accounts</b>";
+            "I am your personal AI Job Alert Assistant for opportunities across Ethiopia.\n\n" +
+            "<b>How to connect your account:</b>\n" +
+            "1. Tap <b>🔗 Connect SeraGo Account</b> below\n" +
+            "2. In Settings, the <b>Notifications</b> panel will open\n" +
+            "3. Tap the blue <b>[ Connect Telegram ]</b> button\n" +
+            "4. Your browser will bounce back to this chat and link your account instantly! 🎉\n\n" +
+            "<i>Don't have an account yet? Tap 'Create Free Account' to get started in 30 seconds.</i>";
 
         await _botClient.SendMessage(chatId, message, parseMode: ParseMode.Html, replyMarkup: keyboard);
     }

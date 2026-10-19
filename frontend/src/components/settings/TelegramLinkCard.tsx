@@ -44,6 +44,14 @@ export default function TelegramLinkCard() {
     }
   }, [])
 
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hash.toLowerCase() === '#telegram') {
+      setTimeout(() => {
+        document.getElementById('telegram')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 150)
+    }
+  }, [])
+
   const refresh = async () => {
     const tokens = getStoredAuthTokens()
     if (!tokens) {
@@ -89,7 +97,7 @@ export default function TelegramLinkCard() {
   }
 
   return (
-    <div className="rounded-lg border border-surface-variant bg-surface-variant/20 p-4">
+    <div id="telegram" className="rounded-lg border border-surface-variant bg-surface-variant/20 p-4 transition-all">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="font-label-md text-label-md font-semibold text-on-surface">

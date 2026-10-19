@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { cn } from '../../lib/cn'
 
 interface AccordionSectionProps {
+  id?: string
   title: string
   description: string
   icon: string
@@ -11,6 +12,7 @@ interface AccordionSectionProps {
 }
 
 export default function AccordionSection({
+  id,
   title,
   description,
   icon,
@@ -18,10 +20,17 @@ export default function AccordionSection({
   completion,
   children,
 }: AccordionSectionProps) {
-  const [open, setOpen] = useState(defaultOpen)
+  const [open, setOpen] = useState(() => {
+    if (defaultOpen) return true
+    if (typeof window !== 'undefined' && id) {
+      const hash = window.location.hash.replace('#', '').toLowerCase()
+      if (hash && hash === id.toLowerCase()) return true
+    }
+    return false
+  })
 
   return (
-    <section className="rounded-xl border border-surface-variant bg-surface-container-lowest shadow-sm overflow-hidden">
+    <section id={id} className="rounded-xl border border-surface-variant bg-surface-container-lowest shadow-sm overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen(!open)}

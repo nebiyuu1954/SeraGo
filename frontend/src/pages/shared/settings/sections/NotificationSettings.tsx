@@ -134,11 +134,19 @@ export default function NotificationSettings({ role, value, onChange }: Notifica
   enabledCount += value.marketing ? 1 : 0
   totalToggles += 1
 
+  const isAutoOpen = typeof window !== 'undefined' && (
+    window.location.hash.toLowerCase().includes('telegram') ||
+    window.location.hash.toLowerCase().includes('notifications') ||
+    window.location.search.toLowerCase().includes('telegram')
+  )
+
   return (
     <AccordionSection
+      id="notifications"
       title="Notifications"
       description="Choose how you get notified for each event"
       icon="notifications"
+      defaultOpen={isAutoOpen}
       completion={{ filled: enabledCount, total: Math.max(totalToggles, 1) }}
     >
       {/* ── Telegram linking (all roles) ── */}
