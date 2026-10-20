@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using SeraGo.API.Services;
 using SeraGo.Core.Domain;
 using SeraGo.Core.Domain.Entities;
+using SeraGo.Core.Domain.Enums;
 using SeraGo.Infrastructure.Context;
 using SeraGo.Infrastructure.Data;
 

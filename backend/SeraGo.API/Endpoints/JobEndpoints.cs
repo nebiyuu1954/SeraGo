@@ -1646,7 +1646,7 @@ public static class JobEndpoints
 
     // --------------------------------------------------------------- Helpers
 
-    private static JobResponse ToResponse(Job job, string userId) => new(
+    private static JobResponse ToResponse(Job job, string? userId) => new(
         job.Id,
         job.Title,
         job.Description,
