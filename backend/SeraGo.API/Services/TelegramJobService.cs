@@ -572,7 +572,7 @@ public sealed class TelegramJobService
         }
         else
         {
-            var displaySector = sectorName ?? ResolveSectorName(job) ?? "Your Target Sector";
+            var displaySector = FormatSectorName(sectorName) ?? ResolveSectorName(job) ?? "Your Target Sector";
             sb.AppendLine($"🎯 <b>Job Alert for your Sector: {Escape(displaySector)}</b>");
             sb.AppendLine();
         }
@@ -590,7 +590,7 @@ public sealed class TelegramJobService
             }
             else
             {
-                var displaySector = sectorName ?? ResolveSectorName(job) ?? "Your Target Sector";
+                var displaySector = FormatSectorName(sectorName) ?? ResolveSectorName(job) ?? "Your Target Sector";
                 sb.AppendLine($"🎯 <b>Job Alert for your Sector: {Escape(displaySector)}</b>");
                 sb.AppendLine();
             }
@@ -675,24 +675,160 @@ public sealed class TelegramJobService
         return sb.ToString();
     }
 
+    public static string? FormatSectorName(string? raw)
+    {
+        var names = ExtractCleanSectorList(raw);
+        return names.Count == 0 ? null : string.Join(", ", names);
+    }
+
+    public static List<string> ExtractCleanSectorList(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return [];
+
+        var trimmed = raw.Trim();
+        var result = new List<string>();
+
+        void TryAdd(string? val)
+        {
+            if (string.IsNullOrWhiteSpace(val)) return;
+            var clean = val.Trim();
+
+            // If the extracted value is itself nested JSON, recursively parse it
+            if ((clean.StartsWith('[') && clean.EndsWith(']')) || (clean.StartsWith('{') && clean.EndsWith('}')))
+            {
+                foreach (var nested in ExtractCleanSectorList(clean))
+                {
+                    TryAdd(nested);
+                }
+                return;
+            }
+
+            // Exclude leftover JSON fragments, base64 hashes, or meaningless strings
+            if (clean.StartsWith('{') || clean.StartsWith('[') || clean.Length > 100) return;
+
+            if (!result.Contains(clean, StringComparer.OrdinalIgnoreCase))
+            {
+                result.Add(clean);
+            }
+        }
+
+        if ((trimmed.StartsWith('[') && trimmed.EndsWith(']')) || (trimmed.StartsWith('{') && trimmed.EndsWith('}')))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(trimmed);
+                var root = doc.RootElement;
+                if (root.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in root.EnumerateArray())
+                    {
+                        if (item.ValueKind == JsonValueKind.String)
+                        {
+                            TryAdd(item.GetString());
+                        }
+                        else if (item.ValueKind == JsonValueKind.Object)
+                        {
+                            string? nameVal = null;
+                            foreach (var prop in item.EnumerateObject())
+                            {
+                                if (prop.NameEquals("name") ||
+                                    prop.NameEquals("title") ||
+                                    prop.NameEquals("label") ||
+                                    prop.NameEquals("sector") ||
+                                    prop.NameEquals("category"))
+                                {
+                                    if (prop.Value.ValueKind == JsonValueKind.String)
+                                    {
+                                        nameVal = prop.Value.GetString();
+                                        if (!string.IsNullOrWhiteSpace(nameVal)) break;
+                                    }
+                                }
+                            }
+                            TryAdd(nameVal);
+                        }
+                    }
+                }
+                else if (root.ValueKind == JsonValueKind.Object)
+                {
+                    string? nameVal = null;
+                    foreach (var prop in root.EnumerateObject())
+                    {
+                        if (prop.NameEquals("name") ||
+                            prop.NameEquals("title") ||
+                            prop.NameEquals("label") ||
+                            prop.NameEquals("sector") ||
+                            prop.NameEquals("category"))
+                        {
+                            if (prop.Value.ValueKind == JsonValueKind.String)
+                            {
+                                nameVal = prop.Value.GetString();
+                                if (!string.IsNullOrWhiteSpace(nameVal)) break;
+                            }
+                        }
+                    }
+                    TryAdd(nameVal);
+                }
+            }
+            catch
+            {
+                return [];
+            }
+        }
+        else
+        {
+            if (!trimmed.Contains("{\"") && !trimmed.Contains("[{\""))
+            {
+                TryAdd(trimmed);
+            }
+        }
+
+        return result;
+    }
+
     public static string? ResolveSectorName(Job job)
     {
-        if (!string.IsNullOrWhiteSpace(job.SectorName)) return job.SectorName;
-        if (!string.IsNullOrWhiteSpace(job.Sector?.Name)) return job.Sector.Name;
-        if (!string.IsNullOrWhiteSpace(job.SubSectorName)) return job.SubSectorName;
-        if (!string.IsNullOrWhiteSpace(job.SourceSectors)) return job.SourceSectors;
-        if (!string.IsNullOrWhiteSpace(job.SourceCategories)) return job.SourceCategories;
+        var candidates = new[]
+        {
+            job.Sector?.Name,
+            job.SectorName,
+            job.SubSectorName,
+            job.SourceSectors,
+            job.SourceCategories
+        };
+
+        foreach (var candidate in candidates)
+        {
+            var formatted = FormatSectorName(candidate);
+            if (!string.IsNullOrWhiteSpace(formatted))
+            {
+                return formatted;
+            }
+        }
+
         return null;
     }
 
+    private static readonly HashSet<string> HashtagStopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "and", "or", "the", "of", "for", "in", "to", "with", "a", "an", "at", "by",
+        "id", "name", "value", "mac", "tag", "options", "title", "label", "sector", "category",
+        "plc", "llc", "group", "co", "corp", "inc", "ltd"
+    };
+
     private static string BuildSectorHashtags(string? sectorName)
     {
-        if (string.IsNullOrWhiteSpace(sectorName)) return "#Jobs #EthiopiaJobs";
-        var clean = Regex.Replace(sectorName, "[^a-zA-Z0-9 ]+", " ");
+        var cleanDisplay = FormatSectorName(sectorName);
+        if (string.IsNullOrWhiteSpace(cleanDisplay)) return "#Jobs #EthiopiaJobs";
+
+        var clean = Regex.Replace(cleanDisplay, "[^a-zA-Z0-9 ]+", " ");
         var words = clean.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Where(w => w.Length > 1 && !string.Equals(w, "and", StringComparison.OrdinalIgnoreCase))
+            .Where(w => w.Length > 1 &&
+                        w.Length < 30 &&
+                        !HashtagStopWords.Contains(w) &&
+                        w.Any(char.IsLetter))
             .Take(3)
-            .Select(w => $"#{w}");
+            .Select(w => $"#{char.ToUpperInvariant(w[0])}{(w.Length > 1 ? w[1..] : "")}");
+
         var tags = string.Join(" ", words);
         return string.IsNullOrWhiteSpace(tags) ? "#Jobs #EthiopiaJobs" : $"{tags} #Jobs #SeraGo";
     }

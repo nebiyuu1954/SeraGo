@@ -173,12 +173,23 @@ public sealed class ScrapedJobSyncService
             // Sector resolution: the NormalizedJob carries the raw sector_name;
             // we resolve it through aliases, then fall back to title classification.
             var rawSector = ReadString(reader, "sector_name");
+            var ethioCategories = ReadJsonArray(reader, "ethio_categories");
             var title = ReadString(reader, "title") ?? string.Empty;
-            var sector = ResolveSector(sectors, rawSector, title);
+            var sector = ResolveSector(sectors, rawSector, title) ??
+                         (!string.IsNullOrWhiteSpace(ethioCategories) ? ResolveSector(sectors, ethioCategories, title) : null);
             if (sector is null)
             {
                 uncategorized++;
-                if (!string.IsNullOrWhiteSpace(rawSector))
+                var cleanNames = TelegramJobService.ExtractCleanSectorList(rawSector);
+                if (cleanNames.Count == 0 && !string.IsNullOrWhiteSpace(ethioCategories))
+                {
+                    cleanNames = TelegramJobService.ExtractCleanSectorList(ethioCategories);
+                }
+                if (cleanNames.Count > 0)
+                {
+                    foreach (var n in cleanNames) unknownSectors.Add(n);
+                }
+                else if (!string.IsNullOrWhiteSpace(rawSector))
                 {
                     unknownSectors.Add(rawSector);
                 }
@@ -208,7 +219,6 @@ public sealed class ScrapedJobSyncService
             var compType = ReadString(reader, "compensation_type");
             var compCurrency = ReadString(reader, "compensation_currency");
             var entityType = ReadString(reader, "entity_type");
-            var ethioCategories = ReadJsonArray(reader, "ethio_categories");
             var appMethod = ReadString(reader, "ethio_app_method") ?? ReadString(reader, "hahu_app_method");
             var appEmail = ReadString(reader, "ethio_app_email") ?? ReadString(reader, "hahu_app_email");
             var appUrl = ReadString(reader, "ethio_career_link") ?? ReadString(reader, "hahu_app_url");
@@ -622,11 +632,15 @@ public sealed class ScrapedJobSyncService
     {
         if (!string.IsNullOrWhiteSpace(rawSector))
         {
-            var normalized = SectorSeedData.Normalize(rawSector);
-            var hit = sectors.FirstOrDefault(s => s.Aliases.Any(a => a.Alias == normalized));
-            if (hit is not null)
+            var names = TelegramJobService.ExtractCleanSectorList(rawSector);
+            foreach (var name in names)
             {
-                return hit;
+                var normalized = SectorSeedData.Normalize(name);
+                var hit = sectors.FirstOrDefault(s => s.Aliases.Any(a => a.Alias == normalized));
+                if (hit is not null)
+                {
+                    return hit;
+                }
             }
         }
         var slug = SectorNormalizer.ClassifyTitle(title);
@@ -780,26 +794,16 @@ public sealed class ScrapedJobSyncService
             }
         }
 
-        Add(universalSector);
-        if (!string.IsNullOrWhiteSpace(afriworkSectorsJson))
+        foreach (var s in TelegramJobService.ExtractCleanSectorList(universalSector))
         {
-            try
-            {
-                var parsed = System.Text.Json.JsonSerializer
-                    .Deserialize<List<string>>(afriworkSectorsJson);
-                if (parsed is not null)
-                {
-                    foreach (var s in parsed)
-                    {
-                        Add(s);
-                    }
-                }
-            }
-            catch
-            {
-                // Non-array garbage in the column — ignore it.
-            }
+            Add(s);
         }
+
+        foreach (var s in TelegramJobService.ExtractCleanSectorList(afriworkSectorsJson))
+        {
+            Add(s);
+        }
+
         Add(hahuSector);
         Add(hahuSubSector);
 
@@ -834,19 +838,7 @@ public sealed class ScrapedJobSyncService
     /// <summary>Parse the job's JSON-array sourceSectors into a list, or empty.</summary>
     private static List<string> ParseSourceSectors(string? sourceSectors)
     {
-        if (string.IsNullOrWhiteSpace(sourceSectors))
-        {
-            return [];
-        }
-        try
-        {
-            var parsed = System.Text.Json.JsonSerializer.Deserialize<List<string>>(sourceSectors);
-            return parsed ?? [];
-        }
-        catch
-        {
-            return [];
-        }
+        return TelegramJobService.ExtractCleanSectorList(sourceSectors);
     }
 
     private static string? FirstSourceSector(string? sourceSectors)
