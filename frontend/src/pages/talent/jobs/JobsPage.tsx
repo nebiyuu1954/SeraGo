@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { getApiErrorMessage, getStoredAuthTokens } from '../../../api'
+import { fetchJob, getApiErrorMessage, getStoredAuthTokens } from '../../../api'
 import {
   useJobsQuery,
   useSectorsQuery,
@@ -125,7 +125,7 @@ export default function JobsPage() {
   // --- SWR-cached data (shared across all mounted instances) ---
 
   // The "For you" sectors live in settings (they power the feed + job alerts).
-  const { settings, refresh: refreshSettings } = useSettingsQuery()
+  const { settings, isLoading: settingsLoading, refresh: refreshSettings } = useSettingsQuery()
   const rawPrefSectorIds = settings.forYou?.sectorIds ?? []
   const prefSectorIds = rawPrefSectorIds.map((id) => id.toLowerCase())
   const { profile } = useProfileQuery(auth.status === 'authenticated')
@@ -339,9 +339,89 @@ export default function JobsPage() {
 
   const filtersDirty = currentFilters.appliedQ !== '' || activeFilterCount > 0
 
+  const targetJobProcessedRef = useRef(false)
+
   const setView = (next: 'forYou' | 'all') => {
+    // If switching to all jobs and allJobsFilters search is empty while forYouFilters has a search term, carry it over
+    if (next === 'all' && forYouFilters.searchInput.trim() && !allJobsFilters.searchInput.trim()) {
+      setAllJobsFilters((prev) => ({
+        ...prev,
+        searchInput: forYouFilters.searchInput,
+        appliedQ: forYouFilters.appliedQ,
+        page: 1,
+      }))
+    }
     setSearchParams(next === 'forYou' ? {} : { view: 'all' }, { replace: true })
   }
+
+  // Handle incoming target job remembered from Telegram entry link
+  useEffect(() => {
+    if (auth.status !== 'authenticated' || settingsLoading || !profile) return
+    if (onboardingOpen) return // Wait until user completes or skips onboarding
+    if (targetJobProcessedRef.current) return
+
+    const pendingJobId =
+      sessionStorage.getItem('serago_pending_target_job_id') ||
+      localStorage.getItem('serago_pending_target_job_id')
+    const pendingJobTitle =
+      sessionStorage.getItem('serago_pending_target_job_title') ||
+      localStorage.getItem('serago_pending_target_job_title')
+
+    if (!pendingJobId && !pendingJobTitle) return
+
+    targetJobProcessedRef.current = true
+
+    const applySearch = (title: string) => {
+      const hasSectors = prefSectorIds.length > 0
+      if (hasSectors) {
+        setView('forYou')
+        setForYouFilters((prev) => ({
+          ...prev,
+          searchInput: title,
+          appliedQ: title,
+          page: 1,
+        }))
+      } else {
+        setView('all')
+        setAllJobsFilters((prev) => ({
+          ...prev,
+          searchInput: title,
+          appliedQ: title,
+          page: 1,
+        }))
+      }
+
+      try {
+        sessionStorage.removeItem('serago_pending_target_job_id')
+        sessionStorage.removeItem('serago_pending_target_job_title')
+        localStorage.removeItem('serago_pending_target_job_id')
+        localStorage.removeItem('serago_pending_target_job_title')
+      } catch {}
+    }
+
+    if (pendingJobTitle) {
+      applySearch(pendingJobTitle)
+    } else if (pendingJobId) {
+      fetchJob(pendingJobId)
+        .then((j) => {
+          if (j?.title) {
+            applySearch(j.title)
+          }
+        })
+        .catch(() => {
+          try {
+            sessionStorage.removeItem('serago_pending_target_job_id')
+            localStorage.removeItem('serago_pending_target_job_id')
+          } catch {}
+        })
+    }
+  }, [
+    auth.status,
+    settingsLoading,
+    profile,
+    onboardingOpen,
+    prefSectorIds.length,
+  ])
 
   const clearFilters = () => {
     setCurrentFilters((prev) => ({
@@ -885,6 +965,7 @@ export default function JobsPage() {
                 hasFilters={filtersDirty}
                 onClear={clearFilters}
                 forYou={view === 'forYou'}
+                onBrowseAll={() => setView('all')}
               />
             </div>
           ) : (
@@ -1625,11 +1706,13 @@ function EmptyState({
   hasFilters,
   onClear,
   forYou = false,
+  onBrowseAll,
 }: {
   hasFilters: boolean
   onClear: () => void
   /** Personalized-feed variant — suggests tuning preferences instead of filters. */
   forYou?: boolean
+  onBrowseAll?: () => void
 }) {
   return (
     <div className="mt-5 flex flex-col items-center justify-center rounded-xl border border-surface-variant bg-surface-container-lowest px-6 py-16 text-center shadow-sm">
@@ -1655,13 +1738,24 @@ function EmptyState({
             : 'There are no open positions right now — check back soon.'}
       </p>
       {hasFilters ? (
-        <button
-          type="button"
-          onClick={onClear}
-          className="mt-6 rounded-lg bg-primary px-6 py-3 font-label-md text-label-md font-medium text-on-primary transition-opacity hover:opacity-90"
-        >
-          Clear filters
-        </button>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={onClear}
+            className="rounded-lg bg-primary px-6 py-2.5 font-label-md text-label-md font-medium text-on-primary transition-opacity hover:opacity-90"
+          >
+            Clear filters
+          </button>
+          {forYou && onBrowseAll && (
+            <button
+              type="button"
+              onClick={onBrowseAll}
+              className="rounded-lg border border-outline-variant bg-surface-container-lowest px-5 py-2.5 font-label-md text-label-md font-medium text-on-surface transition-colors hover:bg-surface-container-low"
+            >
+              Search across All Jobs
+            </button>
+          )}
+        </div>
       ) : forYou ? (
         <Link
           to="/dashboard/talent/settings"

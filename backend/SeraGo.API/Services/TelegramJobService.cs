@@ -555,7 +555,7 @@ public sealed class TelegramJobService
         string? header = null)
     {
         var baseUrl = (linkBase ?? "https://serago.pro.et/dashboard/talent/jobs").TrimEnd('/');
-        var link = $"{baseUrl}/{job.Id}";
+        var link = $"{baseUrl}/{job.Id}?from=telegram&title={Uri.EscapeDataString(job.Title)}";
         var keyboard = new InlineKeyboardMarkup(new[]
         {
             new[] { InlineKeyboardButton.WithUrl("🌐 View on SeraGo & Apply", link) }
@@ -636,7 +636,7 @@ public sealed class TelegramJobService
         return "https://serago.pro.et/sources/serago.png";
     }
 
-    private string BuildJobLink(Job job) => $"{_options.JobLinkBase}/{job.Id}";
+    private string BuildJobLink(Job job) => $"{_options.JobLinkBase}/{job.Id}?from=telegram&title={Uri.EscapeDataString(job.Title)}";
 
     public static string BuildJobCardText(Job job, string link, int maxSnippetLength = 220)
     {

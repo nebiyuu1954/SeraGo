@@ -33,12 +33,20 @@ export default function GuestJobAuthModal({
       setLoading(false)
       return
     }
+    if (job) {
+      try {
+        sessionStorage.setItem('serago_pending_target_job_id', job.id)
+        sessionStorage.setItem('serago_pending_target_job_title', job.title)
+        localStorage.setItem('serago_pending_target_job_id', job.id)
+        localStorage.setItem('serago_pending_target_job_title', job.title)
+      } catch {}
+    }
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose])
+  }, [isOpen, job, onClose])
 
   if (!isOpen || !job) return null
 

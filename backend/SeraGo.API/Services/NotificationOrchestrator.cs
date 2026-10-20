@@ -173,10 +173,13 @@ public sealed class NotificationOrchestrator
             {
                 var data = notification.Data ?? "{}";
                 var dataObj = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(data) ?? new();
+                var titleParam = dataObj.TryGetValue("title", out var titleEl) && titleEl.ValueKind == JsonValueKind.String
+                    ? $"&title={Uri.EscapeDataString(titleEl.GetString()!)}"
+                    : "";
                 var jobUrl = dataObj.TryGetValue("job_id", out var jobId)
                     && jobId.ValueKind == JsonValueKind.String
                     && Guid.TryParse(jobId.GetString(), out _)
-                        ? $"https://serago.pro.et/dashboard/talent/jobs/{jobId.GetString()}"
+                        ? $"https://serago.pro.et/dashboard/talent/jobs/{jobId.GetString()}?from=telegram{titleParam}"
                         : "https://serago.pro.et/dashboard/jobs";
 
                 replyMarkup = new InlineKeyboardMarkup(new[]

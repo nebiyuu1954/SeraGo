@@ -54,6 +54,25 @@ export function useAuthUser(): AuthUserState {
   return state
 }
 
+function preserveTargetJobIfPresent() {
+  try {
+    const pathname = window.location.pathname
+    const match = pathname.match(/\/dashboard\/talent\/jobs\/([^/?#]+)/)
+    if (match && match[1]) {
+      sessionStorage.setItem('serago_pending_target_job_id', match[1])
+      localStorage.setItem('serago_pending_target_job_id', match[1])
+      const search = new URLSearchParams(window.location.search)
+      const title = search.get('title')
+      if (title) {
+        sessionStorage.setItem('serago_pending_target_job_title', title)
+        localStorage.setItem('serago_pending_target_job_title', title)
+      }
+    }
+  } catch {
+    // Ignore storage errors in restricted contexts
+  }
+}
+
 /**
  * Role guard for dashboard pages. Redirects:
  * - signed-out users → /login
@@ -67,6 +86,7 @@ export function useRequireRole(role: RequiredRole): AuthUserState {
 
   useEffect(() => {
     if (auth.status === 'unauthenticated') {
+      preserveTargetJobIfPresent()
       navigate('/login', { replace: true })
     } else if (auth.status === 'authenticated' && !auth.user.emailConfirmed) {
       navigate('/confirm-email?required=1', { replace: true })
@@ -93,6 +113,7 @@ export function useRequireRoleAny(allowedRoles: RequiredRoleSet): AuthUserState 
 
   useEffect(() => {
     if (auth.status === 'unauthenticated') {
+      preserveTargetJobIfPresent()
       navigate('/login', { replace: true })
     } else if (auth.status === 'authenticated' && !auth.user.emailConfirmed) {
       navigate('/confirm-email?required=1', { replace: true })

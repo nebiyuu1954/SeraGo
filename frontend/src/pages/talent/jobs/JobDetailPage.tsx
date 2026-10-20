@@ -1,7 +1,8 @@
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import {
   applyToJob,
+  fetchJob,
   getApiErrorMessage,
   getStoredAuthTokens,
   updateProfile,
@@ -282,9 +283,54 @@ export default function JobDetailPage() {
   // Admins may open any job to preview exactly what talents see — via the
   // /dashboard/admin/jobs/:jobId/preview route (or location.state.fromAdmin).
   const location = useLocation()
+  const navigate = useNavigate()
   const isPreview = location.pathname.startsWith('/dashboard/admin/')
     || (location.state as { fromAdmin?: boolean })?.fromAdmin === true
   const auth = useRequireRoleAny(['Talent', 'Admin'])
+
+  const searchParams = new URLSearchParams(location.search)
+  const isFromTelegram = searchParams.get('from') === 'telegram'
+  const urlTitle = searchParams.get('title')
+
+  useEffect(() => {
+    if (!jobId || isPreview) return
+
+    if (auth.status === 'unauthenticated') {
+      try {
+        sessionStorage.setItem('serago_pending_target_job_id', jobId)
+        localStorage.setItem('serago_pending_target_job_id', jobId)
+        if (urlTitle) {
+          sessionStorage.setItem('serago_pending_target_job_title', urlTitle)
+          localStorage.setItem('serago_pending_target_job_title', urlTitle)
+        }
+      } catch {}
+
+      if (!urlTitle) {
+        fetchJob(jobId)
+          .then((j) => {
+            if (j?.title) {
+              sessionStorage.setItem('serago_pending_target_job_title', j.title)
+              localStorage.setItem('serago_pending_target_job_title', j.title)
+            }
+          })
+          .catch(() => {})
+      }
+      navigate('/login', { replace: true })
+      return
+    }
+
+    if (auth.status === 'authenticated' && isFromTelegram) {
+      try {
+        sessionStorage.setItem('serago_pending_target_job_id', jobId)
+        localStorage.setItem('serago_pending_target_job_id', jobId)
+        if (urlTitle) {
+          sessionStorage.setItem('serago_pending_target_job_title', urlTitle)
+          localStorage.setItem('serago_pending_target_job_title', urlTitle)
+        }
+      } catch {}
+      navigate('/dashboard/talent', { replace: true })
+    }
+  }, [jobId, auth.status, isFromTelegram, urlTitle, isPreview, navigate])
 
   const { job, isLoading, error, refresh: refreshJob } = useJobDetailQuery(
     jobId,
