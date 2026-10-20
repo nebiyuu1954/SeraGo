@@ -7,9 +7,9 @@ function auth(token: string): Record<string, string> {
 }
 
 /** GET /api/sectors — active sectors, for pickers (profile, filters). */
-export function fetchSectors(accessToken: string): Promise<SectorResponse[]> {
+export function fetchSectors(accessToken?: string): Promise<SectorResponse[]> {
   return request<SectorResponse[]>(API_ENDPOINTS.sectors.list, {
-    headers: auth(accessToken),
+    headers: accessToken ? auth(accessToken) : undefined,
   })
 }
 

@@ -52,7 +52,7 @@ public static class SectorEndpoints
 
     // ---------------------------------------------------------------- DTOs
 
-    public sealed record SectorResponse(Guid Id, string Name, string Slug, bool IsActive);
+    public sealed record SectorResponse(Guid Id, string Name, string Slug, bool IsActive, int JobCount = 0);
 
     public sealed record SectorDetailResponse(
         Guid Id, string Name, string Slug, bool IsActive,
@@ -66,26 +66,40 @@ public static class SectorEndpoints
 
     // -------------------------------------------------------------- Handlers
 
-    /// <summary>GET /api/sectors — the pickers' vocabulary (active only).</summary>
-    [Authorize]
+    /// <summary>GET /api/sectors — active sectors with real active job counts (public).</summary>
     private static async Task<IResult> ListSectorsAsync(ApplicationDbContext db, HttpContext http)
     {
+        var cutoff = DateTimeOffset.UtcNow.AddDays(-JobLifecycle.GraceDays);
+        var countsBySectorId = await db.Jobs.AsNoTracking()
+            .Where(j => j.Status == JobStatus.Published && j.IsActive && j.SectorId != null
+                && (j.Deadline == null || j.Deadline > cutoff))
+            .GroupBy(j => j.SectorId!.Value)
+            .Select(g => new { SectorId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(g => g.SectorId, g => g.Count);
+
         var sectors = await db.Sectors.AsNoTracking()
             .Where(s => s.IsActive)
             .OrderBy(s => s.Name)
-            .Select(s => new SectorResponse(s.Id, s.Name, s.Slug, s.IsActive))
+            .Select(s => new { s.Id, s.Name, s.Slug, s.IsActive })
             .ToListAsync();
 
-        // Sectors barely change and read the same for every caller — keep the
-        // browser's copy fresh for an hour (see HttpCache).
-        var etag = HttpCache.ComputeEtag(sectors);
-        HttpCache.Apply(http.Response, etag, TimeSpan.FromHours(1));
+        var responses = sectors
+            .Select(s => new SectorResponse(
+                s.Id,
+                s.Name,
+                s.Slug,
+                s.IsActive,
+                countsBySectorId.GetValueOrDefault(s.Id, 0)))
+            .ToList();
+
+        var etag = HttpCache.ComputeEtag(responses);
+        HttpCache.Apply(http.Response, etag, TimeSpan.FromMinutes(5));
         if (HttpCache.IsNotModified(http.Request, etag))
         {
             return HttpCache.NotModified();
         }
 
-        return Results.Ok(sectors);
+        return Results.Ok(responses);
     }
 
     /// <summary>GET /api/admin/sectors — everything, with aliases and job counts.</summary>

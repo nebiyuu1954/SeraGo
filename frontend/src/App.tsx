@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom'
 import AnalyticsTracker from './components/AnalyticsTracker.tsx'
 import Layout from './components/layout/Layout.tsx'
 import LandingPage from './pages/shared/landing/LandingPage.tsx'
+import PublicJobsPage from './pages/shared/jobs/PublicJobsPage.tsx'
 import AboutPage from './pages/shared/generic/AboutPage.tsx'
 import PrivacyPage from './pages/shared/generic/PrivacyPage.tsx'
 import TermsPage from './pages/shared/generic/TermsPage.tsx'
@@ -45,6 +46,7 @@ function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<LandingPage />} />
+          <Route path="jobs" element={<PublicJobsPage />} />
           <Route path="about" element={<AboutPage />} />
           <Route path="privacy" element={<PrivacyPage />} />
           <Route path="terms" element={<TermsPage />} />

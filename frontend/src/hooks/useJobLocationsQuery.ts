@@ -12,11 +12,11 @@ import { getStoredAuthTokens } from '../api'
  */
 export function useJobLocationsQuery(enabled = true) {
   const tokens = getStoredAuthTokens()
-  const key = enabled && tokens ? queryKeys.jobLocations : null
+  const key = enabled ? queryKeys.jobLocations : null
 
   const { data, error, isLoading } = useSWR<string[]>(
     key,
-    () => fetchJobLocations(tokens!.accessToken),
+    () => fetchJobLocations(tokens?.accessToken),
     {
       // Same 5-minute policy as the job feed: no auto-refetch on remount or
       // focus; open pages refresh at most every 5 minutes.

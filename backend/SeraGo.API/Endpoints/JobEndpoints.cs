@@ -267,13 +267,16 @@ public static class JobEndpoints
         MatchingClient matchingClient,
         HttpContext http)
     {
-        var user = await userManager.GetUserAsync(claims);
+        var user = claims.Identity?.IsAuthenticated == true ? await userManager.GetUserAsync(claims) : null;
+        var isAdmin = user is not null && await userManager.IsInRoleAsync(user, Roles.Admin);
+
         if (user is null)
         {
-            return Results.Unauthorized();
+            if (query.Mine == true || query.ForMe == true || query.Uncategorized == true || query.IncludeInactive == true || !string.IsNullOrWhiteSpace(query.Status) || !string.IsNullOrWhiteSpace(query.PostedBy))
+            {
+                return Results.Unauthorized();
+            }
         }
-
-        var isAdmin = await userManager.IsInRoleAsync(user, Roles.Admin);
 
         // Only the plain public browse view is HTTP-cacheable: the response
         // is identical for every caller. Admin/owner scopes and the
@@ -517,7 +520,7 @@ public static class JobEndpoints
         var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
 
         var isTalentForYou = query.ForMe == true
-            && user.UserType == Core.Domain.Enums.UserType.Talent;
+            && user?.UserType == Core.Domain.Enums.UserType.Talent;
         List<JobResponse> responses;
 
         // "Best match" (For You only): rank the whole feed by the stored AI
@@ -608,7 +611,7 @@ public static class JobEndpoints
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync();
-            responses = items.Select(j => ToResponse(j, user.Id)).ToList();
+            responses = items.Select(j => ToResponse(j, user?.Id)).ToList();
 
             // Feature 1: annotate the "For You" feed with the stored AI match
             // scores (0-100) so the feed can show/rank by match.
@@ -842,7 +845,6 @@ public static class JobEndpoints
     /// GET /api/jobs/job-types — count of active jobs grouped by JobType.
     /// Supports ?forMe=true to scope counts to the candidate's followed sectors.
     /// </summary>
-    [Authorize]
     private static async Task<IResult> ListJobTypesAsync(
         [FromQuery] bool? forMe,
         ClaimsPrincipal claims,
@@ -850,8 +852,8 @@ public static class JobEndpoints
         ApplicationDbContext db,
         CancellationToken ct)
     {
-        var user = await userManager.GetUserAsync(claims);
-        if (user is null)
+        var user = claims.Identity?.IsAuthenticated == true ? await userManager.GetUserAsync(claims) : null;
+        if (forMe == true && user is null)
         {
             return Results.Unauthorized();
         }
@@ -919,7 +921,6 @@ public static class JobEndpoints
     }
 
     /// <summary>GET /api/jobs/{id} — detail. Drafts/pending are only visible to their owner or admins.</summary>
-    [Authorize]
     private static async Task<IResult> GetJobAsync(
         Guid id,
         ClaimsPrincipal claims,
@@ -927,7 +928,7 @@ public static class JobEndpoints
         ApplicationDbContext db,
         HttpContext http)
     {
-        var user = await userManager.GetUserAsync(claims);
+        var user = claims.Identity?.IsAuthenticated == true ? await userManager.GetUserAsync(claims) : null;
         var isAdmin = user is not null && await userManager.IsInRoleAsync(user, Roles.Admin);
 
         // Use tracked entity so we can increment ViewCount.

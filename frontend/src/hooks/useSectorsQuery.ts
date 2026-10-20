@@ -13,11 +13,11 @@ import type { SectorResponse } from '../types'
  */
 export function useSectorsQuery(enabled = true) {
   const tokens = getStoredAuthTokens()
-  const key = enabled && tokens ? queryKeys.sectors : null
+  const key = enabled ? queryKeys.sectors : null
 
   const { data, error, isLoading } = useSWR<SectorResponse[]>(
     key,
-    () => fetchSectors(tokens!.accessToken),
+    () => fetchSectors(tokens?.accessToken),
     {
       // Sectors barely change — once fetched, remounts and focus never
       // auto-refetch; the poll refreshes at most every 5 minutes while a

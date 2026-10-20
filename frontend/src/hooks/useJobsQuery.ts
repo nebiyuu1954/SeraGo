@@ -19,13 +19,13 @@ import type { JobListData, JobListParams } from '../types'
  */
 export function useJobsQuery(params: JobListParams, enabled = true) {
   const tokens = getStoredAuthTokens()
-  const key = enabled && tokens
+  const key = enabled
     ? queryKeys.jobs.list(params)
     : null
 
   const { data, error, isLoading, mutate } = useSWR<JobListData>(
     key,
-    () => fetchJobs(params, tokens!.accessToken),
+    () => fetchJobs(params, tokens?.accessToken),
     {
       // 5-minute freshness. This SWR version has no staleTime knob, so:
       // revalidateIfStale: false stops remounts from auto-refetching cached

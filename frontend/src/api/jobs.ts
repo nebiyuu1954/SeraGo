@@ -66,17 +66,17 @@ function auth(token: string): Record<string, string> {
 /** GET /api/jobs — list with sorting, filtering, search and pagination. */
 export function fetchJobs(
   params: JobListParams,
-  accessToken: string,
+  accessToken?: string,
 ): Promise<JobListData> {
   return request<JobListData>(`${API_ENDPOINTS.jobs.list}${toQuery(params)}`, {
-    headers: auth(accessToken),
+    headers: accessToken ? auth(accessToken) : undefined,
   })
 }
 
 /** GET /api/jobs/locations — distinct locations of the live feed (filter dropdown). */
-export function fetchJobLocations(accessToken: string): Promise<string[]> {
+export function fetchJobLocations(accessToken?: string): Promise<string[]> {
   return request<string[]>(API_ENDPOINTS.jobs.locations, {
-    headers: auth(accessToken),
+    headers: accessToken ? auth(accessToken) : undefined,
   })
 }
 
@@ -92,9 +92,9 @@ export function fetchJobTypes(
 }
 
 /** GET /api/jobs/{id} — job detail. */
-export function fetchJob(id: string, accessToken: string): Promise<JobResponse> {
+export function fetchJob(id: string, accessToken?: string): Promise<JobResponse> {
   return request<JobResponse>(jobPath(id), {
-    headers: auth(accessToken),
+    headers: accessToken ? auth(accessToken) : undefined,
   })
 }
 
