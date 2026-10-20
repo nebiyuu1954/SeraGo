@@ -437,17 +437,24 @@ if (SeraGo.API.Extensions.ServicesExtensions.HangfireEnabled)
                 "0 * * * *",  // hourly
                 new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-            // Backfill/safety net for the Telegram job channel: posts live jobs
-            // that were never broadcast (the bulk of them arrive via the scraper
-            // sync), spaced to respect Telegram's per-chat rate limit.
-            recurringJobs.AddOrUpdate<TelegramJobService>(
-                "telegram-channel-sweep",
-                s => s.SweepPendingChannelJobsAsync(),
-                "*/10 * * * *",  // every 10 minutes
-                new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+            // Ensure the old 10-minute recurring sweep is removed from Hangfire so
+            // only freshly inserted jobs from the scraper sync (or manual admin posts)
+            // are broadcast to the channel.
+            recurringJobs.RemoveIfExists("telegram-channel-sweep");
 
-            // Trigger an initial sweep on boot so unposted jobs broadcast immediately
-            BackgroundJob.Enqueue<TelegramJobService>(s => s.SweepPendingChannelJobsAsync());
+            // Auto-archive historical unposted jobs older than 2 hours so old jobs
+            // from past days never flood the channel.
+            try
+            {
+                using var scope = app.Services.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                db.Database.ExecuteSqlRaw(
+                    @"UPDATE ""Jobs"" SET ""TelegramChannelPostedAt"" = NOW() WHERE ""TelegramChannelPostedAt"" IS NULL AND ""CreatedAt"" < NOW() - INTERVAL '2 hours'");
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogWarning(ex, "Failed to auto-archive historical unposted jobs on startup");
+            }
             break;
         }
         catch (PostgreSqlDistributedLockException ex) when (attempt < maxAttempts)

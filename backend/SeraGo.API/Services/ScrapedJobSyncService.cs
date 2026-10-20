@@ -420,6 +420,7 @@ public sealed class ScrapedJobSyncService
                     JobTypeText = reporterTypeText,
                     CreatedAt = DateTimeOffset.UtcNow,
                     UpdatedAt = DateTimeOffset.UtcNow,
+                    TelegramChannelPostedAt = isBootstrap ? DateTimeOffset.UtcNow : null,
                 };
                 db.Jobs.Add(newJob);
                 jobsByKey[(sourceName, externalId)] = newJob;
@@ -507,7 +508,7 @@ public sealed class ScrapedJobSyncService
         try
         {
             var telegramJobs = scope.ServiceProvider.GetService<TelegramJobService>();
-            if (telegramJobs is not null)
+            if (telegramJobs is not null && !isBootstrap && insertedIds.Count > 0)
             {
                 await telegramJobs.BroadcastSyncedJobsAsync(insertedIds);
             }

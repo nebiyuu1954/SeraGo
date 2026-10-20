@@ -194,23 +194,23 @@ public sealed class TelegramJobService
 
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-        // Auto-archive historical jobs older than 24 hours so they never flood the channel
+        // Auto-archive historical jobs older than 2 hours so they never flood the channel
         try
         {
             await db.Database.ExecuteSqlRawAsync(
-                @"UPDATE ""Jobs"" SET ""TelegramChannelPostedAt"" = NOW() WHERE ""TelegramChannelPostedAt"" IS NULL AND ""CreatedAt"" < NOW() - INTERVAL '24 hours'");
+                @"UPDATE ""Jobs"" SET ""TelegramChannelPostedAt"" = NOW() WHERE ""TelegramChannelPostedAt"" IS NULL AND ""CreatedAt"" < NOW() - INTERVAL '2 hours'");
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to auto-archive historical Telegram channel jobs");
         }
 
-        var cutoff = DateTimeOffset.UtcNow.AddHours(-24);
+        var cutoff = DateTimeOffset.UtcNow.AddHours(-2);
         var pending = await db.Jobs
             .Include(j => j.Sector)
             .Where(j => j.Status == JobStatus.Published && j.IsActive && j.TelegramChannelPostedAt == null &&
-                        (j.PublishedAt >= cutoff || j.CreatedAt >= cutoff))
-            .OrderByDescending(j => j.PublishedAt ?? j.CreatedAt)
+                        j.CreatedAt >= cutoff)
+            .OrderByDescending(j => j.CreatedAt)
             .Take(_options.ChannelMaxPerRun)
             .ToListAsync();
 
