@@ -91,6 +91,8 @@ public static class SectorEndpoints
                 s.Slug,
                 s.IsActive,
                 countsBySectorId.GetValueOrDefault(s.Id, 0)))
+            .OrderByDescending(s => s.JobCount)
+            .ThenBy(s => s.Name)
             .ToList();
 
         var etag = HttpCache.ComputeEtag(responses);

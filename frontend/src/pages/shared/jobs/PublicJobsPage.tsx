@@ -6,6 +6,7 @@ import {
   useJobLocationsQuery,
 } from '../../../hooks/query.ts'
 import { sourceLogo } from '../../../lib/sourceLogos.ts'
+import { initialsOf } from '../../../lib/initials.ts'
 import seragoLogo from '../../../assets/logos/serago.svg'
 import GuestJobAuthModal from '../../../components/jobs/GuestJobAuthModal.tsx'
 import type { JobResponse } from '../../../types'
@@ -29,6 +30,11 @@ export default function PublicJobsPage() {
 
   const { sectors, isLoading: sectorsLoading } = useSectorsQuery()
   const { locations, isLoading: locationsLoading } = useJobLocationsQuery()
+
+  // Sort sectors from highest job count to lowest
+  const sortedSectors = [...sectors].sort(
+    (a, b) => (b.jobCount ?? 0) - (a.jobCount ?? 0) || a.name.localeCompare(b.name),
+  )
 
   const { jobs, pagination, isLoading: jobsLoading, error } = useJobsQuery({
     q: searchInput.trim() || undefined,
@@ -77,7 +83,7 @@ export default function PublicJobsPage() {
     <div className="min-h-screen bg-surface">
       {/* Hero Header */}
       <div className="border-b border-surface-variant/40 bg-surface-container-lowest py-10 md:py-14">
-        <div className="mx-auto w-full max-w-container-max px-margin-mobile md:px-margin-desktop">
+        <div className="mx-auto w-full max-w-6xl px-margin-mobile md:px-margin-desktop">
           <div className="flex flex-col gap-3">
             <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 font-label-sm text-label-sm font-semibold text-primary">
               <span className="material-symbols-outlined text-[16px]">travel_explore</span>
@@ -118,7 +124,7 @@ export default function PublicJobsPage() {
       </div>
 
       {/* Main Content Area */}
-      <main className="mx-auto w-full max-w-container-max px-margin-mobile py-8 md:px-margin-desktop md:py-10">
+      <main className="mx-auto w-full max-w-6xl px-margin-mobile py-8 md:px-margin-desktop md:py-10">
         {/* Minimal Filters Bar: Search + Sector + Location + Sort */}
         <div className="flex flex-col gap-3 rounded-2xl border border-surface-variant bg-surface-container-lowest p-4 shadow-sm md:flex-row md:items-center">
           {/* Search Input */}
@@ -159,7 +165,7 @@ export default function PublicJobsPage() {
             >
               <option value="">All Sectors</option>
               {!sectorsLoading &&
-                sectors.map((s) => (
+                sortedSectors.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name} ({s.jobCount ?? 0})
                   </option>
@@ -331,62 +337,100 @@ export default function PublicJobsPage() {
             )}
           </div>
         ) : (
-          <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
+          <div className="mt-6 grid grid-cols-1 gap-5 xl:grid-cols-2">
             {jobs.map((job) => {
-              const logo =
-                job.companyLogoUrl ||
-                sourceLogo(job.sourceName) ||
-                seragoLogo
+              const brandLogo = sourceLogo(job.sourceName)
+              const salaryLabel =
+                job.salaryMin != null || job.salaryMax != null
+                  ? [
+                      job.salaryCurrency || '',
+                      job.salaryMin != null && job.salaryMax != null
+                        ? `${job.salaryMin.toLocaleString()} – ${job.salaryMax.toLocaleString()}`
+                        : job.salaryMin != null
+                          ? `From ${job.salaryMin.toLocaleString()}`
+                          : `Up to ${job.salaryMax!.toLocaleString()}`,
+                      job.salaryPeriod ? `/${job.salaryPeriod}` : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')
+                  : job.salary || ''
+
+              const experienceLabel =
+                job.experienceMinYears != null || job.experienceMaxYears != null
+                  ? job.experienceMinYears != null && job.experienceMaxYears != null
+                    ? `${job.experienceMinYears}–${job.experienceMaxYears} years`
+                    : job.experienceMinYears != null
+                      ? `${job.experienceMinYears}+ years`
+                      : `Up to ${job.experienceMaxYears} years`
+                  : job.experienceLevel || ''
 
               const metaItems = [
-                { icon: 'location_on', label: job.location || 'Addis Ababa' },
-                { icon: 'payments', label: job.salary || 'Competitive' },
+                { icon: 'location_on', label: job.location || 'Location not specified' },
+                { icon: 'payments', label: salaryLabel || 'Salary not specified' },
                 { icon: 'schedule', label: formatEnum(job.jobType) },
-                {
-                  icon: 'work',
-                  label:
-                    job.experienceLevel ||
-                    (job.experienceMinYears
-                      ? `${job.experienceMinYears}+ years`
-                      : 'Experienced'),
-                },
-                { icon: 'domain', label: job.sectorName || 'General' },
+                ...(experienceLabel
+                  ? [{ icon: 'work', label: experienceLabel }]
+                  : []),
+                ...(job.sectorName ? [{ icon: 'domain', label: job.sectorName }] : []),
                 { icon: 'home_work', label: formatEnum(job.workMode) },
               ]
 
               return (
                 <article
                   key={job.id}
-                  className="group flex flex-col overflow-hidden rounded-xl border border-surface-variant bg-surface-container-lowest shadow-sm transition-all duration-300 hover:border-outline-variant hover:shadow-md"
+                  className="group flex flex-col overflow-hidden rounded-lg border border-surface-variant bg-surface-container-lowest transition-all duration-300 hover:border-outline-variant hover:shadow-sm"
                 >
                   {/* Top Bar: Logo + Title + Company */}
-                  <div className="flex flex-grow flex-row items-center gap-4 border-b border-surface-variant/50 p-6">
-                    <div className="flex h-12 w-28 shrink-0 items-center justify-center rounded-lg bg-surface-container-low px-2">
-                      <img
-                        className="max-h-8 w-auto max-w-full object-contain"
-                        src={logo}
-                        alt=""
-                      />
+                  <div className="flex flex-grow flex-row items-center gap-4 border-b border-surface-variant/50 p-5">
+                    <div className="flex h-11 w-24 shrink-0 items-center justify-center overflow-hidden rounded bg-surface-container-low px-2">
+                      {brandLogo ? (
+                        <img
+                          className="max-h-8 w-auto max-w-full object-contain"
+                          src={brandLogo}
+                          alt={job.sourceName ?? ''}
+                        />
+                      ) : job.companyLogoUrl ? (
+                        <img
+                          className="max-h-8 w-auto max-w-full object-contain"
+                          src={job.companyLogoUrl}
+                          alt=""
+                        />
+                      ) : job.company ? (
+                        <span className="font-headline-md text-headline-md font-semibold text-primary">
+                          {initialsOf(job.company)}
+                        </span>
+                      ) : (
+                        <img
+                          className="max-h-8 w-auto max-w-full object-contain"
+                          src={seragoLogo}
+                          alt="SeraGo"
+                        />
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h3 className="mb-1 truncate font-headline-md text-headline-md leading-tight text-on-surface transition-colors group-hover:text-surface-tint">
+                      <h4 className="mb-1 truncate font-headline-md text-headline-md leading-tight text-on-surface transition-colors group-hover:text-surface-tint">
                         {job.title}
-                      </h3>
+                      </h4>
                       <p className="truncate font-body-md text-body-md text-secondary">
-                        {job.company || 'Confidential'}
+                        {job.company || 'Company undisclosed'}
                       </p>
+                      {job.sourceName && job.sourceName.toLowerCase() !== 'serago' && (
+                        <p className="mt-0.5 font-label-sm text-label-sm text-on-surface-variant">
+                          via {job.sourceName}
+                        </p>
+                      )}
                     </div>
                   </div>
 
                   {/* Body: Meta chips + Deadline */}
-                  <div className="flex flex-col gap-5 bg-surface/30 p-6">
+                  <div className="flex flex-col gap-4 bg-surface/30 p-5">
                     <div className="grid grid-cols-2 gap-3 font-label-md text-label-md text-on-surface-variant">
                       {metaItems.map((item) => (
                         <div
                           key={item.icon + item.label}
                           className="flex items-center gap-2 truncate"
                         >
-                          <span className="material-symbols-outlined shrink-0 text-[18px]">
+                          <span className="material-symbols-outlined text-[18px]">
                             {item.icon}
                           </span>
                           <span className="truncate">{item.label}</span>
@@ -404,14 +448,14 @@ export default function PublicJobsPage() {
                     )}
 
                     {/* Actions */}
-                    <div className="mt-auto flex gap-2.5 pt-1">
+                    <div className="mt-auto flex gap-2 pt-1">
                       <button
                         type="button"
                         onClick={() => {
                           setModalJob(job)
                           setModalMode('apply')
                         }}
-                        className="flex-1 rounded-lg bg-accent px-4 py-2.5 font-label-md text-label-md font-semibold text-on-accent transition-all hover:opacity-90"
+                        className="flex-1 rounded bg-accent px-4 py-2.5 text-center font-label-md text-label-md font-semibold text-on-accent transition-colors hover:opacity-90"
                       >
                         Apply Now
                       </button>
@@ -421,7 +465,7 @@ export default function PublicJobsPage() {
                           setModalJob(job)
                           setModalMode('preview')
                         }}
-                        className="flex-1 rounded-lg border border-surface-variant px-4 py-2.5 font-label-md text-label-md font-semibold text-primary transition-colors hover:bg-surface-container-low"
+                        className="flex-1 rounded border border-surface-variant px-4 py-2.5 text-center font-label-md text-label-md font-semibold text-primary transition-colors hover:bg-surface-container-low"
                       >
                         See description
                       </button>
