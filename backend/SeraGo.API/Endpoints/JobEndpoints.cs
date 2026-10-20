@@ -257,8 +257,7 @@ public static class JobEndpoints
 
     // ------------------------------------------------------------- Handlers
 
-    /// <summary>GET /api/jobs — authenticated read with sorting, filtering, search and pagination.</summary>
-    [Authorize]
+    /// <summary>GET /api/jobs — public read with sorting, filtering, search and pagination.</summary>
     private static async Task<IResult> ListJobsAsync(
         [AsParameters] JobListQuery query,
         ClaimsPrincipal claims,
@@ -295,7 +294,7 @@ public static class JobEndpoints
         // Scope + visibility.
         if (query.Mine == true)
         {
-            q = q.Where(j => j.PostedByUserId == user.Id);
+            q = q.Where(j => j.PostedByUserId == user!.Id);
 
             // Owners may narrow their own jobs by status (?mine=true&status=Draft).
             if (!string.IsNullOrWhiteSpace(query.Status))
@@ -409,7 +408,7 @@ public static class JobEndpoints
         if (query.ForMe == true)
         {
             var settings = await db.UserSettings.AsNoTracking()
-                .FirstOrDefaultAsync(s => s.UserId == user.Id);
+                .FirstOrDefaultAsync(s => s.UserId == user!.Id);
             var prefs = UserSettingsReader.GetForYouSectorIds(settings?.Settings);
             // No sectors chosen → nothing matches (the frontend shows the setup prompt).
             if (prefs.Count > 0)
@@ -539,7 +538,7 @@ public static class JobEndpoints
             var scores = new Dictionary<Guid, MatchingClient.JobScore>();
             foreach (var chunk in rankedIds.Chunk(200))
             {
-                var part = await matchingClient.GetForYouJobScoresAsync(user.Id, chunk);
+                var part = await matchingClient.GetForYouJobScoresAsync(user!.Id, chunk);
                 foreach (var kv in part)
                 {
                     scores[kv.Key] = kv.Value;
@@ -572,7 +571,7 @@ public static class JobEndpoints
                     .Where(byId.ContainsKey)
                     .Select(id =>
                     {
-                        var r = ToResponse(byId[id], user.Id);
+                        var r = ToResponse(byId[id], user!.Id);
                         return scores.TryGetValue(id, out var s) && s.Score is not null
                             ? r with
                             {
@@ -618,7 +617,7 @@ public static class JobEndpoints
             if (isTalentForYou && responses.Count > 0)
             {
                 var scores = await matchingClient.GetForYouJobScoresAsync(
-                    user.Id, responses.Select(r => r.Id).ToList());
+                    user!.Id, responses.Select(r => r.Id).ToList());
                 if (scores.Count > 0)
                 {
                     responses = responses.Select(r =>
@@ -784,7 +783,6 @@ public static class JobEndpoints
     ///   - case variants merge into the most common spelling;
     ///   - sorted alphabetically (case-insensitive).
     /// </summary>
-    [Authorize]
     private static async Task<IResult> ListLocationsAsync(
         ApplicationDbContext db, CancellationToken ct, HttpContext http)
     {
@@ -866,7 +864,7 @@ public static class JobEndpoints
         if (forMe == true)
         {
             var settings = await db.UserSettings.AsNoTracking()
-                .FirstOrDefaultAsync(s => s.UserId == user.Id, ct);
+                .FirstOrDefaultAsync(s => s.UserId == user!.Id, ct);
             var prefs = UserSettingsReader.GetForYouSectorIds(settings?.Settings);
             if (prefs.Count > 0)
             {

@@ -421,6 +421,7 @@ export interface SectorResponse {
   name: string
   slug: string
   isActive: boolean
+  jobCount?: number
 }
 
 /** Admin view of a sector — includes aliases and how many jobs reference it. */

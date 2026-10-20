@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { cn } from '../../../lib/cn.ts'
-import { useSectorsQuery } from '../../../hooks/useSectorsQuery'
-import { useJobsQuery } from '../../../hooks/useJobsQuery'
-import { sourceLogo } from '../../../lib/sourceLogos'
+import { useSectorsQuery, useJobsQuery } from '../../../hooks/query.ts'
+import { sourceLogo } from '../../../lib/sourceLogos.ts'
 import seragoLogo from '../../../assets/logos/serago.svg'
-import GuestJobAuthModal from '../../../components/jobs/GuestJobAuthModal'
+import GuestJobAuthModal from '../../../components/jobs/GuestJobAuthModal.tsx'
 import type { JobResponse } from '../../../types'
 
 export default function JobListings() {

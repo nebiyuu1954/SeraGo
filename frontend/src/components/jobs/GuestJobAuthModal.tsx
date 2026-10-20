@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import type { JobResponse } from '../../types'
-import GoogleButton from '../auth/GoogleButton'
-import TelegramButton from '../auth/TelegramButton'
+import GoogleButton from '../auth/GoogleButton.tsx'
+import TelegramButton from '../auth/TelegramButton.tsx'
 
 interface GuestJobAuthModalProps {
   isOpen: boolean

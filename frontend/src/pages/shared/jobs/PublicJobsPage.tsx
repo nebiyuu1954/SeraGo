@@ -1,11 +1,13 @@
 import { useState, useId } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { useJobsQuery } from '../../../hooks/useJobsQuery'
-import { useSectorsQuery } from '../../../hooks/useSectorsQuery'
-import { useJobLocationsQuery } from '../../../hooks/useJobLocationsQuery'
-import { sourceLogo } from '../../../lib/sourceLogos'
+import {
+  useJobsQuery,
+  useSectorsQuery,
+  useJobLocationsQuery,
+} from '../../../hooks/query.ts'
+import { sourceLogo } from '../../../lib/sourceLogos.ts'
 import seragoLogo from '../../../assets/logos/serago.svg'
-import GuestJobAuthModal from '../../../components/jobs/GuestJobAuthModal'
+import GuestJobAuthModal from '../../../components/jobs/GuestJobAuthModal.tsx'
 import type { JobResponse } from '../../../types'
 
 export default function PublicJobsPage() {
