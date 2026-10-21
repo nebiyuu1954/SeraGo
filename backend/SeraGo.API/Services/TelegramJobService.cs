@@ -11,6 +11,8 @@ using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
+using File = System.IO.File;
+using Path = System.IO.Path;
 
 namespace SeraGo.API.Services;
 
@@ -610,9 +612,9 @@ public sealed class TelegramJobService
         try
         {
             InputFile photoInput;
-            if (localBannerPath != null && File.Exists(localBannerPath))
+            if (localBannerPath != null && System.IO.File.Exists(localBannerPath))
             {
-                localStream = File.OpenRead(localBannerPath);
+                localStream = System.IO.File.OpenRead(localBannerPath);
                 photoInput = InputFile.FromStream(localStream, bannerFileName);
             }
             else
@@ -671,32 +673,32 @@ public sealed class TelegramJobService
             var envDir = Environment.GetEnvironmentVariable("SOURCE_BANNERS_DIR");
             if (!string.IsNullOrWhiteSpace(envDir))
             {
-                var candidate = Path.Combine(envDir, fileName);
-                if (File.Exists(candidate)) return candidate;
+                var candidate = System.IO.Path.Combine(envDir, fileName);
+                if (System.IO.File.Exists(candidate)) return candidate;
             }
 
             var candidateRoots = new[]
             {
                 Directory.GetCurrentDirectory(),
                 AppContext.BaseDirectory,
-                Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..")),
-                Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "..", "..")),
+                System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..")),
+                System.IO.Path.GetFullPath(System.IO.Path.Combine(Directory.GetCurrentDirectory(), "..", "..")),
                 @"C:\Users\Nebiyu\Desktop\Projects Projects\SeraGo"
             };
 
             foreach (var root in candidateRoots)
             {
-                var path1 = Path.Combine(root, "frontend", "public", "sources", fileName);
-                if (File.Exists(path1)) return path1;
+                var path1 = System.IO.Path.Combine(root, "frontend", "public", "sources", fileName);
+                if (System.IO.File.Exists(path1)) return path1;
 
-                var path2 = Path.Combine(root, "public", "sources", fileName);
-                if (File.Exists(path2)) return path2;
+                var path2 = System.IO.Path.Combine(root, "public", "sources", fileName);
+                if (System.IO.File.Exists(path2)) return path2;
 
-                var path3 = Path.Combine(root, "sources", fileName);
-                if (File.Exists(path3)) return path3;
+                var path3 = System.IO.Path.Combine(root, "sources", fileName);
+                if (System.IO.File.Exists(path3)) return path3;
 
-                var path4 = Path.Combine(root, "wwwroot", "sources", fileName);
-                if (File.Exists(path4)) return path4;
+                var path4 = System.IO.Path.Combine(root, "wwwroot", "sources", fileName);
+                if (System.IO.File.Exists(path4)) return path4;
             }
         }
         catch
