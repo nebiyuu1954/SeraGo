@@ -11,9 +11,8 @@ import {
   useProfileQuery,
 } from '../../../hooks/query.ts'
 import { useSettingsQuery } from '../../../hooks'
-import { prefetchJob } from '../../../hooks/useJobDetailQuery.ts'
 import { useRequireRole } from '../../../hooks'
-import type { JobResponse, JobType, SectorResponse } from '../../../types'
+import type { JobType, SectorResponse } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import JobCard from '../../../components/jobs/JobCard.tsx'
 import { useToast } from '../../../components/dashboard/Toast.tsx'
