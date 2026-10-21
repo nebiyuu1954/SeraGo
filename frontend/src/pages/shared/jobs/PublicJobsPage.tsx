@@ -5,10 +5,8 @@ import {
   useSectorsQuery,
   useJobLocationsQuery,
 } from '../../../hooks/query.ts'
-import { sourceLogo } from '../../../lib/sourceLogos.ts'
-import { initialsOf } from '../../../lib/initials.ts'
-import seragoLogo from '../../../assets/logos/serago.svg'
 import GuestJobAuthModal from '../../../components/jobs/GuestJobAuthModal.tsx'
+import JobCard from '../../../components/jobs/JobCard.tsx'
 import type { JobResponse } from '../../../types'
 
 export default function PublicJobsPage() {
@@ -55,27 +53,6 @@ export default function PublicJobsPage() {
     setPage(1)
   }
 
-  const formatEnum = (val?: string) => {
-    if (!val) return 'Not Specified'
-    return val
-      .replace(/([A-Z])/g, ' $1')
-      .replace(/^./, (str) => str.toUpperCase())
-      .trim()
-  }
-
-  const formatDate = (isoString?: string) => {
-    if (!isoString) return ''
-    try {
-      const d = new Date(isoString)
-      return d.toLocaleDateString('en-GB', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })
-    } catch {
-      return ''
-    }
-  }
 
   const selectedSectorName = sectors.find((s) => s.id === sectorId)?.name
 
@@ -338,142 +315,24 @@ export default function PublicJobsPage() {
           </div>
         ) : (
           <div className="mt-6 grid grid-cols-1 gap-5 xl:grid-cols-2">
-            {jobs.map((job) => {
-              const brandLogo = sourceLogo(job.sourceName)
-              const salaryLabel =
-                job.salaryMin != null || job.salaryMax != null
-                  ? [
-                      job.salaryCurrency || '',
-                      job.salaryMin != null && job.salaryMax != null
-                        ? `${job.salaryMin.toLocaleString()} – ${job.salaryMax.toLocaleString()}`
-                        : job.salaryMin != null
-                          ? `From ${job.salaryMin.toLocaleString()}`
-                          : `Up to ${job.salaryMax!.toLocaleString()}`,
-                      job.salaryPeriod ? `/${job.salaryPeriod}` : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')
-                  : job.salary || ''
-
-              const experienceLabel =
-                job.experienceMinYears != null || job.experienceMaxYears != null
-                  ? job.experienceMinYears != null && job.experienceMaxYears != null
-                    ? `${job.experienceMinYears}–${job.experienceMaxYears} years`
-                    : job.experienceMinYears != null
-                      ? `${job.experienceMinYears}+ years`
-                      : `Up to ${job.experienceMaxYears} years`
-                  : job.experienceLevel || ''
-
-              const metaItems = [
-                { icon: 'location_on', label: job.location || 'Location not specified' },
-                { icon: 'payments', label: salaryLabel || 'Salary not specified' },
-                { icon: 'schedule', label: formatEnum(job.jobType) },
-                ...(experienceLabel
-                  ? [{ icon: 'work', label: experienceLabel }]
-                  : []),
-                ...(job.sectorName ? [{ icon: 'domain', label: job.sectorName }] : []),
-                { icon: 'home_work', label: formatEnum(job.workMode) },
-              ]
-
-              return (
-                <article
-                  key={job.id}
-                  className="group flex flex-col overflow-hidden rounded-lg border border-surface-variant bg-surface-container-lowest transition-all duration-300 hover:border-outline-variant hover:shadow-sm"
-                >
-                  {/* Top Bar: Logo + Title + Company */}
-                  <div className="flex flex-grow flex-row items-center gap-4 border-b border-surface-variant/50 p-5">
-                    <div className="flex h-11 w-24 shrink-0 items-center justify-center overflow-hidden rounded bg-surface-container-low px-2">
-                      {brandLogo ? (
-                        <img
-                          className="max-h-8 w-auto max-w-full object-contain"
-                          src={brandLogo}
-                          alt={job.sourceName ?? ''}
-                        />
-                      ) : job.companyLogoUrl ? (
-                        <img
-                          className="max-h-8 w-auto max-w-full object-contain"
-                          src={job.companyLogoUrl}
-                          alt=""
-                        />
-                      ) : job.company ? (
-                        <span className="font-headline-md text-headline-md font-semibold text-primary">
-                          {initialsOf(job.company)}
-                        </span>
-                      ) : (
-                        <img
-                          className="max-h-8 w-auto max-w-full object-contain"
-                          src={seragoLogo}
-                          alt="SeraGo"
-                        />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="mb-1 truncate font-headline-md text-headline-md leading-tight text-on-surface transition-colors group-hover:text-surface-tint">
-                        {job.title}
-                      </h4>
-                      <p className="truncate font-body-md text-body-md text-secondary">
-                        {job.company || 'Company undisclosed'}
-                      </p>
-                      {job.sourceName && job.sourceName.toLowerCase() !== 'serago' && (
-                        <p className="mt-0.5 font-label-sm text-label-sm text-on-surface-variant">
-                          via {job.sourceName}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Body: Meta chips + Deadline */}
-                  <div className="flex flex-col gap-4 bg-surface/30 p-5">
-                    <div className="grid grid-cols-2 gap-3 font-label-md text-label-md text-on-surface-variant">
-                      {metaItems.map((item) => (
-                        <div
-                          key={item.icon + item.label}
-                          className="flex items-center gap-2 truncate"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">
-                            {item.icon}
-                          </span>
-                          <span className="truncate">{item.label}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {job.deadline && (
-                      <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-secondary">
-                        <span className="material-symbols-outlined text-[16px]">
-                          hourglass_bottom
-                        </span>
-                        <span>Closes: {formatDate(job.deadline)}</span>
-                      </div>
-                    )}
-
-                    {/* Actions */}
-                    <div className="mt-auto flex gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setModalJob(job)
-                          setModalMode('apply')
-                        }}
-                        className="flex-1 rounded bg-accent px-4 py-2.5 text-center font-label-md text-label-md font-semibold text-on-accent transition-colors hover:opacity-90"
-                      >
-                        Apply Now
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setModalJob(job)
-                          setModalMode('preview')
-                        }}
-                        className="flex-1 rounded border border-surface-variant px-4 py-2.5 text-center font-label-md text-label-md font-semibold text-primary transition-colors hover:bg-surface-container-low"
-                      >
-                        See description
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              )
-            })}
+            {jobs.map((job) => (
+              <JobCard
+                key={job.id}
+                job={job}
+                onApply={(j) => {
+                  setModalJob(j)
+                  setModalMode('apply')
+                }}
+                onPreview={(j) => {
+                  setModalJob(j)
+                  setModalMode('preview')
+                }}
+                onToggleSave={() => {
+                  setModalJob(job)
+                  setModalMode('apply')
+                }}
+              />
+            ))}
           </div>
         )}
 
