@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   addSectorAliases,
   createSector,
@@ -18,17 +19,33 @@ import type { JobResponse, SectorDetailResponse, SyncScrapedJobsResult } from '.
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import { cn } from '../../../lib/cn.ts'
 import CopyPromptModal from './CopyPromptModal.tsx'
+import ClassificationHistoryTab from './ClassificationHistoryTab.tsx'
 
-type Tab = 'sectors' | 'aliases' | 'review'
+type Tab = 'sectors' | 'aliases' | 'review' | 'history'
 
 /**
  * Admin console for the sector vocabulary: manage canonical sectors and the
- * alias map that standardizes scraped names, run the scraped-job sync, and
- * review/retag jobs the normalizer couldn't categorize.
+ * alias map that standardizes scraped names, run the scraped-job sync, review
+ * uncategorized jobs, and inspect classification history with an AI quality judge.
  */
 export default function SectorsPage() {
   const auth = useRequireRole('Admin')
-  const [tab, setTab] = useState<Tab>('sectors')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialTab = (searchParams.get('tab') as Tab) || 'sectors'
+  const [tab, setTab] = useState<Tab>(
+    ['sectors', 'aliases', 'review', 'history'].includes(initialTab) ? initialTab : 'sectors',
+  )
+  const token = useAdminToken()
+  const { sectors } = useSectors()
+
+  const handleTabChange = (newTab: Tab) => {
+    setTab(newTab)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('tab', newTab)
+      return next
+    })
+  }
 
   if (auth.status !== 'authenticated') {
     return (
@@ -51,23 +68,24 @@ export default function SectorsPage() {
         are standardized against this list.
       </p>
 
-      <div className="mt-6 flex gap-1 rounded-lg border border-surface-variant bg-surface-container-lowest p-1 shadow-sm sm:w-fit">
+      <div className="mt-6 flex flex-wrap gap-1 rounded-lg border border-surface-variant bg-surface-container-lowest p-1 shadow-sm sm:w-fit">
         {(
           [
             { id: 'sectors', label: 'Sectors' },
             { id: 'aliases', label: 'Aliases' },
             { id: 'review', label: 'Review & sync' },
+            { id: 'history', label: 'Classification history' },
           ] as { id: Tab; label: string }[]
         ).map((t) => (
           <button
             key={t.id}
             type="button"
-            onClick={() => setTab(t.id)}
+            onClick={() => handleTabChange(t.id)}
             aria-pressed={tab === t.id}
             className={cn(
               'rounded-md px-4 py-2 font-label-md text-label-md transition-colors',
               tab === t.id
-                ? 'bg-primary font-medium text-on-primary'
+                ? 'bg-primary font-medium text-on-primary shadow-sm'
                 : 'text-on-surface-variant hover:text-on-surface',
             )}
           >
@@ -80,6 +98,9 @@ export default function SectorsPage() {
         {tab === 'sectors' && <SectorsTab />}
         {tab === 'aliases' && <AliasesTab />}
         {tab === 'review' && <ReviewTab />}
+        {tab === 'history' && (
+          <ClassificationHistoryTab sectors={sectors} token={token ?? ''} />
+        )}
       </div>
     </DashboardShell>
   )

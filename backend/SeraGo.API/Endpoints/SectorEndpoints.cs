@@ -44,6 +44,9 @@ public static class SectorEndpoints
         admin.MapDelete("/{id:guid}", DeleteSectorAsync).RequireRateLimiting("jobs_write").WithOpenApi();
         admin.MapPost("/{id:guid}/aliases", AddAliasesAsync).RequireRateLimiting("jobs_write").WithOpenApi();
         admin.MapDelete("/{sectorId:guid}/aliases/{aliasId:guid}", RemoveAliasAsync).RequireRateLimiting("jobs_write").WithOpenApi();
+        admin.MapGet("/classification-history", GetClassificationHistoryAsync).RequireRateLimiting("jobs_read").WithOpenApi();
+        admin.MapPost("/audit-classification", AuditClassificationAsync).RequireRateLimiting("jobs_write").WithOpenApi();
+        admin.MapPost("/apply-audit-corrections", ApplyAuditCorrectionsAsync).RequireRateLimiting("jobs_write").WithOpenApi();
 
         app.MapPost("/api/admin/sync/scraped-jobs", SyncScrapedJobsAsync)
             .RequireRateLimiting("jobs_write").WithTags("Sectors (admin)").WithOpenApi();
@@ -323,4 +326,70 @@ public static class SectorEndpoints
         LEFT JOIN core_reporterjob r ON r.id = i.reporter_job_id
         WHERE i.is_active = true
         """;
+
+    [Authorize(Roles = "Admin")]
+    private static async Task<IResult> GetClassificationHistoryAsync(
+        ClassificationAuditService auditService,
+        int? page,
+        int? pageSize,
+        Guid? sectorId,
+        string? method,
+        bool? todayOnly,
+        string? search,
+        CancellationToken ct)
+    {
+        var result = await auditService.GetHistoryAsync(
+            page ?? 1,
+            pageSize ?? 20,
+            sectorId,
+            method,
+            todayOnly ?? false,
+            search,
+            ct);
+        return Results.Ok(result);
+    }
+
+    public sealed record AuditClassificationRequest(
+        List<Guid>? JobIds,
+        bool? AuditTodayOnly,
+        int? Limit);
+
+    [Authorize(Roles = "Admin")]
+    private static async Task<IResult> AuditClassificationAsync(
+        ClassificationAuditService auditService,
+        AuditClassificationRequest body,
+        CancellationToken ct)
+    {
+        try
+        {
+            var result = await auditService.AuditClassificationsAsync(
+                body.JobIds,
+                body.AuditTodayOnly ?? false,
+                body.Limit ?? 25,
+                ct);
+            return Results.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+    }
+
+    public sealed record ApplyAuditCorrectionsRequest(
+        List<CorrectionRequestItem> Corrections);
+
+    [Authorize(Roles = "Admin")]
+    private static async Task<IResult> ApplyAuditCorrectionsAsync(
+        ClassificationAuditService auditService,
+        ApplyAuditCorrectionsRequest body,
+        CancellationToken ct)
+    {
+        if (body.Corrections is null || body.Corrections.Count == 0)
+        {
+            return Results.Ok(new { updated = 0, message = "No corrections provided." });
+        }
+
+        var updated = await auditService.ApplyCorrectionsAsync(body.Corrections, ct);
+        return Results.Ok(new { updated, message = $"Successfully updated {updated} jobs." });
+    }
 }

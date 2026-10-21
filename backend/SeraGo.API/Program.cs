@@ -225,6 +225,7 @@ builder.Services.AddHostedService<SyncScheduler>();
 builder.Services.AddScoped<ISectorNormalizer, SectorNormalizer>(); // sector standardization
 builder.Services.AddSingleton<GroqClient>();                       // Groq AI client (Bearer auth from env)
 builder.Services.AddScoped<JobClassificationService>();          // AI job classification (legacy — keeps the Groq call available for other uses)
+builder.Services.AddScoped<ClassificationAuditService>();         // AI classification auditor & quality judge
 
 // AI classification client — calls the decoupled SeraGo-AI classify API
 // (POST /api/ai/classify) instead of calling the LLM directly.

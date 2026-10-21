@@ -85,6 +85,12 @@ export const API_ENDPOINTS = {
     admin: '/admin/sectors',
     /** POST /api/admin/sync/scraped-jobs — import + normalize scraped jobs. */
     syncScrapedJobs: '/admin/sync/scraped-jobs',
+    /** GET /api/admin/sectors/classification-history */
+    classificationHistory: '/admin/sectors/classification-history',
+    /** POST /api/admin/sectors/audit-classification */
+    auditClassification: '/admin/sectors/audit-classification',
+    /** POST /api/admin/sectors/apply-audit-corrections */
+    applyAuditCorrections: '/admin/sectors/apply-audit-corrections',
   },
   adminUsers: {
     list: '/admin/users',

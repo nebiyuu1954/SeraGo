@@ -1,6 +1,13 @@
 import { request } from './client.ts'
 import { API_ENDPOINTS } from './endpoints.ts'
-import type { SectorDetailResponse, SectorResponse, SyncScrapedJobsResult } from '../types'
+import type {
+  SectorDetailResponse,
+  SectorResponse,
+  SyncScrapedJobsResult,
+  ClassificationHistoryResponse,
+  AuditReportResponse,
+  CorrectionRequestItem,
+} from '../types'
 
 function auth(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` }
@@ -86,3 +93,59 @@ export function syncScrapedJobs(accessToken: string): Promise<SyncScrapedJobsRes
     headers: auth(accessToken),
   })
 }
+
+export interface ClassificationHistoryParams {
+  page?: number
+  pageSize?: number
+  sectorId?: string
+  method?: string
+  todayOnly?: boolean
+  search?: string
+}
+
+/** GET /api/admin/sectors/classification-history — paged job classification history (admin). */
+export function fetchClassificationHistory(
+  params: ClassificationHistoryParams = {},
+  accessToken: string,
+): Promise<ClassificationHistoryResponse> {
+  const q = new URLSearchParams()
+  if (params.page) q.set('page', String(params.page))
+  if (params.pageSize) q.set('pageSize', String(params.pageSize))
+  if (params.sectorId) q.set('sectorId', params.sectorId)
+  if (params.method) q.set('method', params.method)
+  if (params.todayOnly) q.set('todayOnly', 'true')
+  if (params.search) q.set('search', params.search)
+
+  const url = `${API_ENDPOINTS.sectors.classificationHistory}${q.toString() ? `?${q.toString()}` : ''}`
+  return request<ClassificationHistoryResponse>(url, {
+    headers: auth(accessToken),
+  })
+}
+
+/** POST /api/admin/sectors/audit-classification — judge & audit job classifications with AI (admin). */
+export function auditJobClassifications(
+  payload: { jobIds?: string[]; auditTodayOnly?: boolean; limit?: number },
+  accessToken: string,
+): Promise<AuditReportResponse> {
+  return request<AuditReportResponse>(API_ENDPOINTS.sectors.auditClassification, {
+    method: 'POST',
+    body: payload,
+    headers: auth(accessToken),
+  })
+}
+
+/** POST /api/admin/sectors/apply-audit-corrections — batch apply AI auditor corrections (admin). */
+export function applyAuditCorrections(
+  corrections: CorrectionRequestItem[],
+  accessToken: string,
+): Promise<{ updated: number; message: string }> {
+  return request<{ updated: number; message: string }>(
+    API_ENDPOINTS.sectors.applyAuditCorrections,
+    {
+      method: 'POST',
+      body: { corrections },
+      headers: auth(accessToken),
+    },
+  )
+}
+

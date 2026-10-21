@@ -43,6 +43,9 @@ export {
   removeSectorAlias,
   syncScrapedJobs,
   updateSector,
+  fetchClassificationHistory,
+  auditJobClassifications,
+  applyAuditCorrections,
 } from './sectors.ts'
 export { fetchTopStats } from './stats.ts'
 export {

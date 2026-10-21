@@ -430,6 +430,74 @@ export interface SectorDetailResponse extends SectorResponse {
   aliases: { id: string; alias: string }[]
 }
 
+export interface ClassificationHistoryItem {
+  id: string
+  title: string
+  company: string
+  location: string
+  descriptionPreview: string
+  sourceName?: string | null
+  sourceUrl?: string | null
+  sourceSectors: string[]
+  ethioCategories: string[]
+  sectorId?: string | null
+  sectorName?: string | null
+  sectorSlug?: string | null
+  classificationMethod: 'AI' | 'AliasRule' | 'TitleKeyword' | 'AdminManual' | 'ScraperRule' | 'Uncategorized' | string
+  classificationDetails: string
+  confidence?: number | null
+  reasoning?: string | null
+  createdAt: string
+  updatedAt: string
+  publishedAt?: string | null
+}
+
+export interface ClassificationStats {
+  totalJobs: number
+  todayJobsCount: number
+  aiClassifiedCount: number
+  uncategorizedCount: number
+}
+
+export interface ClassificationHistoryResponse {
+  items: ClassificationHistoryItem[]
+  page: number
+  pageSize: number
+  totalCount: number
+  totalPages: number
+  stats: ClassificationStats
+}
+
+export interface AuditEvaluationResult {
+  jobId: string
+  title: string
+  company: string
+  currentSectorId?: string | null
+  currentSectorName: string
+  verdict: 'AGREE' | 'MISMATCH'
+  suggestedSectorId?: string | null
+  suggestedSectorName: string
+  suggestedSectorSlug: string
+  confidence: number
+  reason: string
+  rootCause: string
+}
+
+export interface AuditReportResponse {
+  totalAudited: number
+  agreedCount: number
+  mismatchedCount: number
+  accuracyRate: number
+  overallSummary: string
+  optimizationTips: string[]
+  evaluations: AuditEvaluationResult[]
+}
+
+export interface CorrectionRequestItem {
+  jobId: string
+  newSectorId: string
+}
+
 export interface PaginationResponse {
   page: number
   pageSize: number
