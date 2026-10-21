@@ -607,7 +607,6 @@ export default function ClassificationHistoryTab({
         open={auditModalOpen}
         onClose={() => setAuditModalOpen(false)}
         selectedJobs={selectedJobs}
-        allSectors={sectors}
         token={token}
         onAppliedCorrections={() => {
           loadHistory()

@@ -4,7 +4,6 @@ import type {
   AuditReportResponse,
   ClassificationHistoryItem,
   CorrectionRequestItem,
-  SectorDetailResponse,
 } from '../../../types'
 import { cn } from '../../../lib/cn.ts'
 
@@ -12,7 +11,6 @@ interface AiAuditModalProps {
   open: boolean
   onClose: () => void
   selectedJobs: ClassificationHistoryItem[]
-  allSectors: SectorDetailResponse[]
   token: string
   onAppliedCorrections: (count: number) => void
 }
@@ -21,7 +19,6 @@ export default function AiAuditModal({
   open,
   onClose,
   selectedJobs,
-  allSectors,
   token,
   onAppliedCorrections,
 }: AiAuditModalProps) {
