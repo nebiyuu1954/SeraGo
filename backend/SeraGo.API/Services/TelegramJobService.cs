@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -601,12 +602,27 @@ public sealed class TelegramJobService
             if (caption.Length > 1020) caption = caption[..1015] + "…";
         }
 
+        var bannerFileName = GetSourceBannerFileName(job.SourceName);
+        var localBannerPath = TryResolveLocalBannerPath(bannerFileName);
         var photoUrl = GetSourceBannerUrl(job.SourceName);
+
+        FileStream? localStream = null;
         try
         {
+            InputFile photoInput;
+            if (localBannerPath != null && File.Exists(localBannerPath))
+            {
+                localStream = File.OpenRead(localBannerPath);
+                photoInput = InputFile.FromStream(localStream, bannerFileName);
+            }
+            else
+            {
+                photoInput = InputFile.FromUri(photoUrl);
+            }
+
             return await client.SendPhoto(
                 chatId: chatId,
-                photo: InputFile.FromUri(photoUrl),
+                photo: photoInput,
                 caption: caption,
                 parseMode: ParseMode.Html,
                 replyMarkup: keyboard);
@@ -619,23 +635,76 @@ public sealed class TelegramJobService
                 parseMode: ParseMode.Html,
                 replyMarkup: keyboard);
         }
+        finally
+        {
+            localStream?.Dispose();
+        }
+    }
+
+    public static string GetSourceBannerFileName(string? sourceName)
+    {
+        var normalized = (sourceName ?? string.Empty).Trim().ToLowerInvariant().Replace(" ", "").Replace("_", "").Replace("-", "");
+        if (normalized.Contains("ethiojob"))
+            return "ethiojobs_serago.jpg";
+        if (normalized.Contains("hahu"))
+            return "hahujobs__serago.jpg";
+        if (normalized.Contains("afriwork"))
+            return "afriwork_serago.jpg";
+        if (normalized.Contains("geez"))
+            return "geezjobs_serago.jpg";
+        if (normalized.Contains("reporter"))
+            return "ethioreporterjobs_serago.jpg";
+
+        return "serago.jpg";
     }
 
     public static string GetSourceBannerUrl(string? sourceName)
     {
-        var normalized = (sourceName ?? string.Empty).Trim().ToLowerInvariant().Replace(" ", "");
-        if (normalized.Contains("ethiojob"))
-            return "https://serago.pro.et/sources/ethiojobs.png";
-        if (normalized.Contains("hahu"))
-            return "https://serago.pro.et/sources/hahujobs.png";
-        if (normalized.Contains("afriwork"))
-            return "https://serago.pro.et/sources/afriwork.png";
-        if (normalized.Contains("geez"))
-            return "https://serago.pro.et/sources/geezjobs.png";
-        if (normalized.Contains("reporter"))
-            return "https://serago.pro.et/sources/ethioreporterjobs.png";
+        var fileName = GetSourceBannerFileName(sourceName);
+        return $"https://serago.pro.et/sources/{fileName}";
+    }
 
-        return "https://serago.pro.et/sources/serago.png";
+    public static string? TryResolveLocalBannerPath(string fileName)
+    {
+        try
+        {
+            var envDir = Environment.GetEnvironmentVariable("SOURCE_BANNERS_DIR");
+            if (!string.IsNullOrWhiteSpace(envDir))
+            {
+                var candidate = Path.Combine(envDir, fileName);
+                if (File.Exists(candidate)) return candidate;
+            }
+
+            var candidateRoots = new[]
+            {
+                Directory.GetCurrentDirectory(),
+                AppContext.BaseDirectory,
+                Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..")),
+                Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "..", "..")),
+                @"C:\Users\Nebiyu\Desktop\Projects Projects\SeraGo"
+            };
+
+            foreach (var root in candidateRoots)
+            {
+                var path1 = Path.Combine(root, "frontend", "public", "sources", fileName);
+                if (File.Exists(path1)) return path1;
+
+                var path2 = Path.Combine(root, "public", "sources", fileName);
+                if (File.Exists(path2)) return path2;
+
+                var path3 = Path.Combine(root, "sources", fileName);
+                if (File.Exists(path3)) return path3;
+
+                var path4 = Path.Combine(root, "wwwroot", "sources", fileName);
+                if (File.Exists(path4)) return path4;
+            }
+        }
+        catch
+        {
+            // Non-critical; fallback to URL
+        }
+
+        return null;
     }
 
     private string BuildJobLink(Job job)
