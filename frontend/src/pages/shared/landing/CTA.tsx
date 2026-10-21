@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 /**
  * ★ CTA LAYOUT KNOBS ★
  *   • CTA_MAX_WIDTH_PX = max width of the dark card, centered.
@@ -34,22 +36,16 @@ export default function CTA() {
             </h2>
             <p className="mx-auto mt-5 max-w-xl font-body-lg text-body-lg text-surface-container-lowest/70">
               Every job site in one place, matched to you by AI — start
-              searching or start hiring in minutes.
+              searching in minutes.
             </p>
 
-            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <button
-                type="button"
+            <div className="mt-10 flex items-center justify-center">
+              <Link
+                to="/login"
                 className="rounded bg-accent px-8 py-4 font-label-md text-label-md text-on-accent shadow-sm transition-all hover:opacity-90 active:scale-95"
               >
                 Start Applying
-              </button>
-              <button
-                type="button"
-                className="rounded border border-white/40 px-8 py-4 font-label-md text-label-md text-surface-container-lowest transition-colors hover:bg-white/10"
-              >
-                For Employers
-              </button>
+              </Link>
             </div>
           </div>
         </div>

@@ -79,8 +79,7 @@ export default function Footer() {
               SeraGo
             </Link>
             <p className="mt-4 max-w-xs text-body-md leading-relaxed text-on-surface-variant">
-              Only jobs that matter to you. Smarter search, honest signals, and
-              zero noise.
+              Your Dream Job, One AI Search Away.
             </p>
           </div>
           {columns.map((col) => (

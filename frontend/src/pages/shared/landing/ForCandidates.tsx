@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { CSSProperties } from 'react'
+import { Link } from 'react-router-dom'
 
 /**
  * ★ MARQUEE SPEED KNOB ★
@@ -186,7 +187,7 @@ export default function ForCandidates() {
             <div className="inline-flex w-fit items-center gap-2 rounded-full bg-surface-container-low px-4 py-2">
               <span className="h-2 w-2 rounded-full bg-primary" />
               <span className="font-label-md text-label-md text-on-surface">
-                All in one HR platform for growing teams
+                AI-Powered Career Discovery for Talents
               </span>
             </div>
             <h2
@@ -205,12 +206,12 @@ export default function ForCandidates() {
               thrive in the modern workforce.
             </p>
             <div className="pt-4">
-              <button
-                type="button"
-                className="rounded bg-accent px-8 py-4 font-label-md text-label-md text-on-accent shadow-sm transition-all hover:opacity-90 active:scale-95"
+              <Link
+                to="/login"
+                className="inline-block rounded bg-accent px-8 py-4 font-label-md text-label-md text-on-accent shadow-sm transition-all hover:opacity-90 active:scale-95"
               >
                 Start Applying for jobs
-              </button>
+              </Link>
             </div>
           </div>
 

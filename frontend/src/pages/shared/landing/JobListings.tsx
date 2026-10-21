@@ -16,7 +16,7 @@ export default function JobListings() {
   const { sectors, isLoading: sectorsLoading } = useSectorsQuery()
   const { jobs, isLoading: jobsLoading } = useJobsQuery({
     page: 1,
-    pageSize: 4,
+    pageSize: 6,
     sort: 'newest',
     sectorId: selectedSectorId || undefined,
   })
@@ -127,24 +127,24 @@ export default function JobListings() {
           {/* Right: Job feed (70%) */}
           <div className="flex w-full flex-col gap-8 md:w-[70%]">
             {jobsLoading ? (
-              <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                {[1, 2, 3, 4].map((i) => (
+              <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
                   <div
                     key={i}
-                    className="flex h-64 animate-pulse flex-col rounded-lg border border-surface-variant bg-surface-container-lowest p-6"
+                    className="flex h-56 animate-pulse flex-col rounded-lg border border-surface-variant bg-surface-container-lowest p-4"
                   >
-                    <div className="flex gap-4">
-                      <div className="h-12 w-24 rounded bg-surface-container-low" />
-                      <div className="flex-1 space-y-2">
-                        <div className="h-5 w-3/4 rounded bg-surface-container-low" />
-                        <div className="h-4 w-1/2 rounded bg-surface-container-low" />
+                    <div className="flex gap-3">
+                      <div className="h-10 w-20 rounded bg-surface-container-low" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-4 w-3/4 rounded bg-surface-container-low" />
+                        <div className="h-3.5 w-1/2 rounded bg-surface-container-low" />
                       </div>
                     </div>
-                    <div className="mt-8 grid grid-cols-2 gap-3">
-                      <div className="h-4 rounded bg-surface-container-low" />
-                      <div className="h-4 rounded bg-surface-container-low" />
-                      <div className="h-4 rounded bg-surface-container-low" />
-                      <div className="h-4 rounded bg-surface-container-low" />
+                    <div className="mt-6 grid grid-cols-2 gap-2">
+                      <div className="h-3.5 rounded bg-surface-container-low" />
+                      <div className="h-3.5 rounded bg-surface-container-low" />
+                      <div className="h-3.5 rounded bg-surface-container-low" />
+                      <div className="h-3.5 rounded bg-surface-container-low" />
                     </div>
                   </div>
                 ))}
@@ -212,54 +212,54 @@ export default function JobListings() {
                       key={job.id}
                       className="group flex flex-col overflow-hidden rounded-lg border border-surface-variant bg-surface-container-lowest transition-all duration-300 hover:border-outline-variant hover:shadow-sm"
                     >
-                      <div className="flex flex-grow flex-row items-center gap-4 border-b border-surface-variant/50 p-5">
-                        <div className="flex h-11 w-24 shrink-0 items-center justify-center overflow-hidden rounded bg-surface-container-low px-2">
+                      <div className="flex flex-grow flex-row items-center gap-3.5 border-b border-surface-variant/50 p-4">
+                        <div className="flex h-10 w-20 shrink-0 items-center justify-center overflow-hidden rounded bg-surface-container-low px-2">
                           {brandLogo ? (
                             <img
-                              className="max-h-8 w-auto max-w-full object-contain"
+                              className="max-h-7 w-auto max-w-full object-contain"
                               src={brandLogo}
                               alt={job.sourceName ?? ''}
                             />
                           ) : job.companyLogoUrl ? (
                             <img
-                              className="max-h-8 w-auto max-w-full object-contain"
+                              className="max-h-7 w-auto max-w-full object-contain"
                               src={job.companyLogoUrl}
                               alt=""
                             />
                           ) : job.company ? (
-                            <span className="font-headline-md text-headline-md font-semibold text-primary">
+                            <span className="text-[15px] font-semibold text-primary">
                               {initialsOf(job.company)}
                             </span>
                           ) : (
                             <img
-                              className="max-h-8 w-auto max-w-full object-contain"
+                              className="max-h-7 w-auto max-w-full object-contain"
                               src={seragoLogo}
                               alt="SeraGo"
                             />
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h4 className="mb-1 truncate font-headline-md text-headline-md leading-tight text-on-surface transition-colors group-hover:text-surface-tint">
+                          <h4 className="mb-0.5 truncate text-[16px] font-semibold leading-snug text-on-surface transition-colors group-hover:text-surface-tint">
                             {job.title}
                           </h4>
-                          <p className="truncate font-body-md text-body-md text-secondary">
+                          <p className="truncate text-[13px] text-secondary">
                             {job.company || 'Company undisclosed'}
                           </p>
                           {job.sourceName && job.sourceName.toLowerCase() !== 'serago' && (
-                            <p className="mt-0.5 font-label-sm text-label-sm text-on-surface-variant">
+                            <p className="mt-0.5 text-[11px] text-on-surface-variant">
                               via {job.sourceName}
                             </p>
                           )}
                         </div>
                       </div>
-                      <div className="flex flex-col gap-4 bg-surface/30 p-5">
-                        <div className="grid grid-cols-2 gap-3 font-label-md text-label-md text-on-surface-variant">
+                      <div className="flex flex-col gap-3.5 bg-surface/30 p-4">
+                        <div className="grid grid-cols-2 gap-2 text-[12px] text-on-surface-variant">
                           {metaItems.map((item) => (
                             <div
                               key={item.icon + item.label}
-                              className="flex items-center gap-2 truncate"
+                              className="flex items-center gap-1.5 truncate"
                             >
-                              <span className="material-symbols-outlined text-[18px]">
+                              <span className="material-symbols-outlined text-[16px] text-outline">
                                 {item.icon}
                               </span>
                               <span className="truncate">{item.label}</span>
@@ -273,7 +273,7 @@ export default function JobListings() {
                               setModalJob(job)
                               setModalMode('apply')
                             }}
-                            className="flex-1 rounded bg-accent px-4 py-2.5 text-center font-label-md text-label-md font-semibold text-on-accent transition-colors hover:opacity-90"
+                            className="flex-1 rounded bg-accent px-3 py-2 text-center text-[13px] font-semibold text-on-accent transition-colors hover:opacity-90"
                           >
                             Apply Now
                           </button>
@@ -283,7 +283,7 @@ export default function JobListings() {
                               setModalJob(job)
                               setModalMode('preview')
                             }}
-                            className="flex-1 rounded border border-surface-variant px-4 py-2.5 text-center font-label-md text-label-md font-semibold text-primary transition-colors hover:bg-surface-container-low"
+                            className="flex-1 rounded border border-surface-variant px-3 py-2 text-center text-[13px] font-semibold text-primary transition-colors hover:bg-surface-container-low"
                           >
                             See description
                           </button>

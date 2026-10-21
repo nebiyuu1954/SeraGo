@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { CSSProperties } from 'react'
+import { Link } from 'react-router-dom'
 
 /**
  * ★ MARQUEE SPEED KNOB ★
@@ -210,33 +211,33 @@ export default function ForEmployers() {
           {/* Text content — rendered right of the feed on desktop, first on mobile */}
           <div className="employers-text z-10 flex flex-col gap-8 py-24 md:py-32">
             <div className="inline-flex w-fit items-center gap-2 rounded-full bg-surface-container-low px-4 py-2">
-              <span className="h-2 w-2 rounded-full bg-primary" />
+              <span className="h-2 w-2 rounded-full bg-accent" />
               <span className="font-label-md text-label-md text-on-surface">
-                All in one HR platform for growing teams
+                AI Matching & Smart Notifications
               </span>
             </div>
             <h2
               className="font-display-lg-mobile text-display-lg-mobile text-on-surface md:font-display-lg md:text-display-lg"
               style={{ lineHeight: HEADLINE_LINE_HEIGHT }}
             >
-              More than hires
+              More than search
               <br />
-              <span className="text-accent">Build a team</span> that
+              <span className="text-accent">Let opportunities</span> find
               <br />
-              grows with you
+              their way to you
             </h2>
             <p className="max-w-lg font-body-lg text-body-lg text-on-surface-variant">
-              Post a role once and reach qualified candidates across every job
-              site — with AI helping you shortlist, interview, and hire the
-              right fit faster.
+              Every job site in Ethiopia brought directly to your fingertips —
+              with AI analyzing your CV, calculating match scores, and delivering
+              personalized alerts straight to your Telegram and dashboard.
             </p>
             <div className="pt-4">
-              <button
-                type="button"
-                className="rounded bg-accent px-8 py-4 font-label-md text-label-md text-on-accent shadow-sm transition-all hover:opacity-90 active:scale-95"
+              <Link
+                to="/login"
+                className="inline-block rounded bg-accent px-8 py-4 font-label-md text-label-md text-on-accent shadow-sm transition-all hover:opacity-90 active:scale-95"
               >
-                Start Hiring
-              </button>
+                Find Your Match
+              </Link>
             </div>
           </div>
 

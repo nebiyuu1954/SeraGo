@@ -111,7 +111,7 @@ export default function AuthShell({
               Sera<span className="text-accent">Go</span>
             </Link>
             <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
-              Only jobs that matter to you
+              Your Dream Job, One AI Search Away
             </p>
           </div>
 

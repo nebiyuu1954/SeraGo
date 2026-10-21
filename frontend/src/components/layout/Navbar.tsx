@@ -9,7 +9,7 @@ import { pickRole, roleHome } from '../dashboard/roleNav.ts'
 import { initialsOf } from '../../lib/initials.ts'
 import { NotificationBell } from '../notifications'
 
-const publicNavLinks = ['Platform', 'Solutions', 'Developers', 'Pricing']
+const publicNavLinks = [{ label: 'Jobs', to: '/jobs' }]
 
 /**
  * App-wide header. Signed-out visitors get the marketing navbar; signed-in
@@ -66,13 +66,13 @@ function PublicNavbar() {
         {/* Desktop links */}
         <nav className="hidden gap-8 md:flex">
           {publicNavLinks.map((link) => (
-            <a
-              key={link}
-              href="#"
+            <Link
+              key={link.to}
+              to={link.to}
               className="font-body-md text-body-md text-secondary transition-colors duration-200 hover:text-primary"
             >
-              {link}
-            </a>
+              {link.label}
+            </Link>
           ))}
         </nav>
 
@@ -111,14 +111,14 @@ function PublicNavbar() {
       {open && (
         <div className="border-t border-outline-variant px-margin-mobile pb-4 pt-2 md:hidden">
           {publicNavLinks.map((link) => (
-            <a
-              key={link}
-              href="#"
+            <Link
+              key={link.to}
+              to={link.to}
               onClick={() => setOpen(false)}
               className="block rounded-lg px-3 py-2.5 font-body-md text-body-md text-secondary transition-colors hover:text-primary"
             >
-              {link}
-            </a>
+              {link.label}
+            </Link>
           ))}
           {signedIn ? (
             <Button
