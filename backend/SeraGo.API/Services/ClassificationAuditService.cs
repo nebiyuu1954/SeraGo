@@ -427,48 +427,8 @@ public sealed class ClassificationAuditService
             return ("Uncategorized", "Pending sector classification", null, "Requires AI classification or manual admin review");
         }
 
-        // 1. Explicit AI LLM classification
-        if (job.ClassificationId != null)
-        {
-            return ("Gemini", "Google Gemini Flash (Tier 1 LLM)", 0.95, "Evaluated job title and responsibilities via Gemini Flash");
-        }
-
-        // 2. Exact Alias match on raw source sectors
-        var sourceTags = ParseJsonList(job.SourceSectors);
-        var ethioCats = ParseEthioCategories(job.SourceCategories);
-        var allRawTags = sourceTags.Concat(ethioCats).ToList();
-
-        string? matchedTag = null;
-        string? matchedSecName = null;
-
-        foreach (var tag in allRawTags)
-        {
-            var norm = SectorSeedData.Normalize(tag);
-            if (!string.IsNullOrEmpty(norm) && aliasToSector.TryGetValue(norm, out var match))
-            {
-                if (match.Slug == job.Sector?.Slug)
-                {
-                    matchedTag = tag;
-                    matchedSecName = match.Name;
-                    break;
-                }
-            }
-        }
-
-        if (matchedTag != null)
-        {
-            return ("AliasRule", $"Matched Raw Tag: \"{matchedTag}\"", 0.92, $"Source category matched '{matchedSecName}' alias rule");
-        }
-
-        // 3. Title keyword match
-        var keywordSlug = SectorNormalizer.ClassifyTitle(job.Title);
-        if (keywordSlug != null && keywordSlug == job.Sector?.Slug)
-        {
-            return ("TitleKeyword", "Matched keyword in job title", 0.88, "Job title keyword matched canonical sector rule");
-        }
-
-        // 4. Scraped jobs whose sector was classified by 4-tier pipeline
-        if (!string.IsNullOrEmpty(job.SourceName))
+        // All scraped jobs flow through the 4-tier unified AI classification pipeline (Gemini Flash -> Groq -> Ollama -> Cosine)
+        if (!string.IsNullOrEmpty(job.SourceName) || job.ClassificationId != null)
         {
             return ("Gemini", "Google Gemini Flash (Tier 1 LLM)", 0.94, "Classified by unified AI pipeline based on job description & title");
         }

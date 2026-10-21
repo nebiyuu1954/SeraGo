@@ -69,9 +69,9 @@ public static class SectorSeedData
         ]),
         new("a0000000-0000-0000-0000-000000000009", "Business & Administration", "business-administration",
         [
-            "Business", "Business Administration", "Business Administration & Operations",
+            "Business Administration", "Business Administration & Operations",
             "Business and Administration", "Secretarial, Admin and Clerical",
-            "Secretarial & Office Management", "Management", "Development and Project Management",
+            "Secretarial & Office Management", "Development and Project Management",
             "Advisory & Consultancy", "Brokerage & Case Closing", "Business Management",
             "Administration", "Office Management", "Secretarial", "Event Management & Organization",
             "Research Services",

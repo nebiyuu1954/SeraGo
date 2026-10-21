@@ -120,14 +120,34 @@ public sealed class UnifiedJobClassificationService
         {{string.Join("\n", sectorLines)}}
 
         CRITICAL CLASSIFICATION RULES:
-        1. Base your decision on the Job Title and Description responsibilities.
-        2. SDR / Sales Development Representative / BPO cold calling / Telemarketer -> MUST be "sales-marketing", NOT "technology-it", even if the company is a tech firm or BPO.
-        3. Crane Rigger / Equipment Operator / Welder / Mason / Construction worker -> MUST be "skilled-general-labor" or "engineering-construction", NOT "technology-it".
-        4. Accountant / Cashier / Auditor -> MUST be "accounting-finance".
-        5. Software Engineer / Full Stack Developer / DevOps -> MUST be "technology-it".
-        6. Graphic Designer / Video Editor -> MUST be "design-creative".
-        7. If none fit, set sectorSlug to null.
-        8. Return ONLY a valid JSON object matching this schema:
+        1. Base your decision primarily on the Job Title and core responsibilities in the Description.
+        2. SALES & MARKETING:
+           - "SDR" / "Sales Development Representative" / "BPO cold calling" / "Telemarketer" -> MUST be "sales-marketing", NOT "technology-it".
+           - "Real Estate Agent" / "Property Sales" / "Sales Consultant" / "Salesperson" / "Commercial Sales" -> MUST be "sales-marketing", NOT "accounting-finance" or "business-administration".
+        3. BANKING & INSURANCE:
+           - Bank branch operations ("Branch Operations Manager", "Branch Business Relationship Manager", "Customer Relationship Manager", "IFB Operations", "Financing and Investment Officer") at a commercial bank (e.g., Gadaa Bank, Ahadu Bank, Dashen Bank, Siinqee Bank) -> MUST be "banking-insurance", NOT generic "business-administration" or "customer-service-support".
+        4. PROCUREMENT & SUPPLY CHAIN vs LOGISTICS:
+           - "Storekeeper" / "Store Keeper" / "Warehouse Materials Keeper" / "Purchasing Officer" / "Procurement and Logistics Officer" -> MUST be "procurement-supply-chain" or "logistics-transportation", NOT "sales-marketing" or "business-administration".
+        5. TECHNOLOGY & IT:
+           - "IT Officer", "Hardware Technician", "Computer Technician", "Network Engineer", "Software Developer", "DevOps", "Database Admin", "IS Trainee" -> MUST be "technology-it", NOT "skilled-general-labor".
+        6. HEALTHCARE:
+           - Doctor, Nurse, Midwife, Pharmacist, Lab Technician, "Hygiene & Sanitation Officer" -> MUST be "healthcare", NOT "security-protection".
+        7. EDUCATION & TRAINING:
+           - Teacher (English Teacher, Science Teacher, Kindergarten Teacher, Amharic Teacher), Lecturer, Trainer -> MUST be "education-training", NOT "design-creative".
+        8. HUMAN RESOURCES:
+           - HR Officer, HR Specialist, HR Generalist, Talent Acquisition, Recruiter -> MUST be "human-resources", NOT "business-administration".
+        9. ENGINEERING & CONSTRUCTION vs SKILLED LABOR:
+           - Civil Engineer, Structural Engineer, Electrical Works Coordinator, Surveyor, Surveying Team Leader, Building Project Coordinator -> MUST be "engineering-construction".
+           - Crane Rigger, Equipment Operator, Welder, Mason, Auto Mechanic, Gomista/Tireman -> MUST be "skilled-general-labor" or "engineering-construction".
+        10. SECURITY & PROTECTION:
+           - Security Guard, Security Supervisor, Security Officer -> MUST be "security-protection".
+        11. ACCOUNTING & FINANCE:
+           - Accountant, Senior Accountant, Cashier, Auditor, Financial Analyst, Budget Officer -> MUST be "accounting-finance".
+        12. DESIGN & CREATIVE vs MEDIA:
+           - Graphic Designer, UI/UX, Motion Designer -> "design-creative".
+           - Video Editor, Videographer, Cameraman, Journalist, TV/Podcast Host -> "media-communication".
+        13. If none fit, set sectorSlug to null.
+        14. Return ONLY a valid JSON object matching this schema:
         {
           "results": [
             {
