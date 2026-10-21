@@ -223,7 +223,10 @@ builder.Services.AddSingleton<JobLifecycleCleanupService>(); // weekly deadline+
 builder.Services.AddHostedService<SyncScheduler>();
 
 builder.Services.AddScoped<ISectorNormalizer, SectorNormalizer>(); // sector standardization
-builder.Services.AddSingleton<GroqClient>();                       // Groq AI client (Bearer auth from env)
+builder.Services.AddSingleton<GeminiClient>();                     // Google Gemini Flash client (Tier 1 classifier)
+builder.Services.AddSingleton<GroqClient>();                       // Groq AI client (Tier 2 classifier fallback)
+builder.Services.AddSingleton<OllamaClient>();                     // Local Ollama client (Tier 3 classifier fallback)
+builder.Services.AddScoped<UnifiedJobClassificationService>();     // 4-tier unified classification service (Gemini -> Groq -> Ollama -> Cosine)
 builder.Services.AddScoped<JobClassificationService>();          // AI job classification (legacy — keeps the Groq call available for other uses)
 builder.Services.AddScoped<ClassificationAuditService>();         // AI classification auditor & quality judge
 
@@ -241,7 +244,6 @@ builder.Services.Configure<AiClassificationOptions>(opt =>
 });
 builder.Services.AddHttpClient("SeraGoAiClassify"); // typed client base for the AI classify API
 builder.Services.AddScoped<AiClassificationClient>();
-builder.Services.AddScoped<AiClassificationSaveService>();
 builder.Services.AddSingleton<R2StorageService>(); // Cloudflare R2 file storage
 builder.Services.Configure<IdentityOptions>(options =>
 {

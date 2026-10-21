@@ -40,11 +40,60 @@ export default function ClassificationHistoryTab({
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set())
   const [auditModalOpen, setAuditModalOpen] = useState(false)
   const [expandedDescIds, setExpandedDescIds] = useState<Set<string>>(new Set())
+  const [copiedJobId, setCopiedJobId] = useState<string | null>(null)
 
   // Inline assignment edits
   const [manualAssignments, setManualAssignments] = useState<Record<string, string>>({})
   const [savingJobId, setSavingJobId] = useState<string | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
+
+  const handleCopyDebugInfo = (job: ClassificationHistoryItem) => {
+    const rawTags = [
+      ...(job.sourceSectors || []),
+      ...(job.ethioCategories || []),
+    ].filter(Boolean)
+
+    const payload = {
+      jobId: job.id,
+      title: job.title,
+      company: job.company || 'Company Undisclosed',
+      location: job.location || 'N/A',
+      sourceName: job.sourceName || 'Direct',
+      rawScraperTags: rawTags.length > 0 ? rawTags : ['None / Untagged'],
+      classifiedSector: job.sectorName || 'Uncategorized',
+      classifiedSlug: job.sectorSlug || null,
+      classificationMethod: job.classificationMethod,
+      confidence: job.confidence != null ? `${Math.round(job.confidence * 100)}%` : 'N/A',
+      reasoning: job.reasoning || job.classificationDetails,
+      descriptionSnippet: job.descriptionPreview,
+    }
+
+    const textToCopy = `### Job Classification Debug & Prompt Refinement
+- **Title:** ${job.title}
+- **Company:** ${job.company || 'Company Undisclosed'}
+- **Location:** ${job.location || 'N/A'}
+- **Source:** ${job.sourceName || 'Direct'}
+- **Scraper Raw Tag (Before):** ${rawTags.length > 0 ? rawTags.join(', ') : 'None / Untagged'}
+- **Classified Sector (After):** ${job.sectorName || 'Uncategorized'}
+- **Classification Method:** ${job.classificationMethod} (${job.classificationDetails})
+- **Confidence:** ${payload.confidence}
+- **LLM Reasoning:** ${job.reasoning || 'N/A'}
+
+#### Description Preview:
+${job.descriptionPreview}
+
+#### Prompt Test Case (JSON):
+\`\`\`json
+${JSON.stringify(payload, null, 2)}
+\`\`\`
+`
+    navigator.clipboard.writeText(textToCopy)
+    setCopiedJobId(job.id)
+    setToastMessage(`Copied details for "${job.title}" to clipboard!`)
+    setTimeout(() => {
+      setCopiedJobId((curr) => (curr === job.id ? null : curr))
+    }, 2500)
+  }
 
   // Debounce search input
   useEffect(() => {
@@ -275,7 +324,12 @@ export default function ClassificationHistoryTab({
             className="rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none"
           >
             <option value="">All Methods</option>
-            <option value="ai">AI Classified (LLM)</option>
+            <option value="gemini">Gemini Flash (Tier 1)</option>
+            <option value="groq">Groq Cloud (Tier 2)</option>
+            <option value="ollama">Local Ollama (Tier 3)</option>
+            <option value="cosine">Cosine Similarity (Tier 4)</option>
+            <option value="alias">Scraper Alias Rule</option>
+            <option value="title">Title Keyword Rule</option>
             <option value="uncategorized">Uncategorized</option>
           </select>
 
@@ -390,6 +444,10 @@ export default function ClassificationHistoryTab({
             const isExpanded = expandedDescIds.has(job.id)
             const isSaving = savingJobId === job.id
             const currentAssignment = manualAssignments[job.id] ?? job.sectorId ?? ''
+            const rawTags = [
+              ...(job.sourceSectors || []),
+              ...(job.ethioCategories || []),
+            ].filter(Boolean)
 
             return (
               <div
@@ -401,8 +459,8 @@ export default function ClassificationHistoryTab({
                     : 'border-surface-variant bg-surface-container-lowest hover:border-outline-variant',
                 )}
               >
-                {/* Card Header */}
-                <div className="flex items-start justify-between gap-3">
+                {/* 1. Card Header: Title, Employer, Source & Top Action Buttons */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                   <div className="flex items-start gap-3 min-w-0 flex-1">
                     <input
                       type="checkbox"
@@ -430,27 +488,49 @@ export default function ClassificationHistoryTab({
                       </div>
 
                       <p className="font-label-md text-label-md text-on-surface-variant mt-0.5">
-                        <span className="font-medium text-on-surface">{job.company || 'Company Undisclosed'}</span>
+                        <span className="font-semibold text-on-surface">
+                          {job.company || 'Company Undisclosed'}
+                        </span>
                         {job.location && ` · ${job.location}`}
                       </p>
                     </div>
                   </div>
 
-                  {/* "See more" button -> open job detail in new tab */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  {/* Top Action Buttons: Copy Debug Info + See in All Jobs */}
+                  <div className="flex flex-wrap items-center gap-2 flex-shrink-0 self-start">
+                    {/* Copy Debug & Classification Log Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleCopyDebugInfo(job)}
+                      title="Copy job details, scraper tags, and classification log for prompt refinement"
+                      className={cn(
+                        'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-label-sm text-label-sm font-semibold transition-all shadow-sm',
+                        copiedJobId === job.id
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-500'
+                          : 'border-surface-variant bg-surface-container-low text-on-surface hover:bg-surface-container-high',
+                      )}
+                    >
+                      <span className="material-symbols-outlined text-sm">
+                        {copiedJobId === job.id ? 'check' : 'content_copy'}
+                      </span>
+                      <span>{copiedJobId === job.id ? 'Copied Details!' : 'Copy Debug Info'}</span>
+                    </button>
+
+                    {/* See in All Jobs Button (Opens in new tab with search filled) */}
                     <a
-                      href={`/dashboard/talent/jobs/${job.id}`}
+                      href={`/dashboard/talent/jobs?view=all&search=${encodeURIComponent(job.title)}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded-lg border border-surface-variant bg-surface-container-low px-3 py-1.5 font-label-sm text-label-sm font-semibold text-primary hover:bg-surface-container-high transition-colors"
+                      title="Open in All Jobs tab with this job title in the search bar"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50/70 px-3 py-1.5 font-label-sm text-label-sm font-semibold text-purple-900 hover:bg-purple-100 transition-colors shadow-sm"
                     >
-                      <span>See more</span>
+                      <span>See in All Jobs</span>
                       <span className="material-symbols-outlined text-sm">open_in_new</span>
                     </a>
                   </div>
                 </div>
 
-                {/* Description Preview */}
+                {/* 2. Description Preview */}
                 {job.descriptionPreview && (
                   <div className="mt-3 text-body-md text-on-surface/90 leading-relaxed">
                     <p className={cn(!isExpanded && 'line-clamp-2')}>
@@ -471,71 +551,112 @@ export default function ClassificationHistoryTab({
                   </div>
                 )}
 
-                {/* Raw Scraper Tags if present */}
-                {(job.sourceSectors.length > 0 || job.ethioCategories.length > 0) && (
-                  <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
-                    <span className="font-semibold text-on-surface-variant">Raw source tags:</span>
-                    {job.sourceSectors.map((t) => (
-                      <span
-                        key={t}
-                        className="rounded bg-surface-container px-2 py-0.5 font-mono text-on-surface-variant"
-                      >
-                        {t}
+                {/* 3. Before (Scraper Tag) ➜ After (Classified Sector) Pipeline Box */}
+                <div className="mt-3.5 rounded-xl border border-outline-variant/60 bg-surface-container-low/60 p-3.5">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
+                    {/* Before: Raw tag from the scraper */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center gap-1 font-label-xs text-xs font-bold uppercase tracking-wider text-on-surface-variant">
+                        <span className="material-symbols-outlined text-sm text-amber-600">sell</span>
+                        Before (Scraper Tag):
                       </span>
-                    ))}
-                    {job.ethioCategories.map((c) => (
-                      <span
-                        key={c}
-                        className="rounded bg-surface-container px-2 py-0.5 font-mono text-on-surface-variant"
-                      >
-                        {c}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                      {rawTags.length > 0 ? (
+                        rawTags.map((t) => (
+                          <span
+                            key={t}
+                            className="rounded-md bg-amber-100/90 text-amber-900 border border-amber-300 px-2.5 py-0.5 font-mono text-xs font-semibold shadow-xs"
+                          >
+                            {t}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="rounded-md bg-surface-container px-2 py-0.5 font-mono text-xs text-on-surface-variant italic">
+                          Untagged by source
+                        </span>
+                      )}
+                    </div>
 
-                {/* Card Footer: Classification Method & Details */}
-                <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-surface-variant/60">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-label-sm text-label-sm font-semibold text-on-surface">
-                      Classification:
-                    </span>
-
-                    {/* Method Badge */}
-                    {job.classificationMethod === 'AI' ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-0.5 font-label-sm text-label-sm font-semibold text-purple-900 border border-purple-200">
-                        <span className="material-symbols-outlined text-xs">psychology</span>
-                        AI Classified (LLM)
+                    {/* After: To which we classified it */}
+                    <div className="flex items-center gap-2 flex-wrap md:justify-end">
+                      <span className="material-symbols-outlined text-base text-purple-600 hidden md:inline">
+                        arrow_forward
                       </span>
-                    ) : job.classificationMethod === 'AliasRule' ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 font-label-sm text-label-sm font-semibold text-blue-900 border border-blue-200">
-                        <span className="material-symbols-outlined text-xs">link</span>
-                        Static Alias Rule
+                      <span className="inline-flex items-center gap-1 font-label-xs text-xs font-bold uppercase tracking-wider text-on-surface-variant">
+                        <span className="material-symbols-outlined text-sm text-purple-600">flag</span>
+                        Classified To (After):
                       </span>
-                    ) : job.classificationMethod === 'TitleKeyword' ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 font-label-sm text-label-sm font-semibold text-amber-900 border border-amber-200">
-                        <span className="material-symbols-outlined text-xs">match_case</span>
-                        Title Keyword Rule
-                      </span>
-                    ) : job.classificationMethod === 'AdminManual' ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 font-label-sm text-label-sm font-semibold text-slate-800 border border-slate-200">
-                        <span className="material-symbols-outlined text-xs">person</span>
-                        Admin Manual
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 font-label-sm text-label-sm font-semibold text-red-800 border border-red-200">
-                        <span className="material-symbols-outlined text-xs">help_outline</span>
-                        Uncategorized
-                      </span>
-                    )}
-
-                    {/* Detailed deduction info */}
-                    <span className="font-label-sm text-label-sm text-on-surface-variant font-medium">
-                      ({job.classificationDetails})
-                    </span>
+                      {job.sectorName ? (
+                        <span className="rounded-md bg-purple-100 text-purple-900 border border-purple-300 px-2.5 py-0.5 font-label-sm text-xs font-bold shadow-xs">
+                          {job.sectorName}
+                        </span>
+                      ) : (
+                        <span className="rounded-md bg-rose-100 text-rose-900 border border-rose-300 px-2.5 py-0.5 font-label-sm text-xs font-bold shadow-xs">
+                          Uncategorized
+                        </span>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Inline Sector Selector & Save */}
+                  {/* LLM Model & Confidence Metadata */}
+                  <div className="mt-3 pt-2.5 border-t border-outline-variant/40 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-on-surface">Intelligence:</span>
+
+                      {/* Model Badge */}
+                      <span
+                        className={cn(
+                          'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-semibold text-xs border shadow-xs',
+                          getMethodBadgeStyle(job.classificationMethod),
+                        )}
+                      >
+                        <span className="material-symbols-outlined text-xs">
+                          {getMethodIcon(job.classificationMethod)}
+                        </span>
+                        {formatMethodLabel(job.classificationMethod)}
+                      </span>
+
+                      {/* Confidence Pill */}
+                      {job.confidence != null && (
+                        <span
+                          className={cn(
+                            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold border shadow-xs',
+                            job.confidence >= 0.85
+                              ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                              : job.confidence >= 0.70
+                              ? 'bg-amber-100 text-amber-900 border-amber-300'
+                              : 'bg-rose-100 text-rose-900 border-rose-300',
+                          )}
+                        >
+                          <span>{Math.round(job.confidence * 100)}% Confidence</span>
+                        </span>
+                      )}
+                    </div>
+
+                    <span className="text-on-surface-variant font-medium">
+                      {job.classificationDetails}
+                    </span>
+                  </div>
+
+                  {/* AI Reasoning / Data explanation */}
+                  {job.reasoning && (
+                    <div className="mt-2.5 rounded-lg bg-surface-container/70 p-2 text-xs text-on-surface-variant font-body-sm flex items-start gap-1.5 border border-outline-variant/30">
+                      <span className="material-symbols-outlined text-sm text-purple-600 flex-shrink-0 mt-0.5">
+                        lightbulb
+                      </span>
+                      <p className="leading-snug">
+                        <strong className="text-on-surface font-semibold">AI Reasoning: </strong>
+                        {job.reasoning}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Card Footer: Inline Sector Override & Save */}
+                <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-surface-variant/60">
+                  <span className="font-label-sm text-xs font-semibold text-on-surface-variant">
+                    Manual Override:
+                  </span>
+
                   <div className="flex items-center gap-2">
                     <select
                       value={currentAssignment}
@@ -614,4 +735,82 @@ export default function ClassificationHistoryTab({
       />
     </div>
   )
+}
+
+function getMethodBadgeStyle(method: string): string {
+  switch (method?.toLowerCase()) {
+    case 'gemini':
+      return 'bg-purple-100 text-purple-900 border-purple-300'
+    case 'groq':
+      return 'bg-sky-100 text-sky-900 border-sky-300'
+    case 'ollama':
+      return 'bg-indigo-100 text-indigo-900 border-indigo-300'
+    case 'cosinesimilarity':
+    case 'cosine':
+      return 'bg-teal-100 text-teal-900 border-teal-300'
+    case 'ai':
+      return 'bg-purple-100 text-purple-900 border-purple-300'
+    case 'aliasrule':
+    case 'alias':
+      return 'bg-blue-100 text-blue-900 border-blue-300'
+    case 'titlekeyword':
+    case 'title':
+      return 'bg-amber-100 text-amber-900 border-amber-300'
+    case 'adminmanual':
+      return 'bg-emerald-100 text-emerald-900 border-emerald-300'
+    default:
+      return 'bg-rose-100 text-rose-900 border-rose-300'
+  }
+}
+
+function getMethodIcon(method: string): string {
+  switch (method?.toLowerCase()) {
+    case 'gemini':
+      return 'psychology'
+    case 'groq':
+      return 'bolt'
+    case 'ollama':
+      return 'terminal'
+    case 'cosinesimilarity':
+    case 'cosine':
+      return 'query_stats'
+    case 'ai':
+      return 'psychology'
+    case 'aliasrule':
+    case 'alias':
+      return 'link'
+    case 'titlekeyword':
+    case 'title':
+      return 'match_case'
+    case 'adminmanual':
+      return 'person'
+    default:
+      return 'help_outline'
+  }
+}
+
+function formatMethodLabel(method: string): string {
+  switch (method?.toLowerCase()) {
+    case 'gemini':
+      return 'Google Gemini Flash (Tier 1)'
+    case 'groq':
+      return 'Groq Cloud LLM (Tier 2)'
+    case 'ollama':
+      return 'Local Ollama (Tier 3)'
+    case 'cosinesimilarity':
+    case 'cosine':
+      return 'Cosine Similarity (Tier 4 Vector)'
+    case 'ai':
+      return 'Google Gemini Flash (Tier 1)'
+    case 'aliasrule':
+    case 'alias':
+      return 'Scraper Alias Rule'
+    case 'titlekeyword':
+    case 'title':
+      return 'Title Keyword Rule'
+    case 'adminmanual':
+      return 'Admin Manual Override'
+    default:
+      return 'Uncategorized'
+  }
 }

@@ -73,8 +73,7 @@ public sealed class ScrapedJobSyncService
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var options = scope.ServiceProvider.GetRequiredService<ScraperDbOptions>();
-        var aiClient = scope.ServiceProvider.GetRequiredService<AiClassificationClient>();
-        var saveService = scope.ServiceProvider.GetRequiredService<AiClassificationSaveService>();
+        var unifiedClassifier = scope.ServiceProvider.GetRequiredService<UnifiedJobClassificationService>();
 
         if (!options.IsConfigured)
         {
@@ -500,7 +499,7 @@ public sealed class ScrapedJobSyncService
         // re-sends safe). Only jobs inserted/updated in THIS run are sent —
         // unchanged, already-classified jobs are not re-sent.
         var touchedJobs = jobsByKey.Values.Where(j => touchedIds.Contains(j.Id)).ToList();
-        await ClassifyTouchedJobsAsync(db, touchedJobs, aiClient, saveService, ct);
+        await ClassifyTouchedJobsAsync(db, touchedJobs, unifiedClassifier, ct);
 
         // Broadcast the newly imported jobs to Telegram: enqueue the rate-limited
         // channel sweep (and, only when opted in, personalized DMs). Best-effort —
@@ -524,15 +523,13 @@ public sealed class ScrapedJobSyncService
     }
 
     /// <summary>
-    /// Classify the jobs that were inserted or updated in this sync run via the
-    /// decoupled SeraGo-AI service. Only jobs that have a source name (scraped
-    /// jobs) are sent; the rest are left for the admin to review.
+    /// Classifies the jobs that were inserted or updated in this sync run via the
+    /// 4-tier unified classification service (Gemini -> Groq -> Ollama -> Cosine).
     /// </summary>
     private async Task ClassifyTouchedJobsAsync(
         ApplicationDbContext db,
         IEnumerable<Job> touchedJobs,
-        AiClassificationClient aiClient,
-        AiClassificationSaveService saveService,
+        UnifiedJobClassificationService unifiedClassifier,
         CancellationToken ct)
     {
         var jobs = touchedJobs.Where(j => j.SourceName is not null).ToList();
@@ -541,88 +538,41 @@ public sealed class ScrapedJobSyncService
             return;
         }
 
-        // Build the request the AI service expects. We also send the job's
-        // current sector so the AI service can record the 'before' state in the
-        // classify log (original_sector_slug/name).
-        var requestJobs = new List<AiClassificationRequestJob>(jobs.Count);
-        foreach (var j in jobs)
-        {
-            var currentSlug = j.Sector?.Slug;
-            var currentName = j.Sector?.Name;
-            var extraOriginal = (currentSlug is not null || currentName is not null)
-                ? new Dictionary<string, string>(2)
-                { ["sectorSlug"] = currentSlug ?? "", [
-                    "sectorName"] = currentName ?? "" }
-                : null;
-
-            requestJobs.Add(new AiClassificationRequestJob(
-                JobId: j.Id.ToString(),
-                Title: j.Title,
-                SourceSectors: ParseSourceSectors(j.SourceSectors),
-                Description: j.Description,
-                ExtraOriginal: extraOriginal));
-        }
-
-        AiClassificationResult[] aiResults;
         try
         {
-            var list = await aiClient.ClassifyAsync(requestJobs, ct);
-            aiResults = list.ToArray();
-        }
-        catch (AiClassificationException ex)
-        {
-            _logger.LogWarning(ex,
-                "SeraGo-AI classify failed for {JobCount} scraped jobs — leaving sectors as-is for now",
-                jobs.Count);
-            aiResults = new AiClassificationResult[jobs.Count];
-            for (var i = 0; i < jobs.Count; i++)
+            _logger.LogInformation("Classifying {Count} touched jobs via Unified 4-tier pipeline...", jobs.Count);
+            var results = await unifiedClassifier.ClassifyAndSaveAsync(jobs, ct);
+            var assigned = results.Count(r => r.SectorId.HasValue);
+
+            _logger.LogInformation(
+                "Post-sync classification: {Jobs} jobs evaluated, {Assigned} assigned a sector",
+                jobs.Count, assigned);
+
+            var unassigned = results.Where(r => !r.SectorId.HasValue).ToList();
+            if (unassigned.Count > 0)
             {
-                var j = jobs[i];
-                aiResults[i] = new AiClassificationResult(
-                    JobId: j.Id.ToString(),
-                    SectorId: null,
-                    SectorName: null,
-                    SectorSlug: null,
-                    SubSectorName: null,
-                    Alias: FirstSourceSector(j.SourceSectors),
-                    Confidence: null,
-                    Reasoning: null,
-                    Uncategorized: true,
-                    Error: ex.Message);
-            }
-        }
-
-        // Apply the results: set SectorId/SectorName from the SubSector decision,
-        // store the AI trace, dedup-insert SubSector rows, and run the local
-        // SubSector fallback when the LLM failed.
-        var outcomes = await saveService.ApplyAsync(jobs, aiResults, ct);
-        var assigned = outcomes.Count(o => o.Assigned);
-        if (assigned > 0 || aiResults.Any(r => r.Error is not null))
-        {
-            await db.SaveChangesAsync(ct);
-        }
-
-        _logger.LogInformation(
-            "Post-sync AI classification: {Jobs} jobs sent, {Assigned} assigned a sector",
-            jobs.Count, assigned);
-
-        var unassigned = outcomes.Where(o => !o.Assigned).ToList();
-        if (unassigned.Count > 0)
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var telegramService = scope.ServiceProvider.GetService<TelegramBotService>();
-            if (telegramService != null)
-            {
-                var msg = $"⚠️ <b>{unassigned.Count} Jobs Uncategorized</b>\n\n";
-                foreach (var o in unassigned.Take(10))
+                using var scope = _scopeFactory.CreateScope();
+                var telegramService = scope.ServiceProvider.GetService<TelegramBotService>();
+                if (telegramService != null)
                 {
-                    var j = jobs.First(x => x.Id.ToString() == o.JobId);
-                    msg += $"• {j.Title} (<i>{j.Company}</i>)\n";
+                    var msg = $"⚠️ <b>{unassigned.Count} Jobs Uncategorized</b>\n\n";
+                    foreach (var o in unassigned.Take(10))
+                    {
+                        var j = jobs.FirstOrDefault(x => x.Id == o.JobId);
+                        if (j != null)
+                        {
+                            msg += $"• {j.Title} (<i>{j.Company}</i>)\n";
+                        }
+                    }
+                    if (unassigned.Count > 10) msg += $"...and {unassigned.Count - 10} more.\n";
+                    msg += "\n<a href=\"https://serago.pro.et/dashboard/admin/sectors\">Review & Sync</a>";
+                    await telegramService.SendAdminAlertAsync(msg);
                 }
-                if (unassigned.Count > 10) msg += $"...and {unassigned.Count - 10} more.\n";
-                msg += "\n<a href=\"https://serago.pro.et/dashboard/admin/sectors\">Review & Sync</a>";
-                await telegramService.SendAdminAlertAsync(msg);
             }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Post-sync classification encountered an error");
         }
     }
 
@@ -631,6 +581,18 @@ public sealed class ScrapedJobSyncService
     private static Sector? ResolveSector(
         List<Sector> sectors, string? rawSector, string? title)
     {
+        // 1. Specific title keyword match takes priority over ambiguous raw scraped categories
+        var slug = SectorNormalizer.ClassifyTitle(title);
+        if (slug is not null)
+        {
+            var hitByTitle = sectors.FirstOrDefault(s => s.Slug == slug);
+            if (hitByTitle is not null)
+            {
+                return hitByTitle;
+            }
+        }
+
+        // 2. Exact alias match on raw scraped sector
         if (!string.IsNullOrWhiteSpace(rawSector))
         {
             var names = TelegramJobService.ExtractCleanSectorList(rawSector);
@@ -644,8 +606,8 @@ public sealed class ScrapedJobSyncService
                 }
             }
         }
-        var slug = SectorNormalizer.ClassifyTitle(title);
-        return slug is null ? null : sectors.FirstOrDefault(s => s.Slug == slug);
+
+        return null;
     }
 
     /// <summary>Source slug → display name (matches the existing seed/branding).</summary>

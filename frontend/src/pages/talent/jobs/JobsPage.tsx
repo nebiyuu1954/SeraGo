@@ -96,17 +96,44 @@ export default function JobsPage() {
   // the default) vs. "All jobs" (the classic browse).
   const [searchParams, setSearchParams] = useSearchParams()
   const view = searchParams.get('view') === 'all' ? 'all' : 'forYou'
+  const initialSearch = searchParams.get('search') || searchParams.get('q') || ''
 
   // Independent filter state for "For you" and "All jobs" views:
   const [forYouFilters, setForYouFilters] = useState<ViewFilterState>(() => ({
     ...DEFAULT_FILTER_STATE,
+    searchInput: view === 'forYou' ? initialSearch : '',
+    appliedQ: view === 'forYou' ? initialSearch : '',
     sort: 'match',
   }))
 
   const [allJobsFilters, setAllJobsFilters] = useState<ViewFilterState>(() => ({
     ...DEFAULT_FILTER_STATE,
+    searchInput: view === 'all' ? initialSearch : '',
+    appliedQ: view === 'all' ? initialSearch : '',
     sort: 'newest',
   }))
+
+  // Sync search parameter from URL if query param updates
+  useEffect(() => {
+    const qParam = searchParams.get('search') || searchParams.get('q') || ''
+    if (qParam) {
+      if (view === 'all') {
+        setAllJobsFilters((prev) => (prev.appliedQ === qParam ? prev : {
+          ...prev,
+          searchInput: qParam,
+          appliedQ: qParam,
+          page: 1,
+        }))
+      } else {
+        setForYouFilters((prev) => (prev.appliedQ === qParam ? prev : {
+          ...prev,
+          searchInput: qParam,
+          appliedQ: qParam,
+          page: 1,
+        }))
+      }
+    }
+  }, [searchParams, view])
 
   const currentFilters = view === 'forYou' ? forYouFilters : allJobsFilters
   const setCurrentFilters = (updater: (prev: ViewFilterState) => ViewFilterState) => {

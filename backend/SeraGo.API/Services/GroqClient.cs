@@ -44,7 +44,7 @@ public sealed class GroqClient
 
         _defaultModel = config["GROQ_DEFAULT_MODEL"]
             ?? Environment.GetEnvironmentVariable("GROQ_DEFAULT_MODEL")
-            ?? "openai/gpt-oss-120b";
+            ?? "llama-3.3-70b-versatile";
 
         var baseUrl = config["GROQ_BASE_URL"]
             ?? Environment.GetEnvironmentVariable("GROQ_BASE_URL")
@@ -60,6 +60,8 @@ public sealed class GroqClient
         http.Timeout = TimeSpan.FromSeconds(60);
         _http = http;
     }
+
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiKey);
 
     /// <summary>
     /// Posts a JSON body with an explicit Content-Length (via StringContent).
@@ -121,7 +123,7 @@ public sealed class GroqClient
     {
         var payload = new
         {
-            model = model ?? _defaultModel,
+            model = string.IsNullOrWhiteSpace(model) ? _defaultModel : model,
             messages = new object[]
             {
                 new { role = "system", content = systemPrompt },
