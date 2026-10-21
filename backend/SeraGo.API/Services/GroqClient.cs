@@ -37,8 +37,10 @@ public sealed class GroqClient
         _logger = logger;
         _apiKey = config["GROQ_CONSOLE_API_KEY"]
             ?? Environment.GetEnvironmentVariable("GROQ_CONSOLE_API_KEY")
-            ?? throw new InvalidOperationException(
-                "GROQ_CONSOLE_API_KEY is not configured. Set it in .env to enable AI services.");
+            ?? config["GROQ_API_KEY"]
+            ?? Environment.GetEnvironmentVariable("GROQ_API_KEY")
+            ?? config["Groq:ApiKey"]
+            ?? string.Empty;
 
         _defaultModel = config["GROQ_DEFAULT_MODEL"]
             ?? Environment.GetEnvironmentVariable("GROQ_DEFAULT_MODEL")
@@ -50,8 +52,11 @@ public sealed class GroqClient
 
         var http = factory.CreateClient($"Groq-{Guid.NewGuid():N}");
         http.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
-        http.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
+        if (!string.IsNullOrWhiteSpace(_apiKey))
+        {
+            http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
+        }
         http.Timeout = TimeSpan.FromSeconds(60);
         _http = http;
     }
@@ -64,6 +69,12 @@ public sealed class GroqClient
     private async Task<TResponse> PostAsync<TResponse>(
         string path, object body, TimeSpan? timeout = null, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(_apiKey))
+        {
+            throw new AiServiceException(
+                "Groq API key is not configured. Set GROQ_CONSOLE_API_KEY or GROQ_API_KEY in environment variables.");
+        }
+
         var json = JsonSerializer.Serialize(body, JsonOpts);
         var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 

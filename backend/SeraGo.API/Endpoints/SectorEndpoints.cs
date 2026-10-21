@@ -330,6 +330,7 @@ public static class SectorEndpoints
     [Authorize(Roles = "Admin")]
     private static async Task<IResult> GetClassificationHistoryAsync(
         ClassificationAuditService auditService,
+        ILogger<ClassificationAuditService> logger,
         int? page,
         int? pageSize,
         Guid? sectorId,
@@ -338,15 +339,23 @@ public static class SectorEndpoints
         string? search,
         CancellationToken ct)
     {
-        var result = await auditService.GetHistoryAsync(
-            page ?? 1,
-            pageSize ?? 20,
-            sectorId,
-            method,
-            todayOnly ?? false,
-            search,
-            ct);
-        return Results.Ok(result);
+        try
+        {
+            var result = await auditService.GetHistoryAsync(
+                page ?? 1,
+                pageSize ?? 20,
+                sectorId,
+                method,
+                todayOnly ?? false,
+                search,
+                ct);
+            return Results.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to fetch classification history");
+            return Results.Problem(detail: ex.Message, statusCode: 500);
+        }
     }
 
     public sealed record AuditClassificationRequest(

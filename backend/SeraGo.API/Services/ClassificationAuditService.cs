@@ -77,7 +77,7 @@ public sealed class ClassificationAuditService
             }
         }
 
-        var todayUtc = DateTime.UtcNow.Date;
+        var todayUtc = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero);
 
         var q = _db.Jobs.AsNoTracking().Include(j => j.Sector).AsQueryable();
 
@@ -96,8 +96,8 @@ public sealed class ClassificationAuditService
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var sLower = search.Trim().ToLower();
-            q = q.Where(j => j.Title.ToLower().Contains(sLower) || j.Company.ToLower().Contains(sLower));
+            var sTrim = search.Trim();
+            q = q.Where(j => EF.Functions.ILike(j.Title, $"%{sTrim}%") || (j.Company != null && EF.Functions.ILike(j.Company, $"%{sTrim}%")));
         }
 
         // Method-based database level filtering when possible
@@ -195,7 +195,7 @@ public sealed class ClassificationAuditService
         }
         else if (auditTodayOnly)
         {
-            var todayUtc = DateTime.UtcNow.Date;
+            var todayUtc = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero);
             q = q.Where(j => j.CreatedAt >= todayUtc || j.UpdatedAt >= todayUtc);
         }
 
