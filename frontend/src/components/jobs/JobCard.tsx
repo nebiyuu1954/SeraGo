@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import type { JobResponse, JobType } from '../../types'
 import { JOB_TYPE_LABELS } from '../dashboard/jobOptions.ts'
 import { formatDate, postedLabel } from '../../lib/date.ts'
@@ -17,10 +17,12 @@ export function MatchScoreChip({
   score,
   matched = 0,
   missing = 0,
+  compact = false,
 }: {
   score: number
   matched?: number
   missing?: number
+  compact?: boolean
 }) {
   const tone =
     score >= 75
@@ -38,7 +40,9 @@ export function MatchScoreChip({
   return (
     <span
       title={detail}
-      className={`ml-auto inline-flex shrink-0 items-center gap-1 self-start rounded-full px-3 py-1 font-label-sm text-label-sm font-semibold ${tone}`}
+      className={`ml-auto inline-flex shrink-0 items-center gap-1 self-start rounded-full ${
+        compact ? 'px-2.5 py-0.5 text-[11px]' : 'px-3 py-1 font-label-sm text-label-sm'
+      } font-semibold ${tone}`}
     >
       <span className="material-symbols-outlined text-sm">auto_awesome</span>
       {score}% match
@@ -55,6 +59,7 @@ export interface JobCardProps {
   onPreview?: (job: JobResponse) => void
   detailPath?: string
   onPrefetch?: (id: string) => void
+  compact?: boolean
 }
 
 export default function JobCard({
@@ -66,7 +71,15 @@ export default function JobCard({
   onPreview,
   detailPath,
   onPrefetch,
+  compact,
 }: JobCardProps) {
+  const location = useLocation()
+  const isDashboard = location.pathname.startsWith('/dashboard')
+  // On public pages (/jobs and homepage) where --ui-scale: 0.72 is NOT active,
+  // compact mode applies the exact rendered font/padding sizes (16px title, 13px body,
+  // 12px meta, p-4) so the cards look identical in visual density to the dashboard.
+  const isCompact = compact ?? !isDashboard
+
   const brandLogo = sourceLogo(job.sourceName)
   // Build structured salary display: prefer min/max range, fall back to free text.
   const salaryLabel =
@@ -127,38 +140,58 @@ export default function JobCard({
         prefetchJob(job.id)
       }}
     >
-      {/* Header: company mark + title (mirrors the landing page cards) */}
-      <div className="flex flex-grow flex-row items-center gap-4 border-b border-surface-variant/50 p-5">
-        <div className="flex h-11 w-24 shrink-0 items-center justify-center overflow-hidden rounded bg-surface-container-low px-2">
+      {/* Header: company mark + title */}
+      <div
+        className={`flex flex-grow flex-row items-center border-b border-surface-variant/50 ${
+          isCompact ? 'gap-3.5 p-4' : 'gap-4 p-5'
+        }`}
+      >
+        <div
+          className={`flex shrink-0 items-center justify-center overflow-hidden rounded bg-surface-container-low px-2 ${
+            isCompact ? 'h-10 w-20' : 'h-11 w-24'
+          }`}
+        >
           {brandLogo ? (
             <img
-              className="max-h-8 w-auto max-w-full object-contain"
+              className={`${isCompact ? 'max-h-7' : 'max-h-8'} w-auto max-w-full object-contain`}
               src={brandLogo}
               alt={job.sourceName ?? ''}
             />
           ) : job.companyLogoUrl ? (
             <img
-              className="max-h-8 w-auto max-w-full object-contain"
+              className={`${isCompact ? 'max-h-7' : 'max-h-8'} w-auto max-w-full object-contain`}
               src={job.companyLogoUrl}
               alt=""
             />
           ) : job.company ? (
-            <span className="font-headline-md text-headline-md font-semibold text-primary">
+            <span
+              className={`${
+                isCompact ? 'text-[15px]' : 'font-headline-md text-headline-md'
+              } font-semibold text-primary`}
+            >
               {initialsOf(job.company)}
             </span>
           ) : (
             <img
-              className="max-h-8 w-auto max-w-full object-contain"
+              className={`${isCompact ? 'max-h-7' : 'max-h-8'} w-auto max-w-full object-contain`}
               src={seragoLogo}
               alt="SeraGo"
             />
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <h4 className="mb-1 truncate font-headline-md text-headline-md leading-tight text-on-surface transition-colors group-hover:text-surface-tint">
+          <h4
+            className={`truncate font-headline-md leading-tight text-on-surface transition-colors group-hover:text-surface-tint ${
+              isCompact ? 'mb-0.5 text-[16px] font-semibold' : 'mb-1 text-headline-md'
+            }`}
+          >
             {job.title}
           </h4>
-          <p className="truncate font-body-md text-body-md text-secondary">
+          <p
+            className={`truncate text-secondary ${
+              isCompact ? 'text-[13px]' : 'font-body-md text-body-md'
+            }`}
+          >
             {job.company || 'Company undisclosed'}
           </p>
           {job.sourceName &&
@@ -168,7 +201,9 @@ export default function JobCard({
                 href={job.sourceUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-0.5 inline-flex items-center gap-1 font-label-sm text-label-sm text-primary transition-colors hover:text-surface-tint"
+                className={`mt-0.5 inline-flex items-center gap-1 text-primary transition-colors hover:text-surface-tint ${
+                  isCompact ? 'text-[11px]' : 'font-label-sm text-label-sm'
+                }`}
               >
                 via {job.sourceName}
                 <span className="material-symbols-outlined text-sm">
@@ -176,7 +211,11 @@ export default function JobCard({
                 </span>
               </a>
             ) : (
-              <p className="mt-0.5 font-label-sm text-label-sm text-on-surface-variant">
+              <p
+                className={`mt-0.5 text-on-surface-variant ${
+                  isCompact ? 'text-[11px]' : 'font-label-sm text-label-sm'
+                }`}
+              >
                 via {job.sourceName}
               </p>
             ))}
@@ -186,16 +225,25 @@ export default function JobCard({
             score={job.matchScore}
             matched={job.matchedSkills?.length ?? 0}
             missing={job.missingSkills?.length ?? 0}
+            compact={isCompact}
           />
         )}
       </div>
 
       {/* Meta grid + actions */}
-      <div className="flex flex-col gap-4 bg-surface/30 p-5">
-        <div className="grid grid-cols-2 gap-3 font-label-md text-label-md text-on-surface-variant">
+      <div className={`flex flex-col bg-surface/30 ${isCompact ? 'gap-3.5 p-4' : 'gap-4 p-5'}`}>
+        <div
+          className={`grid grid-cols-2 text-on-surface-variant ${
+            isCompact ? 'gap-2 text-[12px]' : 'gap-3 font-label-md text-label-md'
+          }`}
+        >
           {meta.map((item) => (
             <div key={item.icon + item.label} className="flex items-center gap-2 truncate">
-              <span className="material-symbols-outlined text-[18px]">
+              <span
+                className={`material-symbols-outlined ${
+                  isCompact ? 'text-[16px]' : 'text-[18px]'
+                }`}
+              >
                 {item.icon}
               </span>
               <span className="truncate">{item.label}</span>
@@ -207,23 +255,33 @@ export default function JobCard({
             {skills.map((skill) => (
               <span
                 key={skill}
-                className="inline-flex items-center rounded-full bg-primary-container/40 px-2.5 py-0.5 font-label-sm text-label-sm text-primary"
+                className={`inline-flex items-center rounded-full bg-primary-container/40 text-primary ${
+                  isCompact
+                    ? 'px-2.5 py-0.5 text-[11px] font-medium'
+                    : 'px-2.5 py-0.5 font-label-sm text-label-sm'
+                }`}
               >
                 {skill}
               </span>
             ))}
           </div>
         )}
-        <div className="mt-auto flex gap-2">
+        <div className="mt-auto flex gap-2 pt-0.5">
           {applied ? (
-            <span className="flex-1 rounded border border-success/30 bg-success/10 px-4 py-2.5 text-center font-label-md text-label-md text-success">
+            <span
+              className={`flex-1 rounded border border-success/30 bg-success/10 text-center font-semibold text-success ${
+                isCompact ? 'px-3 py-2 text-[13px]' : 'px-4 py-2.5 font-label-md text-label-md'
+              }`}
+            >
               Applied
             </span>
           ) : onApply ? (
             <button
               type="button"
               onClick={() => onApply(job)}
-              className="flex-1 rounded bg-accent px-4 py-2.5 text-center font-label-md text-label-md font-semibold text-on-accent transition-colors hover:opacity-90"
+              className={`flex-1 rounded bg-accent text-center font-semibold text-on-accent transition-colors hover:opacity-90 ${
+                isCompact ? 'px-3 py-2 text-[13px]' : 'px-4 py-2.5 font-label-md text-label-md'
+              }`}
             >
               Apply Now
             </button>
@@ -232,14 +290,18 @@ export default function JobCard({
               href={job.url}
               target="_blank"
               rel="noreferrer"
-              className="flex-1 rounded bg-accent px-4 py-2.5 text-center font-label-md text-label-md text-on-accent transition-colors hover:opacity-90"
+              className={`flex-1 rounded bg-accent text-center font-semibold text-on-accent transition-colors hover:opacity-90 ${
+                isCompact ? 'px-3 py-2 text-[13px]' : 'px-4 py-2.5 font-label-md text-label-md'
+              }`}
             >
               Apply Now
             </a>
           ) : (
             <span
               title="No application link provided"
-              className="flex-1 cursor-not-allowed rounded bg-accent px-4 py-2.5 text-center font-label-md text-label-md text-on-accent opacity-60"
+              className={`flex-1 cursor-not-allowed rounded bg-accent text-center font-semibold text-on-accent opacity-60 ${
+                isCompact ? 'px-3 py-2 text-[13px]' : 'px-4 py-2.5 font-label-md text-label-md'
+              }`}
             >
               Apply Now
             </span>
@@ -248,19 +310,29 @@ export default function JobCard({
             <button
               type="button"
               onClick={() => onPreview(job)}
-              className="flex-1 rounded border border-surface-variant px-4 py-2.5 text-center font-label-md text-label-md font-semibold text-primary transition-colors hover:bg-surface-container-low"
+              className={`flex-1 rounded border border-surface-variant text-center font-semibold text-primary transition-colors hover:bg-surface-container-low ${
+                isCompact ? 'px-3 py-2 text-[13px]' : 'px-4 py-2.5 font-label-md text-label-md'
+              }`}
             >
               See description
             </button>
           ) : (
             <Link
               to={detailPath ?? `/dashboard/talent/jobs/${job.id}`}
-              className="flex-1 rounded border border-surface-variant px-4 py-2.5 text-center font-label-md text-label-md font-semibold text-primary transition-colors hover:bg-surface-container-low"
+              className={`flex-1 rounded border border-surface-variant text-center font-semibold text-primary transition-colors hover:bg-surface-container-low ${
+                isCompact ? 'px-3 py-2 text-[13px]' : 'px-4 py-2.5 font-label-md text-label-md'
+              }`}
             >
               See description
             </Link>
           )}
-          {onToggleSave && <SaveJobButton saved={!!saved} onToggle={onToggleSave} />}
+          {onToggleSave && (
+            <SaveJobButton
+              saved={!!saved}
+              onToggle={onToggleSave}
+              className={isCompact ? 'px-3 py-2 text-[13px]' : undefined}
+            />
+          )}
         </div>
       </div>
     </article>
