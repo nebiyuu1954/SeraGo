@@ -67,6 +67,16 @@ function preserveTargetJobIfPresent() {
         sessionStorage.setItem('serago_pending_target_job_title', title)
         localStorage.setItem('serago_pending_target_job_title', title)
       }
+      const sectorId = search.get('sectorId')
+      if (sectorId) {
+        sessionStorage.setItem('serago_pending_target_job_sector_id', sectorId)
+        localStorage.setItem('serago_pending_target_job_sector_id', sectorId)
+      }
+      const sector = search.get('sector')
+      if (sector) {
+        sessionStorage.setItem('serago_pending_target_job_sector_name', sector)
+        localStorage.setItem('serago_pending_target_job_sector_name', sector)
+      }
     }
   } catch {
     // Ignore storage errors in restricted contexts

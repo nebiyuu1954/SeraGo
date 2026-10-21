@@ -176,10 +176,16 @@ public sealed class NotificationOrchestrator
                 var titleParam = dataObj.TryGetValue("title", out var titleEl) && titleEl.ValueKind == JsonValueKind.String
                     ? $"&title={Uri.EscapeDataString(titleEl.GetString()!)}"
                     : "";
+                var sectorIdParam = dataObj.TryGetValue("sector_id", out var secIdEl) && secIdEl.ValueKind == JsonValueKind.String
+                    ? $"&sectorId={secIdEl.GetString()}"
+                    : "";
+                var sectorParam = dataObj.TryGetValue("sector", out var secEl) && secEl.ValueKind == JsonValueKind.String
+                    ? $"&sector={Uri.EscapeDataString(secEl.GetString()!)}"
+                    : "";
                 var jobUrl = dataObj.TryGetValue("job_id", out var jobId)
                     && jobId.ValueKind == JsonValueKind.String
                     && Guid.TryParse(jobId.GetString(), out _)
-                        ? $"https://serago.pro.et/dashboard/talent/jobs/{jobId.GetString()}?from=telegram{titleParam}"
+                        ? $"https://serago.pro.et/dashboard/talent/jobs/{jobId.GetString()}?from=telegram{titleParam}{sectorIdParam}{sectorParam}"
                         : "https://serago.pro.et/dashboard/jobs";
 
                 replyMarkup = new InlineKeyboardMarkup(new[]

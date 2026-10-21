@@ -163,7 +163,7 @@ export default function JobsPage() {
     setView('forYou')
   }
 
-  const { sectors } = useSectorsQuery(auth.status === 'authenticated')
+  const { sectors, isLoading: sectorsLoading } = useSectorsQuery(auth.status === 'authenticated')
   const { locations } = useJobLocationsQuery(auth.status === 'authenticated')
   const { counts: forYouJobTypeCounts } = useJobTypesQuery(
     true,
@@ -357,6 +357,7 @@ export default function JobsPage() {
   // Handle incoming target job remembered from Telegram entry link
   useEffect(() => {
     if (auth.status !== 'authenticated' || settingsLoading || !profile) return
+    if (prefSectorIds.length > 0 && sectorsLoading) return // Wait until sectors load for accurate sector matching
     if (onboardingOpen) return // Wait until user completes or skips onboarding
     if (targetJobProcessedRef.current) return
 
@@ -366,14 +367,63 @@ export default function JobsPage() {
     const pendingJobTitle =
       sessionStorage.getItem('serago_pending_target_job_title') ||
       localStorage.getItem('serago_pending_target_job_title')
+    const pendingJobSectorId =
+      sessionStorage.getItem('serago_pending_target_job_sector_id') ||
+      localStorage.getItem('serago_pending_target_job_sector_id')
+    const pendingJobSectorName =
+      sessionStorage.getItem('serago_pending_target_job_sector_name') ||
+      localStorage.getItem('serago_pending_target_job_sector_name')
 
     if (!pendingJobId && !pendingJobTitle) return
 
     targetJobProcessedRef.current = true
 
-    const applySearch = (title: string) => {
-      const hasSectors = prefSectorIds.length > 0
-      if (hasSectors) {
+    const clearPendingStorage = () => {
+      try {
+        sessionStorage.removeItem('serago_pending_target_job_id')
+        sessionStorage.removeItem('serago_pending_target_job_title')
+        sessionStorage.removeItem('serago_pending_target_job_sector_id')
+        sessionStorage.removeItem('serago_pending_target_job_sector_name')
+        localStorage.removeItem('serago_pending_target_job_id')
+        localStorage.removeItem('serago_pending_target_job_title')
+        localStorage.removeItem('serago_pending_target_job_sector_id')
+        localStorage.removeItem('serago_pending_target_job_sector_name')
+      } catch {}
+    }
+
+    const applySearch = (title: string, sectorId?: string | null, sectorName?: string | null) => {
+      // Check if user has preferred sectors AND if the clicked job's sector matches one of the user's preferred sectors
+      let isSectorMatch = false
+      if (prefSectorIds.length > 0) {
+        const normJobSectorId = sectorId ? sectorId.toLowerCase().trim() : null
+        const normJobSectorName = sectorName ? sectorName.toLowerCase().trim() : null
+
+        // 1. Direct ID match
+        if (normJobSectorId && prefSectorIds.includes(normJobSectorId)) {
+          isSectorMatch = true
+        }
+
+        // 2. Direct Name match against user's preferred sector names
+        if (!isSectorMatch && normJobSectorName) {
+          const prefNames = forYouSectors.map((s) => s.name.toLowerCase().trim())
+          if (prefNames.includes(normJobSectorName)) {
+            isSectorMatch = true
+          } else {
+            // Loose matching for sector variations (e.g. "Technology & IT" vs "Technology")
+            isSectorMatch = forYouSectors.some((s) => {
+              const sName = s.name.toLowerCase().trim()
+              return (
+                sName === normJobSectorName ||
+                normJobSectorName.includes(sName) ||
+                sName.includes(normJobSectorName)
+              )
+            })
+          }
+        }
+      }
+
+      if (isSectorMatch) {
+        // Job sector matches user's sector -> search in "For you"
         setView('forYou')
         setForYouFilters((prev) => ({
           ...prev,
@@ -382,6 +432,7 @@ export default function JobsPage() {
           page: 1,
         }))
       } else {
+        // Job sector does NOT match user's sector (or user has no sectors) -> search in "All jobs"
         setView('all')
         setAllJobsFilters((prev) => ({
           ...prev,
@@ -391,36 +442,36 @@ export default function JobsPage() {
         }))
       }
 
-      try {
-        sessionStorage.removeItem('serago_pending_target_job_id')
-        sessionStorage.removeItem('serago_pending_target_job_title')
-        localStorage.removeItem('serago_pending_target_job_id')
-        localStorage.removeItem('serago_pending_target_job_title')
-      } catch {}
+      clearPendingStorage()
     }
 
-    if (pendingJobTitle) {
-      applySearch(pendingJobTitle)
-    } else if (pendingJobId) {
+    if (pendingJobId && (!pendingJobTitle || (!pendingJobSectorId && !pendingJobSectorName))) {
       fetchJob(pendingJobId)
         .then((j) => {
           if (j?.title) {
-            applySearch(j.title)
+            applySearch(
+              j.title,
+              j.sectorId ?? pendingJobSectorId,
+              j.sectorName ?? pendingJobSectorName,
+            )
+          } else {
+            clearPendingStorage()
           }
         })
         .catch(() => {
-          try {
-            sessionStorage.removeItem('serago_pending_target_job_id')
-            localStorage.removeItem('serago_pending_target_job_id')
-          } catch {}
+          clearPendingStorage()
         })
+    } else if (pendingJobTitle) {
+      applySearch(pendingJobTitle, pendingJobSectorId, pendingJobSectorName)
     }
   }, [
     auth.status,
     settingsLoading,
+    sectorsLoading,
     profile,
     onboardingOpen,
     prefSectorIds.length,
+    forYouSectors,
   ])
 
   const clearFilters = () => {

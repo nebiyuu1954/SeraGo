@@ -291,6 +291,8 @@ export default function JobDetailPage() {
   const searchParams = new URLSearchParams(location.search)
   const isFromTelegram = searchParams.get('from') === 'telegram'
   const urlTitle = searchParams.get('title')
+  const urlSectorId = searchParams.get('sectorId')
+  const urlSectorName = searchParams.get('sector')
 
   useEffect(() => {
     if (!jobId || isPreview) return
@@ -303,14 +305,30 @@ export default function JobDetailPage() {
           sessionStorage.setItem('serago_pending_target_job_title', urlTitle)
           localStorage.setItem('serago_pending_target_job_title', urlTitle)
         }
+        if (urlSectorId) {
+          sessionStorage.setItem('serago_pending_target_job_sector_id', urlSectorId)
+          localStorage.setItem('serago_pending_target_job_sector_id', urlSectorId)
+        }
+        if (urlSectorName) {
+          sessionStorage.setItem('serago_pending_target_job_sector_name', urlSectorName)
+          localStorage.setItem('serago_pending_target_job_sector_name', urlSectorName)
+        }
       } catch {}
 
-      if (!urlTitle) {
+      if (!urlTitle || (!urlSectorId && !urlSectorName)) {
         fetchJob(jobId)
           .then((j) => {
             if (j?.title) {
               sessionStorage.setItem('serago_pending_target_job_title', j.title)
               localStorage.setItem('serago_pending_target_job_title', j.title)
+            }
+            if (j?.sectorId) {
+              sessionStorage.setItem('serago_pending_target_job_sector_id', j.sectorId)
+              localStorage.setItem('serago_pending_target_job_sector_id', j.sectorId)
+            }
+            if (j?.sectorName) {
+              sessionStorage.setItem('serago_pending_target_job_sector_name', j.sectorName)
+              localStorage.setItem('serago_pending_target_job_sector_name', j.sectorName)
             }
           })
           .catch(() => {})
@@ -327,10 +345,41 @@ export default function JobDetailPage() {
           sessionStorage.setItem('serago_pending_target_job_title', urlTitle)
           localStorage.setItem('serago_pending_target_job_title', urlTitle)
         }
+        if (urlSectorId) {
+          sessionStorage.setItem('serago_pending_target_job_sector_id', urlSectorId)
+          localStorage.setItem('serago_pending_target_job_sector_id', urlSectorId)
+        }
+        if (urlSectorName) {
+          sessionStorage.setItem('serago_pending_target_job_sector_name', urlSectorName)
+          localStorage.setItem('serago_pending_target_job_sector_name', urlSectorName)
+        }
       } catch {}
-      navigate('/dashboard/talent', { replace: true })
+
+      if (!urlTitle || (!urlSectorId && !urlSectorName)) {
+        fetchJob(jobId)
+          .then((j) => {
+            if (j?.title) {
+              sessionStorage.setItem('serago_pending_target_job_title', j.title)
+              localStorage.setItem('serago_pending_target_job_title', j.title)
+            }
+            if (j?.sectorId) {
+              sessionStorage.setItem('serago_pending_target_job_sector_id', j.sectorId)
+              localStorage.setItem('serago_pending_target_job_sector_id', j.sectorId)
+            }
+            if (j?.sectorName) {
+              sessionStorage.setItem('serago_pending_target_job_sector_name', j.sectorName)
+              localStorage.setItem('serago_pending_target_job_sector_name', j.sectorName)
+            }
+            navigate('/dashboard/talent', { replace: true })
+          })
+          .catch(() => {
+            navigate('/dashboard/talent', { replace: true })
+          })
+      } else {
+        navigate('/dashboard/talent', { replace: true })
+      }
     }
-  }, [jobId, auth.status, isFromTelegram, urlTitle, isPreview, navigate])
+  }, [jobId, auth.status, isFromTelegram, urlTitle, urlSectorId, urlSectorName, isPreview, navigate])
 
   const { job, isLoading, error, refresh: refreshJob } = useJobDetailQuery(
     jobId,
