@@ -10,11 +10,92 @@ import type {
   SectorDetailResponse,
 } from '../../../types'
 import { cn } from '../../../lib/cn.ts'
-import AiAuditModal from './AiAuditModal.tsx'
 
 interface ClassificationHistoryTabProps {
   sectors: SectorDetailResponse[]
   token: string
+}
+
+function getTodayString(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function generateDailyAuditPrompt(
+  selectedDate: string,
+  jobs: ClassificationHistoryItem[],
+  sectors: SectorDetailResponse[],
+): string {
+  const canonicalSectors = sectors
+    .filter((s) => s.isActive)
+    .map((s) => `- ${s.name} (slug: "${s.slug}")`)
+    .join('\n')
+
+  const formattedJobs = jobs
+    .map((job, idx) => {
+      const rawTags = [
+        ...(job.sourceSectors || []),
+        ...(job.ethioCategories || []),
+      ].filter(Boolean)
+
+      const rawTagStr = rawTags.length > 0 ? rawTags.join(', ') : 'None / Untagged'
+      const assigned = job.sectorName || 'Uncategorized'
+      const method = formatMethodLabel(job.classificationMethod)
+      const details = job.classificationDetails || ''
+      const conf = job.confidence != null ? `${Math.round(job.confidence * 100)}%` : 'N/A'
+      const snippet = (job.descriptionPreview || 'No description available')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 350)
+
+      return `[Job #${idx + 1}]
+- ID: ${job.id}
+- Title: ${job.title}
+- Company: ${job.company || 'Undisclosed'}
+- Location: ${job.location || 'N/A'}
+- Source: ${job.sourceName || 'Direct'}
+- Before (Scraper Raw Tag): ${rawTagStr}
+- After (Assigned Sector): ${assigned} (slug: "${job.sectorSlug || 'null'}")
+- Classification Method: ${method} (${details})
+- Confidence: ${conf}
+- Reasoning: ${job.reasoning || 'N/A'}
+- Description Snippet: ${snippet}...`
+    })
+    .join('\n\n---\n\n')
+
+  return `You are an expert Chief Job Classification Auditor for SeraGo, Ethiopia's premier career marketplace.
+Below is the batch of ${jobs.length} jobs classified on ${selectedDate}.
+
+### CANONICAL SERAGO SECTORS:
+${canonicalSectors}
+
+### CRITICAL EVALUATION GUIDELINES:
+1. Compare each job's Title, Company, Scraper Raw Tag (Before), and Description Snippet against the Assigned Sector (After).
+2. Key classification disambiguation rules:
+   - "SDR" / "Sales Development Representative" / "BPO cold calling" / "Telemarketer" / "Account Executive" -> MUST be "Sales & Marketing", NOT "Technology & IT" (even if the company is an IT company).
+   - "Crane Rigger" / "Equipment Operator" / "Welder" / "Mason" / "Carpenter" / "General Labor" -> MUST be "Skilled & General Labor" or "Engineering & Construction", NOT "Technology & IT".
+   - "Accountant" / "Cashier" / "Auditor" / "Finance Officer" -> MUST be "Accounting & Finance".
+   - "Graphic Designer" / "UI/UX Designer" / "Video Editor" -> MUST be "Design & Creative".
+   - "Civil Engineer" / "Site Supervisor" / "Draftsman" -> MUST be "Engineering & Construction".
+   - "Software Engineer" / "Backend Developer" / "Data Analyst" / "System Admin" -> MUST be "Technology & IT".
+   - "Doctor" / "Nurse" / "Pharmacist" / "Health Officer" -> MUST be "Healthcare & Pharmaceuticals".
+
+### AUDIT TASK:
+1. Identify any jobs that appear MISCLASSIFIED or questionable.
+2. For each misclassified job, specify:
+   - Job # and Title
+   - Current Sector
+   - Recommended Correct Sector (from the canonical list)
+   - Reason why it is misclassified and why the recommended sector is superior.
+3. Calculate the overall classification accuracy percentage for this batch.
+4. Provide any actionable tips for improving the classification prompts or regex/keyword rules.
+
+### BATCH OF JOBS CLASSIFIED ON ${selectedDate} (${jobs.length} TOTAL):
+${formattedJobs}
+`
 }
 
 export default function ClassificationHistoryTab({
@@ -28,17 +109,22 @@ export default function ClassificationHistoryTab({
 
   // Filters & Pagination
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState<number>(20)
   const [totalPages, setTotalPages] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [selectedSectorId, setSelectedSectorId] = useState<string>('')
   const [selectedMethod, setSelectedMethod] = useState<string>('')
-  const [todayOnly, setTodayOnly] = useState(false)
 
-  // Selection
+  // Day filter & Prompt export
+  const [selectedDate, setSelectedDate] = useState<string>(getTodayString())
+  const [filterByDate, setFilterByDate] = useState<boolean>(false)
+  const [isExportingPrompt, setIsExportingPrompt] = useState(false)
+  const [dailyPromptCopied, setDailyPromptCopied] = useState(false)
+
+  // Selection & UI state
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set())
-  const [auditModalOpen, setAuditModalOpen] = useState(false)
   const [expandedDescIds, setExpandedDescIds] = useState<Set<string>>(new Set())
   const [copiedJobId, setCopiedJobId] = useState<string | null>(null)
 
@@ -62,7 +148,8 @@ export default function ClassificationHistoryTab({
       rawScraperTags: rawTags.length > 0 ? rawTags : ['None / Untagged'],
       classifiedSector: job.sectorName || 'Uncategorized',
       classifiedSlug: job.sectorSlug || null,
-      classificationMethod: job.classificationMethod,
+      classificationMethod: formatMethodLabel(job.classificationMethod),
+      classificationDetails: job.classificationDetails,
       confidence: job.confidence != null ? `${Math.round(job.confidence * 100)}%` : 'N/A',
       reasoning: job.reasoning || job.classificationDetails,
       descriptionSnippet: job.descriptionPreview,
@@ -75,7 +162,7 @@ export default function ClassificationHistoryTab({
 - **Source:** ${job.sourceName || 'Direct'}
 - **Scraper Raw Tag (Before):** ${rawTags.length > 0 ? rawTags.join(', ') : 'None / Untagged'}
 - **Classified Sector (After):** ${job.sectorName || 'Uncategorized'}
-- **Classification Method:** ${job.classificationMethod} (${job.classificationDetails})
+- **Classification Method:** ${formatMethodLabel(job.classificationMethod)} (${job.classificationDetails})
 - **Confidence:** ${payload.confidence}
 - **LLM Reasoning:** ${job.reasoning || 'N/A'}
 
@@ -95,6 +182,49 @@ ${JSON.stringify(payload, null, 2)}
     }, 2500)
   }
 
+  // Handle Gathering all jobs classified on selectedDate and copying AI prompt
+  const handleCopyDailyPrompt = async () => {
+    if (!selectedDate || isExportingPrompt) return
+    setIsExportingPrompt(true)
+    setError(null)
+    try {
+      // Fetch all jobs classified on that day (up to 500)
+      const res = await fetchClassificationHistory(
+        {
+          date: selectedDate,
+          pageSize: 500,
+          page: 1,
+        },
+        token,
+      )
+
+      if (!res.items || res.items.length === 0) {
+        setToastMessage(`No jobs found classified on ${selectedDate}. Try selecting another date.`)
+        setTimeout(() => setToastMessage(null), 4000)
+        return
+      }
+
+      const prompt = generateDailyAuditPrompt(selectedDate, res.items, sectors)
+      await navigator.clipboard.writeText(prompt)
+
+      setDailyPromptCopied(true)
+      setToastMessage(
+        `Copied prompt with ${res.items.length} jobs classified on ${selectedDate} to clipboard! Paste it into ChatGPT, Claude, or Gemini.`,
+      )
+
+      setTimeout(() => {
+        setDailyPromptCopied(false)
+      }, 3500)
+      setTimeout(() => {
+        setToastMessage(null)
+      }, 6000)
+    } catch (err) {
+      setError(`Failed to gather jobs for ${selectedDate}: ${getApiErrorMessage(err)}`)
+    } finally {
+      setIsExportingPrompt(false)
+    }
+  }
+
   // Debounce search input
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -112,10 +242,10 @@ ${JSON.stringify(payload, null, 2)}
       const res = await fetchClassificationHistory(
         {
           page,
-          pageSize: 20,
+          pageSize,
           sectorId: selectedSectorId || undefined,
           method: selectedMethod || undefined,
-          todayOnly,
+          date: filterByDate ? selectedDate : undefined,
           search: debouncedSearch || undefined,
         },
         token,
@@ -129,7 +259,7 @@ ${JSON.stringify(payload, null, 2)}
     } finally {
       setLoading(false)
     }
-  }, [debouncedSearch, page, selectedMethod, selectedSectorId, todayOnly, token])
+  }, [debouncedSearch, filterByDate, page, pageSize, selectedDate, selectedMethod, selectedSectorId, token])
 
   useEffect(() => {
     loadHistory()
@@ -160,17 +290,6 @@ ${JSON.stringify(payload, null, 2)}
       next.add(id)
     }
     setSelectedJobIds(next)
-  }
-
-  // Select Today's jobs
-  const handleSelectTodayJobs = () => {
-    const today = new Date().toISOString().slice(0, 10)
-    const todayItems = items.filter((i) => i.createdAt.slice(0, 10) === today || i.updatedAt.slice(0, 10) === today)
-    const next = new Set(selectedJobIds)
-    todayItems.forEach((i) => next.add(i.id))
-    setSelectedJobIds(next)
-    setToastMessage(`Selected ${todayItems.length} jobs from today.`)
-    setTimeout(() => setToastMessage(null), 3000)
   }
 
   // Description expand toggle
@@ -215,7 +334,8 @@ ${JSON.stringify(payload, null, 2)}
     }
   }
 
-  const selectedJobs = items.filter((i) => selectedJobIds.has(i.id))
+  const startRecord = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
+  const endRecord = Math.min(page * pageSize, totalCount)
 
   return (
     <div className="space-y-6">
@@ -271,7 +391,7 @@ ${JSON.stringify(payload, null, 2)}
 
       {/* 2. Search & Filter Bar */}
       <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-4 shadow-sm space-y-3">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
           {/* Search */}
           <div className="relative flex-1">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg">
@@ -324,7 +444,7 @@ ${JSON.stringify(payload, null, 2)}
             className="rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none"
           >
             <option value="">All Methods</option>
-            <option value="gemini">Gemini Flash (Tier 1)</option>
+            <option value="gemini">Google Gemini Flash (Tier 1)</option>
             <option value="groq">Groq Cloud (Tier 2)</option>
             <option value="ollama">Local Ollama (Tier 3)</option>
             <option value="cosine">Cosine Similarity (Tier 4)</option>
@@ -332,70 +452,90 @@ ${JSON.stringify(payload, null, 2)}
             <option value="title">Title Keyword Rule</option>
             <option value="uncategorized">Uncategorized</option>
           </select>
-
-          {/* Today Only Toggle */}
-          <button
-            type="button"
-            onClick={() => {
-              setTodayOnly(!todayOnly)
-              setPage(1)
-            }}
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 font-label-md text-label-md font-medium transition-colors',
-              todayOnly
-                ? 'border-purple-600 bg-purple-600 text-white'
-                : 'border-surface-variant bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high',
-            )}
-          >
-            <span className="material-symbols-outlined text-base">today</span>
-            <span>Today Only</span>
-          </button>
         </div>
       </div>
 
-      {/* 3. Batch Action Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-purple-200 bg-purple-50/40 p-4 shadow-sm">
+      {/* 3. Daily Batch Export & Date Picker Toolbar (Replaces AI Judge Button) */}
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 rounded-xl border border-purple-200 bg-gradient-to-r from-purple-50/70 via-indigo-50/50 to-purple-50/70 p-4 shadow-sm">
+        {/* Left: Day Selector & Filter */}
         <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 cursor-pointer select-none">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-purple-700 text-xl">calendar_month</span>
+            <label htmlFor="daily-date-picker" className="font-label-md text-label-md font-bold text-on-surface">
+              Choose Day:
+            </label>
             <input
-              type="checkbox"
-              checked={allVisibleSelected}
-              onChange={handleToggleSelectAllVisible}
-              className="h-4 w-4 rounded border-outline-variant text-purple-600 focus:ring-purple-500"
+              id="daily-date-picker"
+              type="date"
+              value={selectedDate}
+              onChange={(e) => {
+                setSelectedDate(e.target.value)
+                setPage(1)
+              }}
+              className="rounded-lg border border-purple-300 bg-white px-3 py-1.5 font-label-md text-label-md font-semibold text-purple-950 shadow-xs focus:border-purple-600 focus:outline-none focus:ring-1 focus:ring-purple-600"
             />
-            <span className="font-label-md text-label-md font-semibold text-on-surface">
-              Select all visible ({items.length})
-            </span>
-          </label>
+          </div>
 
+          {/* Quick jump to Today */}
+          {selectedDate !== getTodayString() && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedDate(getTodayString())
+                setPage(1)
+              }}
+              className="inline-flex items-center gap-1 rounded-md bg-purple-100 hover:bg-purple-200 text-purple-800 px-2.5 py-1 text-xs font-semibold transition-colors"
+            >
+              <span className="material-symbols-outlined text-sm">today</span>
+              <span>Set to Today</span>
+            </button>
+          )}
+
+          {/* Toggle filter list by selected day */}
           <button
             type="button"
-            onClick={handleSelectTodayJobs}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-purple-700 bg-purple-100 hover:bg-purple-200 px-2.5 py-1 rounded-md transition-colors"
+            onClick={() => {
+              setFilterByDate(!filterByDate)
+              setPage(1)
+            }}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-label-sm text-label-sm font-semibold transition-colors shadow-xs',
+              filterByDate
+                ? 'border-purple-600 bg-purple-700 text-white'
+                : 'border-purple-300 bg-white text-purple-900 hover:bg-purple-100/70',
+            )}
           >
-            <span className="material-symbols-outlined text-sm">schedule</span>
-            Select Today's Jobs
-          </button>
-
-          {selectedJobIds.size > 0 && (
-            <span className="text-xs font-bold text-purple-900 bg-purple-200/80 px-2.5 py-1 rounded-full">
-              {selectedJobIds.size} selected
+            <span className="material-symbols-outlined text-sm">
+              {filterByDate ? 'check_box' : 'filter_alt'}
             </span>
-          )}
+            <span>{filterByDate ? `Filtered to ${selectedDate}` : 'Filter list by this day'}</span>
+          </button>
         </div>
 
-        {/* AI Judge Audit Trigger */}
-        <div className="flex items-center gap-2">
+        {/* Right: Copy Daily Prompt Button */}
+        <div className="flex items-center gap-2 flex-shrink-0">
           <button
             type="button"
-            onClick={() => setAuditModalOpen(true)}
-            disabled={selectedJobIds.size === 0}
-            className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-700 to-indigo-700 px-5 py-2.5 font-label-md text-label-md font-semibold text-white shadow-md hover:from-purple-800 hover:to-indigo-800 transition-all disabled:opacity-50 disabled:pointer-events-none"
+            onClick={handleCopyDailyPrompt}
+            disabled={isExportingPrompt || !selectedDate}
+            title="Gather all jobs classified on this day and copy a comprehensive prompt to paste into ChatGPT, Claude, or Gemini"
+            className={cn(
+              'inline-flex items-center gap-2 rounded-xl px-5 py-2.5 font-label-md text-label-md font-bold text-white shadow-md transition-all disabled:opacity-50 disabled:pointer-events-none',
+              dailyPromptCopied
+                ? 'bg-emerald-600 hover:bg-emerald-700 ring-2 ring-emerald-400'
+                : 'bg-gradient-to-r from-purple-700 via-indigo-700 to-purple-800 hover:from-purple-800 hover:to-indigo-800 shadow-purple-200',
+            )}
           >
-            <span className="material-symbols-outlined text-lg">gavel</span>
-            {selectedJobIds.size > 0
-              ? `Audit with AI Judge (${selectedJobIds.size})`
-              : 'Audit with AI Judge'}
+            <span className="material-symbols-outlined text-xl">
+              {isExportingPrompt ? 'sync' : dailyPromptCopied ? 'check_circle' : 'content_copy'}
+            </span>
+            <span>
+              {isExportingPrompt
+                ? `Gathering jobs for ${selectedDate}…`
+                : dailyPromptCopied
+                ? `Copied Prompt to Clipboard!`
+                : `Copy Prompt for ${selectedDate}`}
+            </span>
           </button>
         </div>
       </div>
@@ -419,13 +559,66 @@ ${JSON.stringify(payload, null, 2)}
         </div>
       )}
 
-      {/* 4. List of Job Classification Cards */}
+      {/* Top Pagination Controls & Per-Page Selector */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-1">
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={handleToggleSelectAllVisible}
+              className="h-4 w-4 rounded border-outline-variant text-purple-600 focus:ring-purple-500"
+            />
+            <span className="font-label-md text-label-md font-semibold text-on-surface">
+              Select all visible ({items.length})
+            </span>
+          </label>
+          {selectedJobIds.size > 0 && (
+            <span className="text-xs font-bold text-purple-900 bg-purple-200 px-2.5 py-0.5 rounded-full">
+              {selectedJobIds.size} selected
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="font-label-sm text-xs font-semibold text-on-surface-variant">
+              Per page:
+            </span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value))
+                setPage(1)
+              }}
+              aria-label="Items per page"
+              className="rounded-lg border border-outline-variant bg-surface-container-low px-2.5 py-1 text-xs font-semibold text-on-surface focus:border-primary focus:outline-none"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+
+          <span className="font-label-sm text-xs text-on-surface-variant font-medium">
+            Showing {startRecord}–{endRecord} of {totalCount}
+          </span>
+        </div>
+      </div>
+
+      {/* 4. List of Job Classification Cards in 2-Column Grid */}
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <span
-            aria-hidden="true"
-            className="h-8 w-8 animate-spin rounded-full border-3 border-primary/30 border-t-primary"
-          />
+        <div className="flex items-center justify-center py-20">
+          <div className="flex flex-col items-center gap-3">
+            <span
+              aria-hidden="true"
+              className="h-9 w-9 animate-spin rounded-full border-3 border-purple-300 border-t-purple-700"
+            />
+            <span className="text-xs font-semibold text-on-surface-variant">
+              Loading classification history…
+            </span>
+          </div>
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-12 text-center">
@@ -434,11 +627,13 @@ ${JSON.stringify(payload, null, 2)}
             No jobs found
           </p>
           <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
-            Try adjusting your search query, sector filter, or method selection.
+            {filterByDate
+              ? `No classifications found for ${selectedDate}. Try choosing a different date or disabling the day filter.`
+              : 'Try adjusting your search query, sector filter, or method selection.'}
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {items.map((job) => {
             const isSelected = selectedJobIds.has(job.id)
             const isExpanded = expandedDescIds.has(job.id)
@@ -453,173 +648,35 @@ ${JSON.stringify(payload, null, 2)}
               <div
                 key={job.id}
                 className={cn(
-                  'rounded-xl border p-5 shadow-sm transition-all',
+                  'flex flex-col justify-between rounded-xl border p-4.5 shadow-xs transition-all',
                   isSelected
-                    ? 'border-purple-500 bg-purple-50/20 shadow-md ring-1 ring-purple-500'
-                    : 'border-surface-variant bg-surface-container-lowest hover:border-outline-variant',
+                    ? 'border-purple-500 bg-purple-50/30 shadow-md ring-1 ring-purple-500'
+                    : 'border-surface-variant bg-surface-container-lowest hover:border-outline-variant hover:shadow-sm',
                 )}
               >
-                {/* 1. Card Header: Title, Employer, Source & Top Action Buttons */}
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                  <div className="flex items-start gap-3 min-w-0 flex-1">
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => handleToggleSelectItem(job.id)}
-                      aria-label={`Select job ${job.title}`}
-                      className="mt-1 h-4 w-4 rounded border-outline-variant text-purple-600 focus:ring-purple-500"
-                    />
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-headline-sm text-lg font-bold text-on-surface">
-                          {job.title}
-                        </h3>
-
-                        {job.sourceName && (
-                          <span className="rounded-md bg-surface-container-high px-2 py-0.5 font-label-xs text-xs font-semibold text-on-surface-variant">
-                            via {job.sourceName}
-                          </span>
-                        )}
-
-                        <span className="font-label-xs text-xs text-on-surface-variant">
-                          {new Date(job.createdAt).toLocaleDateString()}
-                        </span>
-                      </div>
-
-                      <p className="font-label-md text-label-md text-on-surface-variant mt-0.5">
-                        <span className="font-semibold text-on-surface">
-                          {job.company || 'Company Undisclosed'}
-                        </span>
-                        {job.location && ` · ${job.location}`}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Top Action Buttons: Copy Debug Info + See in All Jobs */}
-                  <div className="flex flex-wrap items-center gap-2 flex-shrink-0 self-start">
-                    {/* Copy Debug & Classification Log Button */}
-                    <button
-                      type="button"
-                      onClick={() => handleCopyDebugInfo(job)}
-                      title="Copy job details, scraper tags, and classification log for prompt refinement"
-                      className={cn(
-                        'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-label-sm text-label-sm font-semibold transition-all shadow-sm',
-                        copiedJobId === job.id
-                          ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-500'
-                          : 'border-surface-variant bg-surface-container-low text-on-surface hover:bg-surface-container-high',
-                      )}
-                    >
-                      <span className="material-symbols-outlined text-sm">
-                        {copiedJobId === job.id ? 'check' : 'content_copy'}
+                <div>
+                  {/* Top Bar: PROMINENT CLASSIFICATION METHOD BADGE & DATE */}
+                  <div className="flex items-center justify-between gap-2 pb-2.5 mb-3 border-b border-surface-variant/70">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-label-xs text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+                        Method:
                       </span>
-                      <span>{copiedJobId === job.id ? 'Copied Details!' : 'Copy Debug Info'}</span>
-                    </button>
-
-                    {/* See in All Jobs Button (Opens in new tab with search filled) */}
-                    <a
-                      href={`/dashboard/talent/jobs?view=all&search=${encodeURIComponent(job.title)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Open in All Jobs tab with this job title in the search bar"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50/70 px-3 py-1.5 font-label-sm text-label-sm font-semibold text-purple-900 hover:bg-purple-100 transition-colors shadow-sm"
-                    >
-                      <span>See in All Jobs</span>
-                      <span className="material-symbols-outlined text-sm">open_in_new</span>
-                    </a>
-                  </div>
-                </div>
-
-                {/* 2. Description Preview */}
-                {job.descriptionPreview && (
-                  <div className="mt-3 text-body-md text-on-surface/90 leading-relaxed">
-                    <p className={cn(!isExpanded && 'line-clamp-2')}>
-                      {job.descriptionPreview}
-                    </p>
-                    {job.descriptionPreview.length > 150 && (
-                      <button
-                        type="button"
-                        onClick={() => toggleExpandDesc(job.id)}
-                        className="mt-1 text-xs font-bold text-primary hover:underline inline-flex items-center gap-0.5"
-                      >
-                        <span>{isExpanded ? 'Show less' : 'Expand description'}</span>
-                        <span className="material-symbols-outlined text-xs">
-                          {isExpanded ? 'expand_less' : 'expand_more'}
-                        </span>
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* 3. Before (Scraper Tag) ➜ After (Classified Sector) Pipeline Box */}
-                <div className="mt-3.5 rounded-xl border border-outline-variant/60 bg-surface-container-low/60 p-3.5">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
-                    {/* Before: Raw tag from the scraper */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="inline-flex items-center gap-1 font-label-xs text-xs font-bold uppercase tracking-wider text-on-surface-variant">
-                        <span className="material-symbols-outlined text-sm text-amber-600">sell</span>
-                        Before (Scraper Tag):
-                      </span>
-                      {rawTags.length > 0 ? (
-                        rawTags.map((t) => (
-                          <span
-                            key={t}
-                            className="rounded-md bg-amber-100/90 text-amber-900 border border-amber-300 px-2.5 py-0.5 font-mono text-xs font-semibold shadow-xs"
-                          >
-                            {t}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="rounded-md bg-surface-container px-2 py-0.5 font-mono text-xs text-on-surface-variant italic">
-                          Untagged by source
-                        </span>
-                      )}
-                    </div>
-
-                    {/* After: To which we classified it */}
-                    <div className="flex items-center gap-2 flex-wrap md:justify-end">
-                      <span className="material-symbols-outlined text-base text-purple-600 hidden md:inline">
-                        arrow_forward
-                      </span>
-                      <span className="inline-flex items-center gap-1 font-label-xs text-xs font-bold uppercase tracking-wider text-on-surface-variant">
-                        <span className="material-symbols-outlined text-sm text-purple-600">flag</span>
-                        Classified To (After):
-                      </span>
-                      {job.sectorName ? (
-                        <span className="rounded-md bg-purple-100 text-purple-900 border border-purple-300 px-2.5 py-0.5 font-label-sm text-xs font-bold shadow-xs">
-                          {job.sectorName}
-                        </span>
-                      ) : (
-                        <span className="rounded-md bg-rose-100 text-rose-900 border border-rose-300 px-2.5 py-0.5 font-label-sm text-xs font-bold shadow-xs">
-                          Uncategorized
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* LLM Model & Confidence Metadata */}
-                  <div className="mt-3 pt-2.5 border-t border-outline-variant/40 flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-on-surface">Intelligence:</span>
-
-                      {/* Model Badge */}
                       <span
                         className={cn(
-                          'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-semibold text-xs border shadow-xs',
+                          'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-bold text-xs border shadow-xs',
                           getMethodBadgeStyle(job.classificationMethod),
                         )}
                       >
                         <span className="material-symbols-outlined text-xs">
                           {getMethodIcon(job.classificationMethod)}
                         </span>
-                        {formatMethodLabel(job.classificationMethod)}
+                        <span>{formatMethodLabel(job.classificationMethod)}</span>
                       </span>
 
-                      {/* Confidence Pill */}
                       {job.confidence != null && (
                         <span
                           className={cn(
-                            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold border shadow-xs',
+                            'inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-bold border shadow-xs',
                             job.confidence >= 0.85
                               ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
                               : job.confidence >= 0.70
@@ -627,37 +684,187 @@ ${JSON.stringify(payload, null, 2)}
                               : 'bg-rose-100 text-rose-900 border-rose-300',
                           )}
                         >
-                          <span>{Math.round(job.confidence * 100)}% Confidence</span>
+                          <span>{Math.round(job.confidence * 100)}% Conf.</span>
                         </span>
                       )}
                     </div>
 
-                    <span className="text-on-surface-variant font-medium">
-                      {job.classificationDetails}
-                    </span>
+                    {/* Classified / Updated Timestamp */}
+                    <div className="flex items-center gap-1 text-[11px] text-on-surface-variant font-medium flex-shrink-0">
+                      <span className="material-symbols-outlined text-xs">schedule</span>
+                      <span>
+                        {new Date(job.updatedAt || job.createdAt).toLocaleString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
                   </div>
 
-                  {/* AI Reasoning / Data explanation */}
-                  {job.reasoning && (
-                    <div className="mt-2.5 rounded-lg bg-surface-container/70 p-2 text-xs text-on-surface-variant font-body-sm flex items-start gap-1.5 border border-outline-variant/30">
-                      <span className="material-symbols-outlined text-sm text-purple-600 flex-shrink-0 mt-0.5">
-                        lightbulb
-                      </span>
-                      <p className="leading-snug">
-                        <strong className="text-on-surface font-semibold">AI Reasoning: </strong>
-                        {job.reasoning}
+                  {/* Header: Checkbox, Title, Employer, Source & Top Action Buttons */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleToggleSelectItem(job.id)}
+                        aria-label={`Select job ${job.title}`}
+                        className="mt-1 h-4 w-4 rounded border-outline-variant text-purple-600 focus:ring-purple-500 flex-shrink-0"
+                      />
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <h3 className="font-headline-sm text-base font-bold text-on-surface leading-tight">
+                            {job.title}
+                          </h3>
+
+                          {job.sourceName && (
+                            <span className="rounded-md bg-surface-container-high px-1.5 py-0.5 font-label-xs text-[11px] font-semibold text-on-surface-variant">
+                              via {job.sourceName}
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="font-label-md text-xs text-on-surface-variant mt-1">
+                          <span className="font-semibold text-on-surface">
+                            {job.company || 'Company Undisclosed'}
+                          </span>
+                          {job.location && ` · ${job.location}`}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Top Action Buttons: Copy Debug Info + See in All Jobs */}
+                    <div className="flex items-center gap-1.5 flex-shrink-0 self-start">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyDebugInfo(job)}
+                        title="Copy job details, scraper tags, and classification log for prompt refinement"
+                        className={cn(
+                          'inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-all shadow-xs',
+                          copiedJobId === job.id
+                            ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-500'
+                            : 'border-surface-variant bg-surface-container-low text-on-surface hover:bg-surface-container-high',
+                        )}
+                      >
+                        <span className="material-symbols-outlined text-sm">
+                          {copiedJobId === job.id ? 'check' : 'content_copy'}
+                        </span>
+                        <span>{copiedJobId === job.id ? 'Copied' : 'Debug'}</span>
+                      </button>
+
+                      <a
+                        href={`/dashboard/talent/jobs?view=all&search=${encodeURIComponent(job.title)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Open in All Jobs tab with this job title prefilled in the search bar"
+                        className="inline-flex items-center gap-1 rounded-lg border border-purple-200 bg-purple-50/70 px-2.5 py-1 text-xs font-semibold text-purple-900 hover:bg-purple-100 transition-colors shadow-xs"
+                      >
+                        <span>All Jobs</span>
+                        <span className="material-symbols-outlined text-xs">open_in_new</span>
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Description Preview */}
+                  {job.descriptionPreview && (
+                    <div className="mt-2.5 text-xs text-on-surface/90 leading-relaxed">
+                      <p className={cn(!isExpanded && 'line-clamp-2')}>
+                        {job.descriptionPreview}
                       </p>
+                      {job.descriptionPreview.length > 120 && (
+                        <button
+                          type="button"
+                          onClick={() => toggleExpandDesc(job.id)}
+                          className="mt-0.5 text-[11px] font-bold text-primary hover:underline inline-flex items-center gap-0.5"
+                        >
+                          <span>{isExpanded ? 'Show less' : 'Expand'}</span>
+                          <span className="material-symbols-outlined text-xs">
+                            {isExpanded ? 'expand_less' : 'expand_more'}
+                          </span>
+                        </button>
+                      )}
                     </div>
                   )}
+
+                  {/* Before (Scraper Tag) ➜ After (Classified Sector) Pipeline Box */}
+                  <div className="mt-3 rounded-lg border border-outline-variant/60 bg-surface-container-low/70 p-3 text-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      {/* Before: Raw tag from the scraper */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="inline-flex items-center gap-1 font-label-xs text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+                          <span className="material-symbols-outlined text-xs text-amber-600">sell</span>
+                          Before:
+                        </span>
+                        {rawTags.length > 0 ? (
+                          rawTags.map((t) => (
+                            <span
+                              key={t}
+                              className="rounded bg-amber-100/90 text-amber-900 border border-amber-300 px-2 py-0.5 font-mono text-[11px] font-semibold shadow-xs"
+                            >
+                              {t}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="rounded bg-surface-container px-1.5 py-0.5 font-mono text-[11px] text-on-surface-variant italic">
+                            Untagged
+                          </span>
+                        )}
+                      </div>
+
+                      {/* After: Classified To */}
+                      <div className="flex items-center gap-1.5 flex-wrap sm:justify-end">
+                        <span className="material-symbols-outlined text-sm text-purple-600 hidden sm:inline">
+                          arrow_forward
+                        </span>
+                        <span className="inline-flex items-center gap-1 font-label-xs text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+                          <span className="material-symbols-outlined text-xs text-purple-600">flag</span>
+                          After:
+                        </span>
+                        {job.sectorName ? (
+                          <span className="rounded bg-purple-100 text-purple-900 border border-purple-300 px-2 py-0.5 text-[11px] font-bold shadow-xs">
+                            {job.sectorName}
+                          </span>
+                        ) : (
+                          <span className="rounded bg-rose-100 text-rose-900 border border-rose-300 px-2 py-0.5 text-[11px] font-bold shadow-xs">
+                            Uncategorized
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Classification details note */}
+                    {job.classificationDetails && (
+                      <div className="mt-2 pt-2 border-t border-outline-variant/30 flex items-center gap-1 text-[11px] text-on-surface-variant">
+                        <span className="font-semibold text-on-surface">Details:</span>
+                        <span>{job.classificationDetails}</span>
+                      </div>
+                    )}
+
+                    {/* AI Reasoning / Data explanation */}
+                    {job.reasoning && (
+                      <div className="mt-1.5 rounded bg-surface-container/70 p-2 text-[11px] text-on-surface-variant flex items-start gap-1.5 border border-outline-variant/30">
+                        <span className="material-symbols-outlined text-xs text-purple-600 flex-shrink-0 mt-0.5">
+                          lightbulb
+                        </span>
+                        <p className="leading-snug">
+                          <strong className="text-on-surface font-semibold">Reasoning: </strong>
+                          {job.reasoning}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {/* 4. Card Footer: Inline Sector Override & Save */}
-                <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-surface-variant/60">
-                  <span className="font-label-sm text-xs font-semibold text-on-surface-variant">
+                {/* Card Footer: Manual Sector Override */}
+                <div className="mt-3 flex items-center justify-between gap-2 pt-2.5 border-t border-surface-variant/60">
+                  <span className="font-label-sm text-[11px] font-semibold text-on-surface-variant">
                     Manual Override:
                   </span>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <select
                       value={currentAssignment}
                       onChange={(e) =>
@@ -667,7 +874,7 @@ ${JSON.stringify(payload, null, 2)}
                         }))
                       }
                       aria-label={`Assign sector to ${job.title}`}
-                      className="rounded-lg border border-outline-variant bg-surface-container-low px-2.5 py-1 text-xs font-semibold text-on-surface focus:border-primary focus:outline-none"
+                      className="rounded-lg border border-outline-variant bg-surface-container-low px-2 py-1 text-xs font-semibold text-on-surface focus:border-primary focus:outline-none"
                     >
                       <option value="">Uncategorized</option>
                       {sectors.map((s) => (
@@ -683,7 +890,7 @@ ${JSON.stringify(payload, null, 2)}
                           type="button"
                           onClick={() => handleSaveSector(job)}
                           disabled={isSaving}
-                          className="rounded-lg bg-primary px-3 py-1 font-label-xs text-xs font-semibold text-on-primary hover:opacity-90 disabled:opacity-50"
+                          className="rounded-lg bg-primary px-2.5 py-1 text-xs font-semibold text-on-primary hover:opacity-90 disabled:opacity-50"
                         >
                           {isSaving ? 'Saving…' : 'Save'}
                         </button>
@@ -696,43 +903,55 @@ ${JSON.stringify(payload, null, 2)}
         </div>
       )}
 
-      {/* 5. Pagination */}
+      {/* 5. Bottom Pagination Controls */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between pt-4 border-t border-surface-variant">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-surface-variant">
           <p className="font-label-sm text-label-sm text-on-surface-variant">
             Page {page} of {totalPages} ({totalCount} total jobs)
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={page <= 1 || loading}
+              onClick={() => setPage(1)}
+              className="rounded-lg border border-surface-variant px-2.5 py-1.5 font-label-sm text-label-sm font-medium text-on-surface hover:bg-surface-container-high disabled:opacity-40"
+              title="First Page"
+            >
+              First
+            </button>
             <button
               type="button"
               disabled={page <= 1 || loading}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="rounded-lg border border-surface-variant px-3 py-1.5 font-label-sm text-label-sm font-medium text-on-surface hover:bg-surface-container-high disabled:opacity-50"
+              className="rounded-lg border border-surface-variant px-3 py-1.5 font-label-sm text-label-sm font-medium text-on-surface hover:bg-surface-container-high disabled:opacity-40"
             >
               Previous
             </button>
+
+            <span className="px-2 font-label-sm text-label-sm font-bold text-primary">
+              {page} / {totalPages}
+            </span>
+
             <button
               type="button"
               disabled={page >= totalPages || loading}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="rounded-lg border border-surface-variant px-3 py-1.5 font-label-sm text-label-sm font-medium text-on-surface hover:bg-surface-container-high disabled:opacity-50"
+              className="rounded-lg border border-surface-variant px-3 py-1.5 font-label-sm text-label-sm font-medium text-on-surface hover:bg-surface-container-high disabled:opacity-40"
             >
               Next
+            </button>
+            <button
+              type="button"
+              disabled={page >= totalPages || loading}
+              onClick={() => setPage(totalPages)}
+              className="rounded-lg border border-surface-variant px-2.5 py-1.5 font-label-sm text-label-sm font-medium text-on-surface hover:bg-surface-container-high disabled:opacity-40"
+              title="Last Page"
+            >
+              Last
             </button>
           </div>
         </div>
       )}
-
-      {/* 6. AI Audit & Judge Modal */}
-      <AiAuditModal
-        open={auditModalOpen}
-        onClose={() => setAuditModalOpen(false)}
-        selectedJobs={selectedJobs}
-        token={token}
-        onAppliedCorrections={() => {
-          loadHistory()
-        }}
-      />
     </div>
   )
 }
@@ -759,7 +978,7 @@ function getMethodBadgeStyle(method: string): string {
     case 'adminmanual':
       return 'bg-emerald-100 text-emerald-900 border-emerald-300'
     default:
-      return 'bg-rose-100 text-rose-900 border-rose-300'
+      return 'bg-surface-variant text-on-surface-variant border-outline-variant'
   }
 }
 
@@ -811,6 +1030,6 @@ function formatMethodLabel(method: string): string {
     case 'adminmanual':
       return 'Admin Manual Override'
     default:
-      return 'Uncategorized'
+      return method || 'Uncategorized'
   }
 }

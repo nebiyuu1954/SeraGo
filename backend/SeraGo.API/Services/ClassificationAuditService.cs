@@ -36,11 +36,12 @@ public sealed class ClassificationAuditService
         Guid? sectorId = null,
         string? method = null,
         bool todayOnly = false,
+        string? date = null,
         string? search = null,
         CancellationToken ct = default)
     {
         page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 100);
+        pageSize = Math.Clamp(pageSize, 1, 500);
 
         // Preload active sectors and aliases for accurate method deduction
         var sectors = await _db.Sectors
@@ -72,7 +73,16 @@ public sealed class ClassificationAuditService
             q = q.Where(j => j.SectorId == sectorId.Value);
         }
 
-        if (todayOnly)
+        if (!string.IsNullOrWhiteSpace(date) && DateOnly.TryParse(date, out var targetDate))
+        {
+            var startOfDay = new DateTimeOffset(targetDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc), TimeSpan.Zero);
+            var endOfDay = new DateTimeOffset(targetDate.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc), TimeSpan.Zero);
+            q = q.Where(j =>
+                (j.UpdatedAt >= startOfDay && j.UpdatedAt <= endOfDay) ||
+                (j.CreatedAt >= startOfDay && j.CreatedAt <= endOfDay) ||
+                (j.PublishedAt.HasValue && j.PublishedAt.Value >= startOfDay && j.PublishedAt.Value <= endOfDay));
+        }
+        else if (todayOnly)
         {
             q = q.Where(j =>
                 (j.CreatedAt >= todayUtc) ||
@@ -102,9 +112,9 @@ public sealed class ClassificationAuditService
 
         var total = await q.CountAsync(ct);
 
-        // Fetch paginated jobs sorted newest first
+        // Fetch paginated jobs sorted newest classified/updated first
         var jobs = await q
-            .OrderByDescending(j => j.CreatedAt)
+            .OrderByDescending(j => j.UpdatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);

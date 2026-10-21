@@ -336,6 +336,7 @@ public static class SectorEndpoints
         Guid? sectorId,
         string? method,
         bool? todayOnly,
+        string? date,
         string? search,
         CancellationToken ct)
     {
@@ -347,6 +348,7 @@ public static class SectorEndpoints
                 sectorId,
                 method,
                 todayOnly ?? false,
+                date,
                 search,
                 ct);
             return Results.Ok(result);

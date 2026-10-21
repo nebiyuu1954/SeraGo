@@ -100,6 +100,7 @@ export interface ClassificationHistoryParams {
   sectorId?: string
   method?: string
   todayOnly?: boolean
+  date?: string
   search?: string
 }
 
@@ -114,6 +115,7 @@ export function fetchClassificationHistory(
   if (params.sectorId) q.set('sectorId', params.sectorId)
   if (params.method) q.set('method', params.method)
   if (params.todayOnly) q.set('todayOnly', 'true')
+  if (params.date) q.set('date', params.date)
   if (params.search) q.set('search', params.search)
 
   const url = `${API_ENDPOINTS.sectors.classificationHistory}${q.toString() ? `?${q.toString()}` : ''}`
