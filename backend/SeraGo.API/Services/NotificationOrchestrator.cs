@@ -190,7 +190,7 @@ public sealed class NotificationOrchestrator
 
                 replyMarkup = new InlineKeyboardMarkup(new[]
                 {
-                    new[] { InlineKeyboardButton.WithUrl("⚡ View & Check AI Match on SeraGo", jobUrl) }
+                    new[] { InlineKeyboardButton.WithUrl("See More on SeraGo", jobUrl) }
                 });
             }
 
@@ -643,8 +643,7 @@ public sealed class NotificationOrchestrator
         else if (notification.Type == "job_alert")
         {
             sb.AppendLine();
-            sb.AppendLine("🧠 <i>Want to check your AI compatibility score?</i>");
-            sb.AppendLine("See how your skills and experience match this role on SeraGo!");
+            sb.AppendLine("Get Personalized Jobs through our bot @My_Serago_Bot");
         }
 
         sb.AppendLine();

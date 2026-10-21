@@ -1104,8 +1104,7 @@ public sealed class TelegramBotService
             _botClient,
             chatId,
             testJob,
-            sectorName: sectorName,
-            header: "🚀 <b>Test Job Alert (Instant Verification)</b>");
+            sectorName: sectorName);
     }
 
     public async Task SendOrEditCvManagementCardAsync(long chatId, int? messageId, string userId)

@@ -115,7 +115,7 @@ public sealed class TelegramJobService
         var link = BuildJobLink(job);
         var keyboard = new InlineKeyboardMarkup(new[]
         {
-            new[] { InlineKeyboardButton.WithUrl("🌐 View on SeraGo & Apply", link) }
+            new[] { InlineKeyboardButton.WithUrl("See More on SeraGo", link) }
         });
 
         try
@@ -232,7 +232,7 @@ public sealed class TelegramJobService
             var link = BuildJobLink(job);
             var keyboard = new InlineKeyboardMarkup(new[]
             {
-                new[] { InlineKeyboardButton.WithUrl("🌐 View on SeraGo & Apply", link) }
+                new[] { InlineKeyboardButton.WithUrl("See More on SeraGo", link) }
             });
 
             try
@@ -555,30 +555,23 @@ public sealed class TelegramJobService
         Job job,
         string? linkBase = null,
         string? sectorName = null,
-        string? header = null)
+        string? header = null,
+        string? buttonText = null)
     {
         var baseUrl = (linkBase ?? "https://serago.pro.et/dashboard/talent/jobs").TrimEnd('/');
         var sectorParam = job.SectorId != null ? $"&sectorId={job.SectorId}" : "";
         var sectorNameParam = !string.IsNullOrWhiteSpace(job.SectorName) ? $"&sector={Uri.EscapeDataString(job.SectorName)}" : "";
         var link = $"{baseUrl}/{job.Id}?from=telegram&title={Uri.EscapeDataString(job.Title)}{sectorParam}{sectorNameParam}";
+        var btnText = buttonText ?? "See More on SeraGo";
         var keyboard = new InlineKeyboardMarkup(new[]
         {
-            new[] { InlineKeyboardButton.WithUrl("🌐 View on SeraGo & Apply", link) }
+            new[] { InlineKeyboardButton.WithUrl(btnText, link) }
         });
 
         var sb = new StringBuilder();
-        if (header != null)
+        if (!string.IsNullOrWhiteSpace(header))
         {
-            if (!string.IsNullOrWhiteSpace(header))
-            {
-                sb.AppendLine(header);
-                sb.AppendLine();
-            }
-        }
-        else
-        {
-            var displaySector = FormatSectorName(sectorName) ?? ResolveSectorName(job) ?? "Your Target Sector";
-            sb.AppendLine($"🎯 <b>Job Alert for your Sector: {Escape(displaySector)}</b>");
+            sb.AppendLine(header);
             sb.AppendLine();
         }
 
@@ -589,14 +582,9 @@ public sealed class TelegramJobService
         if (caption.Length > 1020)
         {
             sb.Clear();
-            if (header != null)
+            if (!string.IsNullOrWhiteSpace(header))
             {
-                if (!string.IsNullOrWhiteSpace(header)) { sb.AppendLine(header); sb.AppendLine(); }
-            }
-            else
-            {
-                var displaySector = FormatSectorName(sectorName) ?? ResolveSectorName(job) ?? "Your Target Sector";
-                sb.AppendLine($"🎯 <b>Job Alert for your Sector: {Escape(displaySector)}</b>");
+                sb.AppendLine(header);
                 sb.AppendLine();
             }
             sb.Append(BuildJobCardText(job, link, maxSnippetLength: 90));
@@ -747,9 +735,7 @@ public sealed class TelegramJobService
         }
 
         sb.AppendLine();
-        sb.AppendLine(BuildSectorHashtags(sector));
-        sb.AppendLine();
-        sb.AppendLine($"🔗 <a href=\"{link}\">View full details and apply on SeraGo</a>");
+        sb.AppendLine("Get Personalized Jobs through our bot @My_Serago_Bot");
         return sb.ToString();
     }
 
