@@ -1773,9 +1773,9 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                     What you can do and what you're looking for in your next role.
                   </p>
                   <div className="mt-4 flex items-center gap-2">
-                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+                    <span className={`inline-block w-2 h-2 rounded-full ${skillsFilled > 0 ? 'bg-emerald-500' : 'bg-surface-variant'}`} />
                     <span className="font-label-sm text-label-sm text-on-surface-variant">
-                      {formik.values.skills.length} skills added
+                      {skillsFilled} of 3 sections completed ({formik.values.skills.length} {formik.values.skills.length === 1 ? 'skill' : 'skills'})
                     </span>
                   </div>
                 </div>
@@ -2261,9 +2261,9 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                     Where employers can find your portfolio and review your formal resume.
                   </p>
                   <div className="mt-4 flex items-center gap-2">
-                    <span className={`inline-block w-2 h-2 rounded-full ${formik.values.resumeUrl ? 'bg-emerald-500' : 'bg-surface-variant'}`} />
+                    <span className={`inline-block w-2 h-2 rounded-full ${linksFilled > 0 ? 'bg-emerald-500' : 'bg-surface-variant'}`} />
                     <span className="font-label-sm text-label-sm text-on-surface-variant">
-                      {formik.values.resumeUrl ? 'Resume uploaded' : 'No resume uploaded'}
+                      {linksFilled} of 4 items added {formik.values.resumeUrl ? '· Resume uploaded' : ''}
                     </span>
                   </div>
                 </div>
