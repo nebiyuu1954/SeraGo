@@ -27,6 +27,8 @@ const COPY: Record<RequiredRole, { title: string; blurb: string }> = {
   },
 }
 
+type SettingsTab = 'all' | 'forYou' | 'notifications' | 'security' | 'ai'
+
 export default function SettingsForm({ role }: SettingsFormProps) {
   const auth = useRequireRole(role)
   const navigate = useNavigate()
@@ -39,6 +41,21 @@ export default function SettingsForm({ role }: SettingsFormProps) {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [sectorModalOpen, setSectorModalOpen] = useState(false)
+
+  // Active pill tab navigation ('all' or specific category)
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.toLowerCase()
+      const search = window.location.search.toLowerCase()
+      if (hash.includes('telegram') || hash.includes('notifications') || search.includes('telegram')) {
+        return 'notifications'
+      }
+      if (hash.includes('security')) return 'security'
+      if (hash.includes('for-you') || hash.includes('foryou')) return 'forYou'
+      if (hash.includes('ai')) return 'ai'
+    }
+    return 'all'
+  })
 
   // Listen for openSectorModal trigger from resume cancellation flow
   useEffect(() => {
@@ -56,8 +73,6 @@ export default function SettingsForm({ role }: SettingsFormProps) {
     }
   }, [isLoading, settings, draft])
 
-
-
   const isDirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(settings)
 
   const handleSave = useCallback(async () => {
@@ -66,7 +81,7 @@ export default function SettingsForm({ role }: SettingsFormProps) {
     setSaveError(null)
     try {
       await saveSettings(draft)
-      showToast('Settings saved.')
+      showToast('Settings saved successfully.')
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save settings.')
     } finally {
@@ -111,77 +126,165 @@ export default function SettingsForm({ role }: SettingsFormProps) {
 
   return (
     <DashboardShell role={role} authUser={auth.user}>
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="font-headline-lg text-headline-lg font-bold tracking-tight text-primary">
-          {COPY[role].title}
-        </h1>
-        <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
-          {COPY[role].blurb}
-        </p>
-      </div>
+      <div className="w-full pb-16">
+        {/* Header Block */}
+        <div className="flex flex-col gap-4 pb-6 border-b border-surface-variant">
+          <div>
+            <h1 className="font-headline-lg text-headline-lg font-bold text-on-surface tracking-tight">
+              {COPY[role].title}
+            </h1>
+            <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
+              {COPY[role].blurb}
+            </p>
+          </div>
 
-      {/* Settings sections */}
-      <div className="space-y-4">
-        {role === 'Talent' && (
-          <ForYouSettings
-            value={draft.forYou}
-            onChange={(forYou) => updateDraft({ forYou })}
-          />
-        )}
+          {/* Horizontal Pill Tab Bar */}
+          <nav aria-label="Settings categories" className="flex items-center gap-2 overflow-x-auto pt-2 pb-1 no-scrollbar">
+            <button
+              type="button"
+              onClick={() => setActiveTab('all')}
+              className={`whitespace-nowrap px-5 py-2 rounded-full font-label-md text-label-md transition-all ${
+                activeTab === 'all'
+                  ? 'bg-primary text-on-primary shadow-sm font-semibold'
+                  : 'bg-surface-container-lowest border border-outline-variant/60 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+              }`}
+            >
+              All Sections
+            </button>
 
-        <NotificationSettings
-          role={role}
-          value={draft.notifications}
-          onChange={(notifications) => updateDraft({ notifications })}
-        />
-
-        <SecuritySettings
-          value={draft.security}
-          onChange={(security) => updateDraft({ security })}
-        />
-
-        <AIFeaturesSettings
-          role={role}
-          value={draft.ai}
-          onChange={(ai) => updateDraft({ ai })}
-        />
-      </div>
-
-      {/* Save bar — sticky at the bottom */}
-      {isDirty && (
-        <div className="sticky bottom-0 z-30 mt-6 flex items-center justify-between gap-4 rounded-xl border border-surface-variant bg-surface-container-lowest p-4 shadow-lg">
-          <div className="flex items-center gap-2">
-            {saveError && (
-              <p className="font-label-sm text-label-sm text-error">{saveError}</p>
+            {role === 'Talent' && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('forYou')}
+                className={`whitespace-nowrap px-5 py-2 rounded-full font-label-md text-label-md transition-all ${
+                  activeTab === 'forYou'
+                    ? 'bg-primary text-on-primary shadow-sm font-semibold'
+                    : 'bg-surface-container-lowest border border-outline-variant/60 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+                }`}
+              >
+                For You Feed
+              </button>
             )}
-          </div>
-          <div className="flex items-center gap-3">
+
             <button
               type="button"
-              onClick={() => setDraft({ ...settings })}
-              className="inline-flex items-center justify-center gap-2 rounded-[0.125rem] border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md font-medium tracking-[0.05em] text-on-surface transition-colors hover:bg-surface-container-low"
+              onClick={() => setActiveTab('notifications')}
+              className={`whitespace-nowrap px-5 py-2 rounded-full font-label-md text-label-md transition-all ${
+                activeTab === 'notifications'
+                  ? 'bg-primary text-on-primary shadow-sm font-semibold'
+                  : 'bg-surface-container-lowest border border-outline-variant/60 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+              }`}
             >
-              Discard
+              Notifications
             </button>
+
             <button
               type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="inline-flex items-center justify-center gap-2 rounded-[0.125rem] bg-accent px-6 py-2 font-label-md text-label-md font-medium tracking-[0.05em] text-on-accent transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-60"
+              onClick={() => setActiveTab('security')}
+              className={`whitespace-nowrap px-5 py-2 rounded-full font-label-md text-label-md transition-all ${
+                activeTab === 'security'
+                  ? 'bg-primary text-on-primary shadow-sm font-semibold'
+                  : 'bg-surface-container-lowest border border-outline-variant/60 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+              }`}
             >
-              {saving ? (
-                <>
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-on-accent/30 border-t-on-accent" />
-                  Saving…
-                </>
-              ) : (
-                'Save settings'
-              )}
+              Security
             </button>
-          </div>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('ai')}
+              className={`whitespace-nowrap px-5 py-2 rounded-full font-label-md text-label-md transition-all ${
+                activeTab === 'ai'
+                  ? 'bg-primary text-on-primary shadow-sm font-semibold'
+                  : 'bg-surface-container-lowest border border-outline-variant/60 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+              }`}
+            >
+              AI Features
+            </button>
+          </nav>
         </div>
-      )}
+
+        {/* Main Settings Canvas - Unified divided container filling full width */}
+        <div className="mt-8 w-full rounded-2xl border border-surface-variant bg-surface-container-lowest shadow-sm divide-y divide-surface-variant overflow-hidden">
+          {role === 'Talent' && (activeTab === 'all' || activeTab === 'forYou') && (
+            <ForYouSettings
+              value={draft.forYou}
+              onChange={(forYou) => updateDraft({ forYou })}
+            />
+          )}
+
+          {(activeTab === 'all' || activeTab === 'notifications') && (
+            <NotificationSettings
+              role={role}
+              value={draft.notifications}
+              onChange={(notifications) => updateDraft({ notifications })}
+              hasSectors={role === 'Talent' ? (draft.forYou?.sectorIds?.length ?? 0) > 0 : true}
+            />
+          )}
+
+          {(activeTab === 'all' || activeTab === 'security') && (
+            <SecuritySettings
+              value={draft.security}
+              onChange={(security) => updateDraft({ security })}
+            />
+          )}
+
+          {(activeTab === 'all' || activeTab === 'ai') && (
+            <AIFeaturesSettings
+              role={role}
+              value={draft.ai}
+              onChange={(ai) => updateDraft({ ai })}
+            />
+          )}
+        </div>
+
+        {/* Floating Bottom Save Dock */}
+        {isDirty && (
+          <aside className="sticky bottom-6 z-30 mt-12 w-full rounded-2xl bg-surface-container-lowest/95 backdrop-blur-md shadow-xl border border-surface-variant p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-accent" />
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-label-md text-label-md font-medium text-on-surface">Unsaved changes:</span>
+                <span className="font-label-sm text-label-sm text-on-surface-variant">Settings have been modified</span>
+              </div>
+              {saveError && (
+                <span className="ml-2 font-label-sm text-label-sm text-error">({saveError})</span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+              <button
+                type="button"
+                onClick={() => setDraft({ ...settings })}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-lg bg-surface-container-lowest text-on-surface font-label-md text-label-md shadow-sm hover:bg-surface-container-low transition-colors border border-outline-variant"
+              >
+                Discard
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="w-full sm:w-auto px-7 py-2.5 rounded-lg bg-accent text-on-accent font-label-md text-label-md font-medium shadow-md hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:pointer-events-none disabled:opacity-60"
+              >
+                {saving ? (
+                  <>
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-on-accent/30 border-t-on-accent" />
+                    <span>Saving…</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Save settings</span>
+                    <span className="material-symbols-outlined text-base">check</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </aside>
+        )}
+      </div>
 
       {/* Unsaved changes dialog */}
       <UnsavedChangesDialog

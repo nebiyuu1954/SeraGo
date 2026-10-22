@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   fetchTelegramLinkUrl,
   fetchTelegramStatus,
@@ -17,7 +17,11 @@ type LinkState = 'loading' | 'linked' | 'unlinked' | 'offline'
  * re-checks the status after they finish in Telegram. The per-type Telegram
  * toggles below control *which* notifications use the linked chat.
  */
-export default function TelegramLinkCard() {
+interface TelegramLinkCardProps {
+  onStatusChange?: (linked: boolean) => void
+}
+
+export default function TelegramLinkCard({ onStatusChange }: TelegramLinkCardProps = {}) {
   // No stored tokens → "offline" from the start (no synchronous setState in
   // the effect below, mirroring the PasswordSetupCard pattern).
   const [state, setState] = useState<LinkState>(() =>
@@ -30,6 +34,11 @@ export default function TelegramLinkCard() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const onStatusChangeRef = useRef(onStatusChange)
+  useEffect(() => {
+    onStatusChangeRef.current = onStatusChange
+  })
+
   useEffect(() => {
     const tokens = getStoredAuthTokens()
     if (!tokens) return
@@ -40,10 +49,14 @@ export default function TelegramLinkCard() {
         if (!cancelled) {
           setState(data.linked ? 'linked' : 'unlinked')
           setTelegramUser(data.linked ? { username: data.username, firstName: data.firstName } : null)
+          onStatusChangeRef.current?.(data.linked)
         }
       })
       .catch(() => {
-        if (!cancelled) setState('offline')
+        if (!cancelled) {
+          setState('offline')
+          onStatusChangeRef.current?.(false)
+        }
       })
 
     return () => {
@@ -63,14 +76,17 @@ export default function TelegramLinkCard() {
     const tokens = getStoredAuthTokens()
     if (!tokens) {
       setState('offline')
+      onStatusChange?.(false)
       return
     }
     try {
       const data = await fetchTelegramStatus(tokens.accessToken)
       setState(data.linked ? 'linked' : 'unlinked')
       setTelegramUser(data.linked ? { username: data.username, firstName: data.firstName } : null)
+      onStatusChange?.(data.linked)
     } catch {
       setState('offline')
+      onStatusChange?.(false)
     }
   }
 
@@ -98,6 +114,7 @@ export default function TelegramLinkCard() {
       await unlinkTelegram(tokens.accessToken)
       setState('unlinked')
       setTelegramUser(null)
+      onStatusChange?.(false)
     } catch (e) {
       setError(getApiErrorMessage(e))
     } finally {

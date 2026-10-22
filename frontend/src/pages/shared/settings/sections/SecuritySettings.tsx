@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useFormik } from 'formik'
 import { object, ref, string } from 'yup'
-import AccordionSection from '../../../../components/ui/AccordionSection.tsx'
 import PasswordInput from '../../../../components/auth/PasswordInput.tsx'
 import {
   fetchConnectedAccounts,
@@ -24,50 +23,61 @@ interface SecuritySettingsProps {
 
 export default function SecuritySettings({ value, onChange }: SecuritySettingsProps) {
   return (
-    <AccordionSection
-      title="Security"
-      description="Password, two-factor authentication, and connected accounts"
-      icon="shield"
-      completion={{ filled: value.hasPassword ? 1 : 0, total: 2 }}
-    >
-      {/* ── Change Password ── */}
-      <div className="md:col-span-2">
+    <div id="security" className="p-6 sm:p-8 lg:p-10 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10">
+      {/* Left Info Column */}
+      <div className="lg:col-span-4 flex flex-col justify-start">
+        <h2 className="font-headline-md text-headline-md font-semibold text-on-surface">
+          Security &amp; Password
+        </h2>
+        <p className="font-body-md text-body-md text-on-surface-variant mt-2 leading-relaxed">
+          Update your account password, manage connected authentication providers, and review security settings.
+        </p>
+
+        <div className="mt-4 flex items-center gap-2">
+          <span className={`inline-block w-2 h-2 rounded-full ${value.hasPassword ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+          <span className="font-label-sm text-label-sm text-on-surface-variant">
+            {value.hasPassword ? 'Password protection active' : 'Password not set'}
+          </span>
+        </div>
+      </div>
+
+      {/* Right Controls Column */}
+      <div className="lg:col-span-8 flex flex-col gap-6">
+        {/* Change Password */}
         <ChangePasswordSection
           hasPassword={value.hasPassword}
           onPasswordSet={() => onChange({ ...value, hasPassword: true })}
         />
-      </div>
 
-      {/* ── Two-Factor Authentication (placeholder) ── */}
-      <div className="md:col-span-2">
-        <div className="flex items-center justify-between gap-4 py-3">
-          <div className="min-w-0">
-            <p className="font-label-md text-label-md text-on-surface">
-              Two-factor authentication
-            </p>
-            <p className="font-label-sm text-label-sm text-on-surface-variant/70">
-              Add an extra layer of security to your account.{' '}
-              <span className="inline-flex items-center gap-1 rounded-full bg-surface-container-low px-2 py-0.5 text-label-xs font-medium text-on-surface-variant">
+        {/* Two-Factor Authentication */}
+        <div className="flex items-center justify-between gap-4 p-4 rounded-xl bg-surface-container-low border border-surface-variant/60">
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2.5">
+              <span className="font-label-md text-label-md font-semibold text-on-surface">
+                Two-Factor Authentication (2FA)
+              </span>
+              <span className="px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800">
                 Coming soon
               </span>
-            </p>
+            </div>
+            <span className="font-label-sm text-label-sm text-on-surface-variant mt-0.5">
+              Protect your account with Google Authenticator or hardware security keys.
+            </span>
           </div>
           <button
             type="button"
             disabled
-            aria-label="Two-factor authentication"
-            className="relative inline-flex h-5 w-9 shrink-0 cursor-not-allowed rounded-full bg-surface-variant opacity-50"
+            aria-label="Two-factor authentication coming soon"
+            className="relative inline-flex h-6 w-11 shrink-0 cursor-not-allowed rounded-full bg-surface-variant opacity-50"
           >
-            <span className="inline-block h-4 w-4 translate-x-0.5 transform rounded-full bg-white shadow-sm transition-transform mt-0.5" />
+            <span className="inline-block h-5 w-5 translate-x-0.5 transform rounded-full bg-white shadow-sm transition-transform mt-0.5" />
           </button>
         </div>
-      </div>
 
-      {/* ── Connected Accounts ── */}
-      <div className="md:col-span-2">
+        {/* Connected Accounts */}
         <ConnectedAccountsSection />
       </div>
-    </AccordionSection>
+    </div>
   )
 }
 
