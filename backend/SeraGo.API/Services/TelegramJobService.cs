@@ -651,7 +651,8 @@ public sealed class TelegramJobService
     public static string GetSourceBannerUrl(string? sourceName)
     {
         var fileName = GetSourceBannerFileName(sourceName);
-        return $"https://serago.pro.et/sources/{fileName}";
+        var version = Environment.GetEnvironmentVariable("SOURCE_BANNERS_VERSION") ?? "2";
+        return $"https://serago.pro.et/sources/{fileName}?v={version}";
     }
 
     public static string? TryResolveLocalBannerPath(string fileName)
