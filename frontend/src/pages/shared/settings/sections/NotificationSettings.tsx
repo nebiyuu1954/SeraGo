@@ -121,18 +121,15 @@ export default function NotificationSettings({ role, value, onChange }: Notifica
   let enabledCount = 0
   let totalToggles = 0
   if (isTalent) {
-    enabledCount += countChannels(value.jobAlerts) + countChannels(value.applicationUpdates)
-    totalToggles += 6
+    enabledCount += countChannels(value.jobAlerts)
+    totalToggles += 3
   }
   if (isAdmin) {
     enabledCount += countChannels(value.systemAlerts)
     totalToggles += 3
   }
   // Email-only extras count as 1 each
-  if (isTalent) { enabledCount += value.weeklyDigest ? 1 : 0; totalToggles += 1 }
   if (isAdmin) { enabledCount += value.weeklyReport ? 1 : 0; totalToggles += 1 }
-  enabledCount += value.marketing ? 1 : 0
-  totalToggles += 1
 
   const isAutoOpen = typeof window !== 'undefined' && (
     window.location.hash.toLowerCase().includes('telegram') ||
@@ -170,61 +167,6 @@ export default function NotificationSettings({ role, value, onChange }: Notifica
             channels={value.jobAlerts}
             onChange={(ch) => updateType('jobAlerts', ch)}
           />
-          <Divider />
-          <NotificationTypeRow
-            label="Application updates"
-            description="When your application status changes"
-            channels={value.applicationUpdates}
-            onChange={(ch) => updateType('applicationUpdates', ch)}
-          />
-          <Divider />
-
-          {/* Email-only extras */}
-          <div className="py-3">
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <p className="font-label-md text-label-md text-on-surface">Weekly digest</p>
-                <p className="font-label-sm text-label-sm text-on-surface-variant/70">
-                  A summary of new jobs and activity each week
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={value.weeklyDigest}
-                aria-label="Toggle weekly digest"
-                onClick={() => updateEmailOnly({ weeklyDigest: !value.weeklyDigest })}
-                className={toggleClass(value.weeklyDigest)}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform mt-0.5 ${value.weeklyDigest ? 'translate-x-4' : 'translate-x-0.5'}`}
-                />
-              </button>
-            </div>
-          </div>
-          <Divider />
-          <div className="py-3">
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <p className="font-label-md text-label-md text-on-surface">Saved search alerts</p>
-                <p className="font-label-sm text-label-sm text-on-surface-variant/70">
-                  When saved searches have new matches
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={value.marketing}
-                aria-label="Toggle saved search alerts"
-                onClick={() => updateEmailOnly({ marketing: !value.marketing })}
-                className={toggleClass(value.marketing)}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform mt-0.5 ${value.marketing ? 'translate-x-4' : 'translate-x-0.5'}`}
-                />
-              </button>
-            </div>
-          </div>
         </div>
       )}
 

@@ -6,7 +6,6 @@ import TalentOnboardingModal from '../../../components/dashboard/TalentOnboardin
 import { useRequireRole, useSettingsQuery, useUnsavedChanges } from '../../../hooks'
 import type { RequiredRole } from '../../../hooks'
 import type { UserSettings } from '../../../types'
-import AccountSettings from './sections/AccountSettings.tsx'
 import ForYouSettings from './sections/ForYouSettings.tsx'
 import NotificationSettings from './sections/NotificationSettings.tsx'
 import SecuritySettings from './sections/SecuritySettings.tsx'
@@ -124,11 +123,6 @@ export default function SettingsForm({ role }: SettingsFormProps) {
 
       {/* Settings sections */}
       <div className="space-y-4">
-        <AccountSettings
-          value={draft.account}
-          onChange={(account) => updateDraft({ account })}
-        />
-
         {role === 'Talent' && (
           <ForYouSettings
             value={draft.forYou}
