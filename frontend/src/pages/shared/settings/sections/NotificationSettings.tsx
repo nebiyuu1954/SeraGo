@@ -46,20 +46,20 @@ function ChannelToggle({
         disabled
           ? 'cursor-not-allowed opacity-50 bg-surface-container-low text-on-surface-variant/50 border border-transparent'
           : enabled
-            ? 'bg-primary border border-primary text-black font-medium shadow-sm hover:opacity-95'
+            ? 'bg-primary border border-primary text-white font-medium shadow-sm hover:opacity-95'
             : 'bg-surface-container-low border border-surface-variant/60 text-black font-medium hover:bg-surface-container',
       )}
     >
       <span
         className={cn(
           'material-symbols-outlined text-base inline-block transition-transform duration-500 ease-out',
-          disabled ? 'text-on-surface-variant/50' : 'text-black',
+          disabled ? 'text-on-surface-variant/50' : enabled ? 'text-white' : 'text-black',
           enabled ? 'rotate-[360deg]' : 'rotate-0',
         )}
       >
         add
       </span>
-      <span className={disabled ? 'text-on-surface-variant/50' : 'text-black'}>{label}</span>
+      <span className={disabled ? 'text-on-surface-variant/50' : enabled ? 'text-white' : 'text-black'}>{label}</span>
     </button>
   )
 }

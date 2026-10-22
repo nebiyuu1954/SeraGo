@@ -75,15 +75,6 @@ export default function AIFeaturesSettings({ role, value, onChange }: AIFeatures
             ? 'Configure AI-assisted job matching, cover letter drafting, and automated resume skill parsing.'
             : 'Configure AI recommendations and platform intelligence settings.'}
         </p>
-
-        <div className="mt-4 p-3 rounded-lg bg-surface-container-low border border-surface-variant/60">
-          <span className="font-label-sm text-label-sm text-on-surface font-medium block">
-            SeraGo Neural Engine
-          </span>
-          <span className="font-label-sm text-label-sm text-on-surface-variant">
-            Privacy-first on-device &amp; secure inference
-          </span>
-        </div>
       </div>
 
       {/* Right Controls Column */}

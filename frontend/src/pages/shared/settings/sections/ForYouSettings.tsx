@@ -68,12 +68,12 @@ export default function ForYouSettings({ value, onChange }: ForYouSettingsProps)
                   type="button"
                   onClick={() => toggleSector(id)}
                   aria-label={`Remove ${name}`}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary border border-primary text-black font-label-md text-label-md font-medium shadow-sm transition-all hover:opacity-95 active:scale-[0.97] group"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary border border-primary text-white font-label-md text-label-md font-medium shadow-sm transition-all hover:opacity-95 active:scale-[0.97] group"
                 >
-                  <span className="material-symbols-outlined text-base text-black inline-block transition-transform duration-500 ease-out rotate-[360deg] group-hover:rotate-0">
+                  <span className="material-symbols-outlined text-base text-white inline-block transition-transform duration-500 ease-out rotate-[360deg] group-hover:rotate-0">
                     add
                   </span>
-                  <span className="text-black">{name}</span>
+                  <span className="text-white">{name}</span>
                 </button>
               )
             })}

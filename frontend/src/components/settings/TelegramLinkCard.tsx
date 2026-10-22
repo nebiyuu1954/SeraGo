@@ -147,9 +147,9 @@ export default function TelegramLinkCard({ onStatusChange }: TelegramLinkCardPro
         </div>
 
         <span
-          className={`shrink-0 rounded-full px-2.5 py-1 text-label-xs ${
+          className={`shrink-0 rounded-full px-2.5 py-1 text-label-xs font-medium ${
             state === 'linked'
-              ? 'bg-primary/10 text-primary'
+              ? 'bg-primary text-white shadow-sm'
               : 'bg-surface-variant/60 text-on-surface-variant/70'
           }`}
         >
@@ -167,7 +167,7 @@ export default function TelegramLinkCard({ onStatusChange }: TelegramLinkCardPro
             type="button"
             onClick={disconnect}
             disabled={busy}
-            className="rounded-full border border-surface-variant px-3 py-1.5 font-label-sm text-label-sm text-on-surface transition-colors hover:bg-surface-variant/50 disabled:opacity-50"
+            className="rounded-full border border-error/40 bg-error/10 px-3.5 py-1.5 font-label-sm text-label-sm font-medium text-error transition-all hover:bg-error hover:text-white disabled:opacity-50"
           >
             {busy ? 'Disconnecting…' : 'Disconnect'}
           </button>

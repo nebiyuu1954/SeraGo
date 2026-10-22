@@ -402,8 +402,8 @@ function ConnectedAccountsSection() {
               </div>
 
               {isGoogleConnected ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2.5 py-1 text-label-sm font-medium text-success">
-                  <span className="material-symbols-outlined text-sm">check</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-label-sm font-medium text-white shadow-sm">
+                  <span className="material-symbols-outlined text-sm text-white">check</span>
                   Connected
                 </span>
               ) : (
@@ -444,15 +444,15 @@ function ConnectedAccountsSection() {
               <div className="flex items-center gap-2">
                 {isTelegramConnected ? (
                   <>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2.5 py-1 text-label-sm font-medium text-success">
-                      <span className="material-symbols-outlined text-sm">check</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-label-sm font-medium text-white shadow-sm">
+                      <span className="material-symbols-outlined text-sm text-white">check</span>
                       Connected
                     </span>
                     <button
                       type="button"
                       onClick={handleDisconnectTelegram}
                       disabled={busy}
-                      className="rounded-full border border-surface-variant px-3 py-1 font-label-sm text-label-sm text-on-surface transition-colors hover:bg-surface-variant/50 disabled:opacity-50"
+                      className="rounded-full border border-error/40 bg-error/10 px-3 py-1 font-label-sm text-label-sm font-medium text-error transition-all hover:bg-error hover:text-white disabled:opacity-50"
                     >
                       {busy ? 'Disconnecting…' : 'Disconnect'}
                     </button>
