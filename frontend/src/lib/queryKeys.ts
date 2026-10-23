@@ -21,6 +21,9 @@ export const queryKeys = {
   /** Single job detail by id. */
   job: (id: string) => ['job', id] as const,
 
+  /** Top similar jobs by job id. */
+  similarJobs: (jobId: string) => ['jobs', 'similar', jobId] as const,
+
   /** The canonical sector vocabulary (changes rarely). */
   sectors: ['sectors'] as const,
 

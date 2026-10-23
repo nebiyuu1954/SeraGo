@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using SeraGo.Core.Domain.Entities;
 
 namespace SeraGo.API.Services;
 
@@ -570,5 +571,95 @@ public class MatchingClient
     {
         [JsonPropertyName("scores")]
         public Dictionary<string, ApplicationScoreDto>? Scores { get; set; }
+    }
+
+    /// <summary>Represents a candidate job's cosine similarity match against the target job.</summary>
+    public sealed record SimilarJobMatch(Guid JobId, double Score);
+
+    /// <summary>
+    /// Computes vector cosine similarities between a target job and candidate jobs
+    /// in the same sector via the SeraGo-AI matching engine. Best-effort with timeout.
+    /// </summary>
+    public async Task<List<SimilarJobMatch>> GetSimilarJobMatchesAsync(
+        Job targetJob,
+        List<Job> candidateJobs,
+        CancellationToken ct = default)
+    {
+        if (candidateJobs.Count == 0) return [];
+
+        try
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(4));
+
+            var payload = new
+            {
+                targetJob = new
+                {
+                    jobId = targetJob.Id.ToString(),
+                    title = targetJob.Title,
+                    description = targetJob.Description,
+                    company = targetJob.Company,
+                    location = targetJob.Location,
+                    sectorId = targetJob.SectorId?.ToString(),
+                    sectorName = targetJob.SectorName,
+                    experienceLevel = targetJob.ExperienceLevel.ToString(),
+                    jobType = targetJob.JobType.ToString(),
+                    workMode = targetJob.WorkMode.ToString(),
+                    skills = targetJob.Skills,
+                },
+                candidateJobs = candidateJobs.Select(j => new
+                {
+                    jobId = j.Id.ToString(),
+                    title = j.Title,
+                    description = j.Description,
+                    company = j.Company,
+                    location = j.Location,
+                    sectorId = j.SectorId?.ToString(),
+                    sectorName = j.SectorName,
+                    experienceLevel = j.ExperienceLevel.ToString(),
+                    jobType = j.JobType.ToString(),
+                    workMode = j.WorkMode.ToString(),
+                    skills = j.Skills,
+                }).ToList(),
+            };
+
+            var response = await SendJsonAsync("api/matching/similar-jobs", payload, timeoutCts.Token);
+            response.EnsureSuccessStatusCode();
+
+            var result = await response.Content.ReadFromJsonAsync<SimilarJobsResponse>(JsonOpts, timeoutCts.Token);
+            if (result?.Matches is null) return [];
+
+            return result.Matches
+                .Where(m => Guid.TryParse(m.JobId, out _))
+                .Select(m => new SimilarJobMatch(Guid.Parse(m.JobId!), m.Score))
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to compute vector similar jobs for job {JobId}", targetJob.Id);
+            return [];
+        }
+    }
+
+    private sealed class SimilarJobsResponse
+    {
+        [JsonPropertyName("jobId")]
+        public string? JobId { get; set; }
+
+        [JsonPropertyName("count")]
+        public int Count { get; set; }
+
+        [JsonPropertyName("matches")]
+        public List<SimilarJobMatchItem>? Matches { get; set; }
+    }
+
+    private sealed class SimilarJobMatchItem
+    {
+        [JsonPropertyName("jobId")]
+        public string? JobId { get; set; }
+
+        [JsonPropertyName("score")]
+        public double Score { get; set; }
     }
 }

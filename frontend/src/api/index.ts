@@ -22,6 +22,7 @@ export {
   fetchJobViews,
   fetchJobViewsStats,
   fetchJob,
+  fetchSimilarJobs,
   fetchJobLocations,
   fetchJobTypes,
   fetchJobs,

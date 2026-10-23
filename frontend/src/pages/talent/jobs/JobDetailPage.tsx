@@ -11,7 +11,7 @@ import {
 } from '../../../api'
 import {
   useJobDetailQuery,
-  useJobsQuery,
+  useSimilarJobsQuery,
   useMyApplicationsQuery,
   useProfileQuery,
   useSavedJobsQuery,
@@ -555,10 +555,10 @@ export default function JobDetailPage() {
     (s) => s.heading === 'How to apply' && s.content.trim().length > 0,
   )
 
-  // Similar jobs query: fetches live jobs by sector if available
-  const { jobs: rawSimilarJobs } = useJobsQuery(
-    job?.sectorId ? { sectorId: job.sectorId, pageSize: 8 } : { pageSize: 8 },
-    auth.status === 'authenticated' && !!job,
+  // Similar jobs query: calls the dedicated vector similarity + incremental cache API
+  const { similarJobs: rawSimilarJobs, isLoading: isLoadingSimilar } = useSimilarJobsQuery(
+    job?.id,
+    auth.status === 'authenticated' && !!job?.id,
   )
 
   const liveSimilarJobs: SimilarJobDisplayItem[] = (rawSimilarJobs || [])
@@ -584,9 +584,13 @@ export default function JobDetailPage() {
       }
     })
 
-  // Fallback to rich curated placeholders representing all sources while dedicated API is built
+  // Show live vector-matched vacancies when loaded; fallback to curated previews if empty
   const displayedSimilarJobs =
-    liveSimilarJobs.length > 0 ? liveSimilarJobs : PLACEHOLDER_SIMILAR_JOBS
+    liveSimilarJobs.length > 0
+      ? liveSimilarJobs
+      : isLoadingSimilar
+      ? []
+      : PLACEHOLDER_SIMILAR_JOBS
 
   const copyRoleShareLink = () => {
     if (typeof window !== 'undefined') {
@@ -1127,7 +1131,7 @@ export default function JobDetailPage() {
                       <div className="flex items-center gap-2">
                         <h2 className="font-headline-md text-headline-md font-bold text-on-surface">Similar Jobs</h2>
                         <span className="rounded-full bg-primary-container/60 px-2.5 py-0.5 font-label-sm text-label-sm font-semibold text-primary">
-                          {displayedSimilarJobs.length} found
+                          {isLoadingSimilar ? 'Finding...' : `${displayedSimilarJobs.length} found`}
                         </span>
                       </div>
                       <Link
@@ -1141,7 +1145,27 @@ export default function JobDetailPage() {
 
                     {/* Vertical List of Similar Job Cards (1 per row, wider and bigger) */}
                     <div className="flex flex-col gap-3.5">
-                      {displayedSimilarJobs.map((item) => {
+                      {isLoadingSimilar ? (
+                        Array.from({ length: 3 }).map((_, idx) => (
+                          <div
+                            key={idx}
+                            className="rounded-xl border border-surface-variant bg-surface-container-lowest p-4 sm:p-4.5 animate-pulse flex flex-col gap-3"
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="h-11 w-11 rounded-xl bg-surface-variant/40 shrink-0" />
+                              <div className="flex-1 space-y-2 py-0.5">
+                                <div className="h-4 w-3/4 rounded bg-surface-variant/40" />
+                                <div className="h-3 w-1/2 rounded bg-surface-variant/30" />
+                              </div>
+                            </div>
+                            <div className="flex gap-2 pt-1">
+                              <div className="h-4 w-20 rounded bg-surface-variant/30" />
+                              <div className="h-4 w-16 rounded bg-surface-variant/30" />
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        displayedSimilarJobs.map((item) => {
                         const itemSourceLogo = sourceLogo(item.sourceName)
                         const isCurrent = item.id === job.id
 
@@ -1225,7 +1249,7 @@ export default function JobDetailPage() {
                             </div>
                           </div>
                         )
-                      })}
+                      }))}
                     </div>
                   </div>
                 </aside>

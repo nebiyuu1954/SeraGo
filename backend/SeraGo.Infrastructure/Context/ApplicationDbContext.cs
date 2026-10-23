@@ -29,6 +29,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<TelegramScheduledMessage> TelegramScheduledMessages => Set<TelegramScheduledMessage>();
+    public DbSet<JobSimilarityCache> JobSimilarityCaches => Set<JobSimilarityCache>();
 
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
     {
@@ -290,6 +291,21 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             entity.Property(m => m.CreatedAt).HasConversion(utcDateTimeOffset);
             entity.Property(m => m.UpdatedAt).HasConversion(utcDateTimeOffset);
             entity.Property(m => m.LastRunAt).HasConversion(utcDateTimeOffset);
+        });
+
+        // Cached similar jobs (incremental watermark delta update)
+        modelBuilder.Entity<JobSimilarityCache>(entity =>
+        {
+            entity.HasKey(c => c.JobId);
+            entity.HasOne(c => c.Job)
+                .WithOne()
+                .HasForeignKey<JobSimilarityCache>(c => c.JobId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            var utcDateTimeOffset = new ValueConverter<DateTimeOffset, DateTimeOffset>(
+                v => v.ToUniversalTime(), v => v);
+            entity.Property(c => c.LastEvaluatedAt).HasConversion(utcDateTimeOffset);
+            entity.Property(c => c.UpdatedAt).HasConversion(utcDateTimeOffset);
         });
     }
 }

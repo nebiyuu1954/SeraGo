@@ -98,6 +98,13 @@ export function fetchJob(id: string, accessToken?: string): Promise<JobResponse>
   })
 }
 
+/** GET /api/jobs/{id}/similar — top 6 vector-similar jobs in the same sector. */
+export function fetchSimilarJobs(id: string, accessToken?: string): Promise<JobResponse[]> {
+  return request<JobResponse[]>(`${API_ENDPOINTS.jobs.list}/${id}/similar`, {
+    headers: accessToken ? auth(accessToken) : undefined,
+  })
+}
+
 /** POST /api/jobs — create a job (draft by default). */
 export function createJob(
   payload: JobWriteRequest,
