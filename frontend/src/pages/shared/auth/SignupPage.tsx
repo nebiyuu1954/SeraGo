@@ -23,6 +23,7 @@ import EthiopianPhoneInput from '../../../components/auth/EthiopianPhoneInput.ts
 import { isValidEthiopianPhone, normalizeEthiopianPhone } from '../../../lib/phoneUtils.ts'
 import { meetsPasswordRules } from '../../../components/auth/passwordRules.ts'
 import { trackEvent } from '../../../lib/analytics'
+import { getStoredUTMParams, clearStoredUTMParams } from '../../../hooks'
 
 const FIELD_ORDER = [
   'firstName',
@@ -122,6 +123,7 @@ export default function SignupPage() {
       setError(null)
       setAccountExists(false)
       try {
+        const utmData = getStoredUTMParams()
         const normalizedPhone =
           normalizeEthiopianPhone(values.phoneNumber) ?? values.phoneNumber
         const signUpResponse = await signUp({
@@ -132,8 +134,15 @@ export default function SignupPage() {
           email: values.email.trim(),
           password: values.password,
           role: 'Talent',
+          source: utmData?.utm_source ?? 'direct',
+          utmCampaign: utmData?.utm_campaign,
         })
-        trackEvent('sign_up', { method: 'email' })
+        trackEvent('sign_up', {
+          method: 'email',
+          source: utmData?.utm_source ?? 'direct',
+          campaign: utmData?.utm_campaign,
+        })
+        clearStoredUTMParams()
 
         if (signUpResponse.requiresEmailConfirmation) {
           // The account is created but inactive until the emailed link is

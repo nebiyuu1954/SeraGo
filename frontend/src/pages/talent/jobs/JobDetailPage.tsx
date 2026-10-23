@@ -1,5 +1,7 @@
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Helmet } from 'react-helmet-async'
+import ReactGA from 'react-ga4'
 import {
   applyToJob,
   fetchJob,
@@ -458,6 +460,68 @@ export default function JobDetailPage() {
     (s) => s.heading === 'How to apply' && s.content.trim().length > 0,
   )
 
+  // Engagement Tracking & Similar Jobs Scroll Observer
+  const similarJobsRef = useRef<HTMLDivElement | null>(null)
+  const hasTrackedScrollRef = useRef(false)
+
+  const handleApplyClick = (source: string) => {
+    if (!job?.id) return
+    ReactGA.event({
+      category: 'Engagement',
+      action: 'Click_Apply',
+      label: `${job.id} (${source})`,
+    })
+  }
+
+  useEffect(() => {
+    hasTrackedScrollRef.current = false
+    if (!job?.id) return
+
+    const target = similarJobsRef.current
+    if (!target) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries
+        if (entry.isIntersecting && !hasTrackedScrollRef.current) {
+          hasTrackedScrollRef.current = true
+          ReactGA.event({
+            category: 'Engagement',
+            action: 'Scroll_To_Bottom',
+            label: job.id,
+          })
+        }
+      },
+      { threshold: 0.1 },
+    )
+
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [job?.id])
+
+  // Dynamic SEO metadata
+  const pageTitle = job
+    ? `${job.title} at ${job.company || 'SeraGo'} - SeraGo`
+    : 'Job Details · SeraGo'
+
+  const metaDescription = job?.description
+    ? job.description
+        .replace(/<[^>]*>?/gm, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 160) + '...'
+    : 'Find and apply for verified jobs in Ethiopia on SeraGo.'
+
+  const canonicalUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/dashboard/talent/jobs/${job?.id ?? ''}`
+      : `https://serago.pro.et/dashboard/talent/jobs/${job?.id ?? ''}`
+  const ogImage =
+    job?.companyLogoUrl ||
+    (typeof window !== 'undefined'
+      ? `${window.location.origin}/favicon.svg`
+      : 'https://serago.pro.et/favicon.svg')
+
   const handleToggleSave = async () => {
     if (!job) return
     const tokens = getStoredAuthTokens()
@@ -550,7 +614,28 @@ export default function JobDetailPage() {
   }
 
   return (
-    <DashboardShell role={isPreview ? 'Admin' : 'Talent'} authUser={auth.user}>
+    <>
+      <Helmet>
+        <title>{pageTitle}</title>
+        <meta name="description" content={metaDescription} />
+        <link rel="canonical" href={canonicalUrl} />
+
+        {/* OpenGraph */}
+        <meta property="og:type" content="article" />
+        <meta property="og:site_name" content="SeraGo" />
+        <meta property="og:title" content={pageTitle} />
+        <meta property="og:description" content={metaDescription} />
+        <meta property="og:url" content={canonicalUrl} />
+        <meta property="og:image" content={ogImage} />
+
+        {/* Twitter Card */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={pageTitle} />
+        <meta name="twitter:description" content={metaDescription} />
+        <meta name="twitter:image" content={ogImage} />
+      </Helmet>
+
+      <DashboardShell role={isPreview ? 'Admin' : 'Talent'} authUser={auth.user}>
       {isPreview ? (
         <div className="flex items-center gap-3">
           <Link
@@ -687,7 +772,10 @@ export default function JobDetailPage() {
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setShowApplyForm(true)}
+                      onClick={() => {
+                        handleApplyClick('header_serago_modal')
+                        setShowApplyForm(true)
+                      }}
                       className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent px-6 py-3 font-label-md text-label-md font-medium text-on-accent shadow-sm transition-opacity hover:opacity-90"
                     >
                       Apply on SeraGo
@@ -700,6 +788,7 @@ export default function JobDetailPage() {
                     href={job.url}
                     target="_blank"
                     rel="noreferrer"
+                    onClick={() => handleApplyClick('header_external_link')}
                     className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent px-6 py-3 font-label-md text-label-md font-medium text-on-accent shadow-sm transition-opacity hover:opacity-90"
                   >
                     Apply on {job.sourceName || 'source'}
@@ -870,6 +959,7 @@ export default function JobDetailPage() {
                       href={job.url}
                       target="_blank"
                       rel="noreferrer"
+                      onClick={() => handleApplyClick('bottom_instructions_cta')}
                       className="mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent px-6 py-3.5 font-label-md text-label-md font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 sm:w-auto"
                     >
                       Apply now
@@ -880,6 +970,34 @@ export default function JobDetailPage() {
                   )}
                 </div>
               )}
+
+              {/* Similar Jobs / Scroll Observer Target */}
+              <div
+                ref={similarJobsRef}
+                id="similar-jobs"
+                className="mt-6 rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm sm:p-8"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-2xl text-primary">
+                    recommend
+                  </span>
+                  <h3 className="font-headline-md text-headline-md font-bold text-on-surface">
+                    Similar Jobs
+                  </h3>
+                </div>
+                <p className="mt-2 font-body-md text-body-md text-on-surface-variant">
+                  Explore other vacancies related to {job.sectorName || 'this profession'}.
+                </p>
+                <div className="mt-4">
+                  <Link
+                    to={job.sectorId ? `/dashboard/talent?sectorId=${job.sectorId}` : '/dashboard/talent'}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-surface-variant px-4 py-2 font-label-md text-label-md font-medium text-primary transition-colors hover:bg-surface-container-low"
+                  >
+                    <span>Browse more {job.sectorName ? `${job.sectorName} ` : ''}jobs</span>
+                    <span className="material-symbols-outlined text-base">arrow_forward</span>
+                  </Link>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1202,6 +1320,7 @@ export default function JobDetailPage() {
           )}
         </>
       )}
-    </DashboardShell>
+      </DashboardShell>
+    </>
   )
 }

@@ -42,6 +42,8 @@ export interface SignUpRequest {
   lastName: string
   phoneNumber: string
   role: SignUpRole
+  source?: string
+  utmCampaign?: string
 }
 
 /** Response of POST /api/auth/signup. */

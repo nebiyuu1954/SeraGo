@@ -153,7 +153,7 @@ public static class AdminJobClassificationEndpoints
 
         logger.LogInformation(
             "Admin classified {Count} jobs via Unified Pipeline — assigned={Assigned}, uncategorized={Uncategorized}",
-            jobIdArr.Length, classified, failed);
+            jobs.Count, classified, failed);
 
         return Results.Ok(new ClassifyJobsResponse(results, classified, failed));
     }

@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { HelmetProvider } from 'react-helmet-async'
 import { ThemeProvider } from './context'
 import { Toaster } from 'sonner'
 import { initAnalytics } from './lib/analytics'
@@ -15,8 +16,9 @@ const router = createBrowserRouter([{ path: '*', element: <App /> }])
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ThemeProvider>
-      <Toaster
+    <HelmetProvider>
+      <ThemeProvider>
+        <Toaster
         position="top-right"
         richColors
         duration={3000}
@@ -42,5 +44,6 @@ createRoot(document.getElementById('root')!).render(
       />
       <RouterProvider router={router} />
     </ThemeProvider>
-  </StrictMode>,
+  </HelmetProvider>
+</StrictMode>,
 )

@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom'
 import AnalyticsTracker from './components/AnalyticsTracker.tsx'
+import { useUTMTracking } from './hooks/useUTMTracking.ts'
 import Layout from './components/layout/Layout.tsx'
 import LandingPage from './pages/shared/landing/LandingPage.tsx'
 import PublicJobsPage from './pages/shared/jobs/PublicJobsPage.tsx'
@@ -40,6 +41,8 @@ import AdminSettingsPage from './pages/admin/settings/SettingsPage.tsx'
 import NotFoundPage from './pages/shared/generic/NotFoundPage.tsx'
 
 function App() {
+  useUTMTracking()
+
   return (
     <>
       {/* Sends a GA4 page_view on every client-side route change */}

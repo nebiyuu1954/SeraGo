@@ -248,6 +248,7 @@ builder.Services.Configure<AiClassificationOptions>(opt =>
 });
 builder.Services.AddHttpClient("SeraGoAiClassify"); // typed client base for the AI classify API
 builder.Services.AddScoped<AiClassificationClient>();
+builder.Services.AddScoped<SitemapNotifierService>(); // Hangfire IndexNow search engine notifier
 builder.Services.AddSingleton<R2StorageService>(); // Cloudflare R2 file storage
 builder.Services.Configure<IdentityOptions>(options =>
 {
@@ -355,6 +356,7 @@ app.MapSavedJobEndpoints(); // /api/saved-jobs — save/unsave/list with lifecyc
 app.MapApplicationEndpoints(); // /api/applications — talent apply, recruiter manage
 app.MapSectorEndpoints(); // /api/sectors (public list only — admin routes gated below)
 app.MapArchitectureDataEndpoint(); // /api/architecture/stats — system architecture data
+app.MapSitemapEndpoints(); // /sitemap.xml — public SEO XML sitemap for Google / Bing / Yandex
 
 // Admin endpoints — behind the kill switch. When ADMIN_API_ENABLED is off,
 // none of these route groups are registered AND the gate middleware 404s

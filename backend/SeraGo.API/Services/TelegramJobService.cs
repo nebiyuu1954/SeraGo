@@ -567,10 +567,7 @@ public sealed class TelegramJobService
         string? buttonText = null,
         ILogger? logger = null)
     {
-        var baseUrl = (linkBase ?? "https://serago.pro.et/dashboard/talent/jobs").TrimEnd('/');
-        var sectorParam = job.SectorId != null ? $"&sectorId={job.SectorId}" : "";
-        var sectorNameParam = !string.IsNullOrWhiteSpace(job.SectorName) ? $"&sector={Uri.EscapeDataString(job.SectorName)}" : "";
-        var link = $"{baseUrl}/{job.Id}?from=telegram&title={Uri.EscapeDataString(job.Title)}{sectorParam}{sectorNameParam}";
+        var link = $"https://serago.pro.et/jobs/{job.Id}?utm_source=telegram&utm_medium=bot_dm&utm_campaign=job_alert";
         var btnText = buttonText ?? "See More on SeraGo";
         var keyboard = new InlineKeyboardMarkup(new[]
         {
@@ -774,9 +771,7 @@ public sealed class TelegramJobService
 
     private string BuildJobLink(Job job)
     {
-        var sectorParam = job.SectorId != null ? $"&sectorId={job.SectorId}" : "";
-        var sectorNameParam = !string.IsNullOrWhiteSpace(job.SectorName) ? $"&sector={Uri.EscapeDataString(job.SectorName)}" : "";
-        return $"{_options.JobLinkBase}/{job.Id}?from=telegram&title={Uri.EscapeDataString(job.Title)}{sectorParam}{sectorNameParam}";
+        return $"https://serago.pro.et/jobs/{job.Id}?utm_source=telegram&utm_medium=channel&utm_campaign=auto_post";
     }
 
     public static string BuildJobCardText(Job job, string link, int maxSnippetLength = 220, int maxTitleLength = 0, int maxCompanyLength = 0)

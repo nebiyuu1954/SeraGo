@@ -8,3 +8,9 @@ export { useProfileQuery } from './useProfileQuery.ts'
 export { useUnsavedChanges } from './useUnsavedChanges.ts'
 export { useSettingsQuery } from './useSettingsQuery.ts'
 export { useNotifications, useNotificationList } from './useNotifications.ts'
+export {
+  useUTMTracking,
+  getStoredUTMParams,
+  clearStoredUTMParams,
+} from './useUTMTracking.ts'
+export type { UTMParams } from './useUTMTracking.ts'
