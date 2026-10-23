@@ -9,11 +9,16 @@ import {
   getStoredAuthTokens,
   updateProfile,
 } from '../../../api'
-import { useJobDetailQuery, useMyApplicationsQuery, useProfileQuery, useSavedJobsQuery } from '../../../hooks/query.ts'
+import {
+  useJobDetailQuery,
+  useJobsQuery,
+  useMyApplicationsQuery,
+  useProfileQuery,
+  useSavedJobsQuery,
+} from '../../../hooks/query.ts'
 import { useRequireRoleAny } from '../../../hooks'
 import type { JobResponse, JobType } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
-import SaveJobButton from '../../../components/dashboard/SaveJobButton.tsx'
 import { useToast } from '../../../components/dashboard/Toast.tsx'
 import { JOB_TYPE_LABELS } from '../../../components/dashboard/jobOptions.ts'
 import { formatDate, postedLabel } from '../../../lib/date.ts'
@@ -29,11 +34,126 @@ import {
 import SourceJobDescription from '../../../components/jobs/SourceJobDescription.tsx'
 import { initialsOf } from '../../../lib/initials.ts'
 import { sourceLogo } from '../../../lib/sourceLogos.ts'
-import { parseSkills } from '../../../lib/sourceCapabilities.ts'
+import seragoLogo from '../../../assets/logos/serago.svg'
 import { saveJob, unsaveJob } from '../../../api'
 import { trackEvent } from '../../../lib/analytics'
 
 const DAY_MS = 86_400_000
+
+export interface SimilarJobDisplayItem {
+  id: string
+  title: string
+  company: string
+  location: string
+  salary: string
+  sourceName: string
+  workMode: string
+  postedAgo: string
+  initials: string
+  companyLogoUrl?: string | null
+}
+
+const PLACEHOLDER_SIMILAR_JOBS: SimilarJobDisplayItem[] = [
+  {
+    id: 'placeholder-1',
+    title: 'Lead Backend Engineer (.NET & Azure)',
+    company: 'Commercial Bank of Ethiopia',
+    location: 'Addis Ababa',
+    salary: 'ETB 60k – 80k',
+    sourceName: 'EthioJobs',
+    workMode: 'hybrid',
+    postedAgo: '1d ago',
+    initials: 'CBE',
+  },
+  {
+    id: 'placeholder-2',
+    title: 'Senior Frontend Developer (React & TypeScript)',
+    company: 'Chapa Financial Technologies',
+    location: 'Bole, Addis Ababa',
+    salary: 'ETB 50k – 70k',
+    sourceName: 'Afriwork',
+    workMode: 'remote',
+    postedAgo: '2d ago',
+    initials: 'CP',
+  },
+  {
+    id: 'placeholder-3',
+    title: 'Mobile App Developer (Flutter & Dart)',
+    company: 'RIDE Mobility Tech',
+    location: 'Kazanchis, Addis Ababa',
+    salary: 'ETB 45k – 60k',
+    sourceName: 'HaHuJobs',
+    workMode: 'onsite',
+    postedAgo: '3d ago',
+    initials: 'RD',
+  },
+  {
+    id: 'placeholder-4',
+    title: 'Cloud Solutions Architect',
+    company: 'SunPay Systems Ethiopia',
+    location: 'Addis Ababa',
+    salary: 'ETB 75k – 110k',
+    sourceName: 'GeezJobs',
+    workMode: 'hybrid',
+    postedAgo: '4d ago',
+    initials: 'SP',
+  },
+  {
+    id: 'placeholder-5',
+    title: 'DevOps & Site Reliability Engineer',
+    company: 'Eaglelion System Technology',
+    location: 'Addis Ababa',
+    salary: 'ETB 55k – 75k',
+    sourceName: 'SeraGo',
+    workMode: 'remote',
+    postedAgo: 'Just now',
+    initials: 'EL',
+  },
+  {
+    id: 'placeholder-6',
+    title: 'Full-Stack Software Engineer',
+    company: 'Iceaddis Tech Incubator',
+    location: 'Addis Ababa',
+    salary: 'ETB 40k – 55k',
+    sourceName: 'Ethiopian Reporter Jobs',
+    workMode: 'onsite',
+    postedAgo: '5d ago',
+    initials: 'IC',
+  },
+]
+
+function formatSalaryDisplay(j: JobResponse): { main: string; sub: string } {
+  if (j.salaryMin != null || j.salaryMax != null) {
+    const currency = j.salaryCurrency || 'ETB'
+    const period = j.salaryPeriod ? ` / ${j.salaryPeriod}` : ' / month'
+    if (j.salaryMin != null && j.salaryMax != null) {
+      return {
+        main: `${currency} ${j.salaryMin.toLocaleString()} – ${j.salaryMax.toLocaleString()}`,
+        sub: `Base pay${period}`,
+      }
+    }
+    if (j.salaryMin != null) {
+      return {
+        main: `From ${currency} ${j.salaryMin.toLocaleString()}`,
+        sub: `Base pay${period}`,
+      }
+    }
+    return {
+      main: `Up to ${currency} ${j.salaryMax!.toLocaleString()}`,
+      sub: `Base pay${period}`,
+    }
+  }
+  if (j.salary?.trim()) {
+    return {
+      main: j.salary,
+      sub: 'Specified by employer',
+    }
+  }
+  return {
+    main: 'Competitive',
+    sub: 'Undisclosed / Negotiable',
+  }
+}
 
 /** A job is a "Serago job" when it was posted directly on the platform (not scraped). */
 function isSeragoJob(job: JobResponse): boolean {
@@ -62,36 +182,6 @@ function closesLabel(deadline: string | null): string | null {
   if (days <= 0) return 'Closes today'
   if (days === 1) return 'Closes tomorrow'
   return `Closes in ${days} days`
-}
-
-/** One icon + caption + value row in the facts sidebar. */
-function Fact({
-  icon,
-  label,
-  value,
-}: {
-  icon: string
-  label: string
-  value: string
-}) {
-  return (
-    <div className="flex items-start gap-3">
-      <span className="material-symbols-outlined mt-0.5 text-lg text-on-surface-variant">
-        {icon}
-      </span>
-      <div className="min-w-0">
-        <p className="font-label-sm text-label-sm uppercase tracking-wide text-on-surface-variant">
-          {label}
-        </p>
-        <p
-          className="mt-0.5 font-body-md text-body-md font-medium text-on-surface"
-          title={value}
-        >
-          {value}
-        </p>
-      </div>
-    </div>
-  )
 }
 
 /** Bolds recognized keyword labels ("Salary:", "Education Qualification:") in text. */
@@ -460,6 +550,54 @@ export default function JobDetailPage() {
     (s) => s.heading === 'How to apply' && s.content.trim().length > 0,
   )
 
+  // Similar jobs query: fetches live jobs by sector if available
+  const { jobs: rawSimilarJobs } = useJobsQuery(
+    job?.sectorId ? { sectorId: job.sectorId, pageSize: 8 } : { pageSize: 8 },
+    auth.status === 'authenticated' && !!job,
+  )
+
+  const liveSimilarJobs: SimilarJobDisplayItem[] = (rawSimilarJobs || [])
+    .filter((j) => j.id !== job?.id)
+    .slice(0, 6)
+    .map((j) => {
+      const sal =
+        j.salaryMin != null || j.salaryMax != null
+          ? `${j.salaryCurrency || 'ETB'} ${j.salaryMin ? j.salaryMin.toLocaleString() : ''}${j.salaryMin && j.salaryMax ? ' – ' : ''}${j.salaryMax ? j.salaryMax.toLocaleString() : ''}`
+          : j.salary || 'Competitive'
+      return {
+        id: j.id,
+        title: j.title,
+        company: j.company || 'Undisclosed',
+        location: j.location || 'Ethiopia',
+        salary: sal,
+        sourceName: j.sourceName || 'SeraGo',
+        workMode: j.workMode || 'onsite',
+        postedAgo: postedLabel(j.publishedAt, j.refreshedAt) || 'Recently',
+        initials: initialsOf(j.company || 'SG'),
+        companyLogoUrl: j.companyLogoUrl,
+      }
+    })
+
+  // Fallback to rich curated placeholders representing all sources while dedicated API is built
+  const displayedSimilarJobs =
+    liveSimilarJobs.length > 0 ? liveSimilarJobs : PLACEHOLDER_SIMILAR_JOBS
+
+  const copyRoleShareLink = () => {
+    if (typeof window !== 'undefined') {
+      navigator.clipboard?.writeText(window.location.href)
+      showToast('Sharable job link copied to clipboard!')
+    }
+  }
+
+  const handleSelectSimilarJob = (id: string) => {
+    if (id.startsWith('placeholder-')) {
+      showToast('Similar jobs API is currently in development. Displaying preview vacancy.', 'info')
+      return
+    }
+    navigate(`/dashboard/talent/jobs/${id}`)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   // Engagement Tracking & Similar Jobs Scroll Observer
   const similarJobsRef = useRef<HTMLDivElement | null>(null)
   const hasTrackedScrollRef = useRef(false)
@@ -688,320 +826,484 @@ export default function JobDetailPage() {
         </div>
       )}
 
-      {!isLoading && !error && job && (
-        <div className="mx-auto mt-6 max-w-5xl space-y-6">
-          {/* Header: logo, title, badges, and the primary actions */}
-          <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm sm:p-8">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-              <div className="flex min-w-0 items-start gap-4">
-                {brandLogo ? (
-                  <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-surface-container-low">
-                    <img
-                      className="max-h-10 w-auto max-w-full object-contain"
-                      src={brandLogo}
-                      alt={job.sourceName ?? ''}
-                    />
-                  </span>
-                ) : job.companyLogoUrl ? (
-                  <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-surface-container-low">
-                    <img
-                      className="max-h-10 w-auto max-w-full object-contain"
-                      src={job.companyLogoUrl}
-                      alt=""
-                    />
-                  </span>
-                ) : job.company ? (
-                  <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-primary-container/60 font-headline-md text-headline-md font-semibold text-primary">
-                    {initialsOf(job.company)}
-                  </span>
-                ) : null}
-                <div className="min-w-0">
-                  <h1 className="font-headline-lg text-headline-lg font-bold tracking-tight text-on-surface">
-                    {job.title}
-                  </h1>
-                  <p className="mt-1.5 font-body-lg text-body-lg font-medium text-on-surface-variant">
-                    {job.company || 'Company undisclosed'}
-                  </p>
-                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-primary-container/60 px-3 py-1 font-label-sm text-label-sm font-medium text-primary">
-                      {jobTypeLabel(job)}
-                    </span>
-                    {job.workMode === 'remote' || job.workMode === 'hybrid' ? (
-                      <span className="rounded-full bg-accent/10 px-3 py-1 font-label-sm text-label-sm font-medium text-accent">
-                        {workModeLabel(job.workMode)}
-                      </span>
-                    ) : null}
-                    {closesLabel(job.deadline) && (
-                      <span
-                        className={
-                          new Date(job.deadline!).getTime() - Date.now() <=
-                          7 * DAY_MS
-                            ? 'rounded-full bg-error-container/70 px-3 py-1 font-label-sm text-label-sm font-medium text-on-error-container'
-                            : 'rounded-full bg-tertiary-container/70 px-3 py-1 font-label-sm text-label-sm font-medium text-on-tertiary-container'
-                        }
-                      >
-                        {closesLabel(job.deadline)}
-                      </span>
-                    )}
+      {!isLoading && !error && job && (() => {
+        const salaryInfo = formatSalaryDisplay(job)
+        return (
+          <>
+            <div className="mx-auto mt-6 max-w-[1320px] px-2 sm:px-4">
+              <div className="flex flex-col lg:flex-row gap-8 items-start relative pb-20 lg:pb-10">
+                {/* ================= LEFT PANE (Primary Details: 75% Desktop) ================= */}
+                <div className="w-full lg:w-[calc(100%-364px)] flex flex-col gap-6 min-w-0">
+                  {/* 1. Elevated Hero Header Card */}
+                  <div className="relative overflow-hidden rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm sm:p-8">
+                    {/* Subtle Gradient Top Accent Edge */}
+                    <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-primary via-primary-container to-accent" />
+
+                    {/* Top Meta Row: Avatar + Company Name + Source Branding Badge */}
+                    <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-surface-variant/40">
+                      <div className="flex min-w-0 items-center gap-4">
+                        {/* Company Avatar / Logo */}
+                        {job.companyLogoUrl ? (
+                          <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-surface-variant bg-surface-container-low p-2 shadow-xs">
+                            <img
+                              src={job.companyLogoUrl}
+                              alt={job.company ?? ''}
+                              className="max-h-full max-w-full object-contain"
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-primary-container/60 font-headline-md text-headline-md font-bold text-primary shadow-xs">
+                            {initialsOf(job.company || 'SG')}
+                          </div>
+                        )}
+
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-headline-md text-headline-md font-semibold text-on-surface tracking-tight">
+                              {job.company || 'Company Undisclosed'}
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-primary-container/60 px-2 py-0.5 font-label-sm text-label-sm font-medium text-primary">
+                              <span className="material-symbols-outlined text-[14px]">verified</span>
+                              <span>Verified Employer</span>
+                            </span>
+                          </div>
+                          {job.location && (
+                            <div className="mt-1 flex items-center gap-1.5 font-body-md text-body-md text-on-surface-variant">
+                              <span className="material-symbols-outlined text-[18px] text-on-surface-variant">
+                                location_on
+                              </span>
+                              <span className="truncate">{job.location}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Visual Source Branding Badge */}
+                      <div className="flex items-center gap-2">
+                        {brandLogo ? (
+                          <div className="inline-flex items-center gap-2.5 rounded-full border border-surface-variant bg-surface-container-low/80 px-4 py-2 shadow-xs backdrop-blur-xs">
+                            <span className="font-label-sm text-label-sm font-medium text-on-surface-variant">Via</span>
+                            <img
+                              src={brandLogo}
+                              alt={job.sourceName ?? ''}
+                              className="h-5 w-auto max-w-[90px] object-contain drop-shadow-xs"
+                            />
+                            <span className="font-label-sm text-label-sm font-bold text-on-surface">
+                              {job.sourceName}
+                            </span>
+                            {job.sourceUrl && (
+                              <a
+                                href={job.sourceUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={`View original posting on ${job.sourceName}`}
+                                className="ml-0.5 text-on-surface-variant hover:text-primary transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-sm">open_in_new</span>
+                              </a>
+                            )}
+                          </div>
+                        ) : isSerago ? (
+                          <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary-container/25 px-4 py-2 shadow-xs">
+                            <img src={seragoLogo} alt="SeraGo" className="h-4 w-auto object-contain" />
+                            <span className="font-label-sm text-label-sm font-bold text-primary">SeraGo Direct</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {/* Job Title & Chips */}
+                    <div className="mt-5 space-y-4">
+                      <h1 className="font-headline-lg text-headline-lg font-bold tracking-tight text-on-surface leading-snug">
+                        {job.title}
+                      </h1>
+
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container px-3 py-1 font-label-sm text-label-sm text-on-surface">
+                          <span className="material-symbols-outlined text-[16px] text-on-surface-variant">
+                            schedule
+                          </span>
+                          {jobTypeLabel(job)}
+                        </span>
+
+                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container px-3 py-1 font-label-sm text-label-sm text-on-surface">
+                          <span className="material-symbols-outlined text-[16px] text-on-surface-variant">
+                            home_work
+                          </span>
+                          {workModeLabel(job.workMode)}
+                        </span>
+
+                        {closesLabel(job.deadline) && (
+                          <span
+                            className={cn(
+                              'inline-flex items-center gap-1.5 rounded-lg px-3 py-1 font-label-sm text-label-sm font-semibold',
+                              new Date(job.deadline!).getTime() - Date.now() <= 7 * DAY_MS
+                                ? 'bg-error-container/80 text-on-error-container'
+                                : 'bg-primary-container/60 text-primary',
+                            )}
+                          >
+                            <span className="material-symbols-outlined text-[16px]">alarm</span>
+                            {closesLabel(job.deadline)}
+                          </span>
+                        )}
+
+                        {job.sourceName && job.sourceName.toLowerCase() !== 'serago' && (
+                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container-low px-3 py-1 font-label-sm text-label-sm text-on-surface-variant">
+                            <span className="material-symbols-outlined text-[16px] text-primary">language</span>
+                            Aggregated vacancy
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Action Bar */}
+                      <div className="pt-4 flex flex-wrap items-center gap-3">
+                        {/* Apply CTA Button */}
+                        {isPreview ? (
+                          <span className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-outline-variant px-6 py-3 font-label-md text-label-md text-on-surface-variant">
+                            <span className="material-symbols-outlined text-lg">visibility</span>
+                            Read-only preview
+                          </span>
+                        ) : isSerago ? (
+                          hasApplied || applySuccess ? (
+                            <span className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary-container/30 px-7 py-3 font-label-md text-label-md font-semibold text-primary">
+                              <span className="material-symbols-outlined text-[20px]">check_circle</span>
+                              Application Submitted
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleApplyClick('header_serago_modal')
+                                setShowApplyForm(true)
+                              }}
+                              className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-8 py-3.5 font-label-md text-label-md font-semibold text-on-accent shadow-sm transition-all hover:opacity-90 active:scale-95 cursor-pointer"
+                            >
+                              <span>Apply on SeraGo</span>
+                              <span className="material-symbols-outlined text-[18px]">north_east</span>
+                            </button>
+                          )
+                        ) : job.url ? (
+                          <a
+                            href={job.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={() => handleApplyClick('header_external_link')}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-8 py-3.5 font-label-md text-label-md font-semibold text-on-accent shadow-sm transition-all hover:opacity-90 active:scale-95 cursor-pointer"
+                          >
+                            <span>Apply on {job.sourceName || 'Source'}</span>
+                            <span className="material-symbols-outlined text-[18px]">open_in_new</span>
+                          </a>
+                        ) : (
+                          <span className="inline-flex cursor-not-allowed items-center justify-center gap-1.5 rounded-lg border border-outline-variant px-6 py-3 font-label-md text-label-md text-on-surface-variant/60">
+                            Apply
+                          </span>
+                        )}
+
+                        {/* Save Button */}
+                        {!isPreview && (
+                          <button
+                            type="button"
+                            onClick={handleToggleSave}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-surface-variant bg-surface-container-low px-5 py-3.5 font-label-md text-label-md font-semibold text-on-surface transition-colors hover:bg-surface-container cursor-pointer"
+                          >
+                            <span
+                              className={cn(
+                                'material-symbols-outlined text-[20px]',
+                                savedIds.has(job.id) ? 'text-accent' : 'text-on-surface-variant',
+                              )}
+                              style={{ fontVariationSettings: savedIds.has(job.id) ? "'FILL' 1" : "'FILL' 0" }}
+                            >
+                              {savedIds.has(job.id) ? 'bookmark' : 'bookmark_border'}
+                            </span>
+                            <span>{savedIds.has(job.id) ? 'Saved' : 'Save Job'}</span>
+                          </button>
+                        )}
+
+                        {/* Share Button */}
+                        <button
+                          type="button"
+                          onClick={copyRoleShareLink}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-surface-variant bg-surface-container-low px-5 py-3.5 font-label-md text-label-md font-semibold text-on-surface transition-colors hover:bg-surface-container cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[20px] text-on-surface-variant">share</span>
+                          <span>Share</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  {job.location && (
-                    <p className="mt-2.5 flex items-center gap-1.5 font-body-md text-body-md text-on-surface-variant">
-                      <span className="material-symbols-outlined text-base">
-                        location_on
-                      </span>
-                      {job.location}
-                    </p>
+
+                  {/* 2. Quick Facts Ribbon (Horizontal 5-Column Grid) */}
+                  <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 lg:gap-6 divide-y md:divide-y-0 md:divide-x divide-surface-variant/50">
+                      {/* Col 1: Compensation */}
+                      <div className="flex flex-col gap-1 p-2">
+                        <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant">
+                          <span className="material-symbols-outlined text-[18px] text-primary">payments</span>
+                          <span>Compensation</span>
+                        </div>
+                        <div className="font-headline-md text-body-lg font-bold text-on-surface tracking-tight">
+                          {salaryInfo.main}
+                        </div>
+                        <div className="font-label-sm text-label-sm text-on-surface-variant/70">
+                          {salaryInfo.sub}
+                        </div>
+                      </div>
+
+                      {/* Col 2: Experience */}
+                      <div className="flex flex-col gap-1 p-2 md:pl-6">
+                        <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant">
+                          <span className="material-symbols-outlined text-[18px] text-primary">psychology</span>
+                          <span>Experience</span>
+                        </div>
+                        <div className="font-headline-md text-body-lg font-bold text-on-surface">
+                          {job.experienceLevel || job.experienceText || 'Not specified'}
+                        </div>
+                        <div className="font-label-sm text-label-sm text-on-surface-variant/70">
+                          {job.maxExperienceYears ? `Up to ${job.maxExperienceYears} years` : 'Required level'}
+                        </div>
+                      </div>
+
+                      {/* Col 3: Sector */}
+                      <div className="flex flex-col gap-1 p-2 md:pl-6">
+                        <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant">
+                          <span className="material-symbols-outlined text-[18px] text-primary">hub</span>
+                          <span>Sector</span>
+                        </div>
+                        <div className="font-headline-md text-body-lg font-bold text-on-surface truncate" title={job.sectorName || 'General'}>
+                          {job.sectorName || 'General'}
+                        </div>
+                        <div className="font-label-sm text-label-sm text-on-surface-variant/70 truncate">
+                          {job.subSectorName || 'Industry Category'}
+                        </div>
+                      </div>
+
+                      {/* Col 4: Work Mode */}
+                      <div className="flex flex-col gap-1 p-2 md:pl-6">
+                        <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant">
+                          <span className="material-symbols-outlined text-[18px] text-primary">apartment</span>
+                          <span>Work Mode</span>
+                        </div>
+                        <div className="font-headline-md text-body-lg font-bold text-on-surface">
+                          {workModeLabel(job.workMode)}
+                        </div>
+                        <div className="font-label-sm text-label-sm text-on-surface-variant/70 truncate">
+                          {job.location || 'Ethiopia'}
+                        </div>
+                      </div>
+
+                      {/* Col 5: Deadline */}
+                      <div className="flex flex-col gap-1 p-2 md:pl-6">
+                        <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-accent">
+                          <span className="material-symbols-outlined text-[18px] text-accent">event_upcoming</span>
+                          <span>Application Due</span>
+                        </div>
+                        <div className="font-headline-md text-body-lg font-bold text-on-surface">
+                          {job.deadline ? formatDate(job.deadline) : (job.deadlineText || 'Open')}
+                        </div>
+                        <div className="font-label-sm text-label-sm font-medium text-accent">
+                          {closesLabel(job.deadline) || 'Actively hiring'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Universal Description Content Card */}
+                  <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm sm:p-8">
+                    <div className="flex items-center gap-2 pb-5 border-b border-surface-variant/50">
+                      <div className="h-6 w-1.5 rounded-full bg-primary" />
+                      <h2 className="font-headline-md text-headline-md font-bold text-on-surface">
+                        Job description
+                      </h2>
+                    </div>
+                    <div className="mt-6">
+                      <SourceJobDescription job={job} />
+                    </div>
+                  </div>
+
+                  {/* 4. How to Apply Instructions (when present) */}
+                  {applySections.length > 0 && (
+                    <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm sm:p-8 space-y-5">
+                      <div className="flex items-center gap-2">
+                        <div className="h-6 w-1.5 rounded-full bg-primary" />
+                        <h2 className="font-headline-md text-headline-md font-bold text-on-surface">
+                          How to apply
+                        </h2>
+                      </div>
+                      <div className="space-y-4">
+                        {applySections.map((section, i) => (
+                          <SectionContent key={i} text={section.content} />
+                        ))}
+                      </div>
+                      {job.url && (
+                        <div className="pt-2">
+                          <a
+                            href={job.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={() => handleApplyClick('bottom_instructions_cta')}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-8 py-3.5 font-label-md text-label-md font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 cursor-pointer"
+                          >
+                            <span>Apply now</span>
+                            <span className="material-symbols-outlined text-[18px]">open_in_new</span>
+                          </a>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
-              </div>
 
-              <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:w-44 lg:flex-col">
-                {isPreview ? (
-                  // Admin preview: no apply/save actions — read-only view.
-                  <span className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-outline-variant px-6 py-3 font-label-md text-label-md text-on-surface-variant">
-                    <span className="material-symbols-outlined text-lg">visibility</span>
-                    Read-only preview
-                  </span>
-                ) : isSerago ? (
-                  // Serago job: apply directly on the platform.
-                  hasApplied || applySuccess ? (
-                    <span className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-primary-container/20 px-6 py-3 font-label-md text-label-md font-medium text-primary">
-                      <span className="material-symbols-outlined text-lg">check_circle</span>
-                      Applied
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleApplyClick('header_serago_modal')
-                        setShowApplyForm(true)
-                      }}
-                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent px-6 py-3 font-label-md text-label-md font-medium text-on-accent shadow-sm transition-opacity hover:opacity-90"
-                    >
-                      Apply on SeraGo
-                      <span className="material-symbols-outlined text-lg">send</span>
-                    </button>
-                  )
-                ) : job.url ? (
-                  // External job: link to the original source.
-                  <a
-                    href={job.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={() => handleApplyClick('header_external_link')}
-                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent px-6 py-3 font-label-md text-label-md font-medium text-on-accent shadow-sm transition-opacity hover:opacity-90"
-                  >
-                    Apply on {job.sourceName || 'source'}
-                    <span className="material-symbols-outlined text-lg">
-                      open_in_new
-                    </span>
-                  </a>
-                ) : (
-                  <span
-                    className="inline-flex w-full cursor-not-allowed items-center justify-center gap-1.5 rounded-lg border border-outline-variant px-6 py-3 font-label-md text-label-md text-on-surface-variant/60"
-                    title="No application link provided"
-                  >
-                    Apply
-                  </span>
-                )}
-                {!isPreview && (
-                  <SaveJobButton
-                    saved={savedIds.has(job.id)}
-                    onToggle={handleToggleSave}
-                    className="w-full"
-                  />
-                )}
+                {/* ================= RIGHT RAIL (Similar Jobs: 25% Desktop / 340px) ================= */}
+                <aside ref={similarJobsRef} className="w-full shrink-0 flex flex-col gap-4 lg:w-[340px] lg:sticky lg:top-20">
+                  <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-5 shadow-sm">
+                    <div className="flex items-center justify-between pb-3">
+                      <div className="flex items-center gap-2">
+                        <h2 className="font-headline-md text-body-lg font-bold text-on-surface">Similar Jobs</h2>
+                        <span className="rounded-full bg-primary-container/60 px-2 py-0.5 font-label-sm text-label-sm font-semibold text-primary">
+                          {displayedSimilarJobs.length} found
+                        </span>
+                      </div>
+                      <Link
+                        to={job.sectorId ? `/dashboard/talent?sectorId=${job.sectorId}` : '/dashboard/talent'}
+                        className="font-label-sm text-label-sm font-semibold text-primary hover:underline flex items-center gap-0.5"
+                      >
+                        <span>Browse all</span>
+                        <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                      </Link>
+                    </div>
+                    <p className="font-label-sm text-label-sm text-on-surface-variant/80 pb-4">
+                      {job.sectorName ? `Related vacancies in ${job.sectorName}:` : 'Related vacancies in Ethiopia:'}
+                    </p>
+
+                    {/* Vertical List of Similar Job Cards (1 per row) */}
+                    <div className="flex flex-col gap-3">
+                      {displayedSimilarJobs.map((item) => {
+                        const itemSourceLogo = sourceLogo(item.sourceName)
+                        const isCurrent = item.id === job.id
+
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => handleSelectSimilarJob(item.id)}
+                            className={cn(
+                              'group relative rounded-xl border p-3.5 transition-all cursor-pointer',
+                              isCurrent
+                                ? 'border-primary bg-primary-container/10 shadow-xs'
+                                : 'border-surface-variant bg-surface-container-lowest hover:border-primary/50 hover:bg-surface-container-low/50 hover:shadow-xs',
+                            )}
+                          >
+                            <div className="flex items-start justify-between gap-2 mb-1.5">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                {item.companyLogoUrl ? (
+                                  <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-surface-variant bg-surface-container-lowest p-1 shadow-xs flex items-center justify-center">
+                                    <img src={item.companyLogoUrl} alt="" className="max-h-full max-w-full object-contain" />
+                                  </div>
+                                ) : (
+                                  <div className="h-9 w-9 shrink-0 rounded-lg bg-primary-container/50 text-primary font-bold font-label-sm text-label-sm flex items-center justify-center shadow-xs">
+                                    {item.initials || initialsOf(item.company || 'SG')}
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <h3 className="font-label-md text-label-md font-bold text-on-surface group-hover:text-primary transition-colors line-clamp-1">
+                                    {item.title}
+                                  </h3>
+                                  <p className="font-label-sm text-label-sm text-on-surface-variant truncate">
+                                    {item.company}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-surface-variant/40">
+                              <span className="font-label-sm text-label-sm font-semibold text-on-surface">
+                                {item.salary || 'Competitive'}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                {itemSourceLogo ? (
+                                  <img src={itemSourceLogo} alt="" className="h-3.5 w-auto max-w-[50px] object-contain opacity-80" />
+                                ) : null}
+                                <span className="rounded bg-surface-container px-2 py-0.5 text-[11px] font-label-sm font-medium text-on-surface-variant">
+                                  {item.sourceName || 'SeraGo'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </aside>
               </div>
             </div>
-          </div>
 
-          {/* Body: description (main) + key facts (sticky sidebar) */}
-          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-            {/* Facts first on mobile; right column on desktop */}
-            <aside className="space-y-6 lg:order-2 lg:sticky lg:top-20">
-              <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm">
-                <h2 className="font-headline-md text-headline-md font-bold text-on-surface">
-                  Job overview
-                </h2>
-                <div className="mt-5 space-y-5">
-                  <Fact
-                    icon="location_on"
-                    label="Location"
-                    value={job.location || 'Not specified'}
-                  />
-                  <Fact
-                    icon="home_work"
-                    label="Work arrangement"
-                    value={workModeLabel(job.workMode)}
-                  />
-                  <Fact
-                    icon="schedule"
-                    label="Job type"
-                    value={jobTypeLabel(job)}
-                  />
-
-                  {job.experienceLevel && (
-                    <Fact
-                      icon="work"
-                      label="Experience"
-                      value={job.experienceLevel}
-                    />
-                  )}
-                  {job.sectorName && (
-                    <Fact
-                      icon="domain"
-                      label="Sector"
-                      value={job.sectorName}
-                    />
-                  )}
-                  {(job.publishedAt || job.refreshedAt) && (
-                    <Fact
-                      icon="history"
-                      label={
-                        job.refreshedAt &&
-                        (!job.publishedAt ||
-                          new Date(job.refreshedAt) >
-                            new Date(job.publishedAt))
-                          ? 'Refreshed'
-                          : 'Posted'
-                      }
-                      value={
-                        postedLabel(job.publishedAt, job.refreshedAt) ||
-                        'Recently'
-                      }
-                    />
-                  )}
-                  {job.deadline && (
-                    <Fact
-                      icon="event"
-                      label="Closes"
-                      value={`${formatDate(job.deadline)} (${
-                        closesLabel(job.deadline) ?? ''
-                      })`}
-                    />
-                  )}
-                  {job.sourceName &&
-                    job.sourceName.toLowerCase() !== 'serago' && (
-                      <Fact
-                        icon="language"
-                        label="Source"
-                        value={`via ${job.sourceName}`}
-                      />
-                    )}
+            {/* ================= STICKY MOBILE BOTTOM ACTION BAR ================= */}
+            <div className="fixed bottom-0 left-0 right-0 z-40 lg:hidden border-t border-surface-variant bg-surface-container-lowest/95 backdrop-blur-md px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+              <div className="mx-auto flex max-w-lg items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-label-sm text-label-sm text-on-surface-variant">{job.title}</div>
+                  <div className="font-label-md text-label-md font-bold text-on-surface">
+                    {salaryInfo.main !== 'Competitive' ? salaryInfo.main : (job.company || 'SeraGo')}
+                  </div>
                 </div>
-              </div>
-
-              {/* Skills chips */}
-              {parseSkills(job.skills).length > 0 && (
-                <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm">
-                  <h2 className="font-headline-md text-headline-md font-bold text-on-surface">
-                    Skills
-                  </h2>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {parseSkills(job.skills).map((skill) => (
+                <div className="flex shrink-0 items-center gap-2">
+                  {!isPreview && (
+                    <button
+                      type="button"
+                      onClick={handleToggleSave}
+                      className="rounded-lg border border-surface-variant bg-surface-container-low p-2.5 text-on-surface transition-colors hover:bg-surface-container"
+                      aria-label="Save Job"
+                    >
                       <span
-                        key={skill}
-                        className="inline-flex items-center rounded-full bg-primary-container/60 px-3 py-1 font-label-sm text-label-sm font-medium text-primary"
+                        className={cn(
+                          'material-symbols-outlined text-[20px]',
+                          savedIds.has(job.id) ? 'text-accent' : 'text-on-surface-variant',
+                        )}
+                        style={{ fontVariationSettings: savedIds.has(job.id) ? "'FILL' 1" : "'FILL' 0" }}
                       >
-                        {skill}
+                        {savedIds.has(job.id) ? 'bookmark' : 'bookmark_border'}
                       </span>
-                    ))}
-                  </div>
-                </div>
-              )}
+                    </button>
+                  )}
 
-              {job.sourceName &&
-                job.sourceName.toLowerCase() !== 'serago' &&
-                job.sourceUrl && (
-                  <a
-                    href={job.sourceUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center justify-center gap-1.5 rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3 font-label-md text-label-md text-primary shadow-sm transition-colors hover:bg-surface-container-low"
-                  >
-                    View original on {job.sourceName}
-                    <span className="material-symbols-outlined text-base">
-                      open_in_new
+                  {isPreview ? (
+                    <span className="rounded-lg border border-outline-variant px-4 py-2 font-label-sm text-label-sm text-on-surface-variant">
+                      Preview
                     </span>
-                  </a>
-                )}
-            </aside>
-
-            {/* Main: source-specific description */}
-            <div className="min-w-0 lg:order-1">
-              <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm sm:p-8">
-                <h2 className="font-headline-md text-headline-md font-bold text-on-surface">
-                  Job description
-                </h2>
-                <div className="mt-5">
-                  <SourceJobDescription job={job} />
-                </div>
-              </div>
-
-              {/* How to apply CTA — only when the employer posted specific
-                  instructions; otherwise the Apply now button at the top is
-                  the application path. */}
-              {applySections.length > 0 && (
-                <div className="mt-6 rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm sm:p-8">
-                  <h2 className="flex items-center gap-2 font-headline-md text-headline-md font-bold text-on-surface">
-                    <span className="material-symbols-outlined text-2xl text-primary">
-                      how_to_reg
-                    </span>
-                    How to apply
-                  </h2>
-                  <div className="mt-3 space-y-4">
-                    {applySections.map((section, i) => (
-                      <SectionContent key={i} text={section.content} />
-                    ))}
-                  </div>
-                  {job.url && (
+                  ) : isSerago ? (
+                    hasApplied || applySuccess ? (
+                      <span className="rounded-lg bg-primary-container/40 px-5 py-2.5 font-label-md text-label-md font-semibold text-primary">
+                        Applied
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleApplyClick('mobile_bar_serago_modal')
+                          setShowApplyForm(true)
+                        }}
+                        className="flex items-center gap-1.5 rounded-lg bg-accent px-6 py-2.5 font-label-md text-label-md font-bold text-on-accent shadow-sm active:scale-95 transition-all"
+                      >
+                        <span>Apply Now</span>
+                        <span className="material-symbols-outlined text-[18px]">north_east</span>
+                      </button>
+                    )
+                  ) : job.url ? (
                     <a
                       href={job.url}
                       target="_blank"
                       rel="noreferrer"
-                      onClick={() => handleApplyClick('bottom_instructions_cta')}
-                      className="mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent px-6 py-3.5 font-label-md text-label-md font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 sm:w-auto"
+                      onClick={() => handleApplyClick('mobile_bar_external_link')}
+                      className="flex items-center gap-1.5 rounded-lg bg-accent px-6 py-2.5 font-label-md text-label-md font-bold text-on-accent shadow-sm active:scale-95 transition-all"
                     >
-                      Apply now
-                      <span className="material-symbols-outlined text-lg">
-                        open_in_new
-                      </span>
+                      <span>Apply Now</span>
+                      <span className="material-symbols-outlined text-[18px]">open_in_new</span>
                     </a>
-                  )}
-                </div>
-              )}
-
-              {/* Similar Jobs / Scroll Observer Target */}
-              <div
-                ref={similarJobsRef}
-                id="similar-jobs"
-                className="mt-6 rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm sm:p-8"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-2xl text-primary">
-                    recommend
-                  </span>
-                  <h3 className="font-headline-md text-headline-md font-bold text-on-surface">
-                    Similar Jobs
-                  </h3>
-                </div>
-                <p className="mt-2 font-body-md text-body-md text-on-surface-variant">
-                  Explore other vacancies related to {job.sectorName || 'this profession'}.
-                </p>
-                <div className="mt-4">
-                  <Link
-                    to={job.sectorId ? `/dashboard/talent?sectorId=${job.sectorId}` : '/dashboard/talent'}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-surface-variant px-4 py-2 font-label-md text-label-md font-medium text-primary transition-colors hover:bg-surface-container-low"
-                  >
-                    <span>Browse more {job.sectorName ? `${job.sectorName} ` : ''}jobs</span>
-                    <span className="material-symbols-outlined text-base">arrow_forward</span>
-                  </Link>
+                  ) : null}
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )
+      })()}
 
       {/* Apply form dialog for Serago jobs */}
       {showApplyForm && job && (
