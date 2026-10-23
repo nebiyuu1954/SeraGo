@@ -120,32 +120,60 @@ public sealed class UnifiedJobClassificationService
         {{string.Join("\n", sectorLines)}}
 
         CRITICAL CLASSIFICATION RULES:
-        1. Base your decision primarily on the Job Title and core responsibilities in the Description.
+        1. Base your decision primarily on the Job Title, required qualifications, and core responsibilities in the Description snippet, NOT blindly trusting ambiguous raw scraper tags (e.g. scraper tags like "Economics" or "Business" are often misapplied to refugee, MEAL, or healthcare roles).
+
         2. SALES & MARKETING:
-           - "SDR" / "Sales Development Representative" / "BPO cold calling" / "Telemarketer" -> MUST be "sales-marketing", NOT "technology-it".
+           - "SDR" / "Sales Development Representative" / "BPO cold calling" / "Telemarketer" / "Account Executive" -> MUST be "sales-marketing", NOT "technology-it".
            - "Real Estate Agent" / "Property Sales" / "Sales Consultant" / "Salesperson" / "Commercial Sales" -> MUST be "sales-marketing", NOT "accounting-finance" or "business-administration".
-        3. BANKING & INSURANCE:
-           - Bank branch operations ("Branch Operations Manager", "Branch Business Relationship Manager", "Customer Relationship Manager", "IFB Operations", "Financing and Investment Officer") at a commercial bank (e.g., Gadaa Bank, Ahadu Bank, Dashen Bank, Siinqee Bank) -> MUST be "banking-insurance", NOT generic "business-administration" or "customer-service-support".
-        4. PROCUREMENT & SUPPLY CHAIN vs LOGISTICS:
-           - "Storekeeper" / "Store Keeper" / "Warehouse Materials Keeper" / "Purchasing Officer" / "Procurement and Logistics Officer" -> MUST be "procurement-supply-chain" or "logistics-transportation", NOT "sales-marketing" or "business-administration".
-        5. TECHNOLOGY & IT:
-           - "IT Officer", "Hardware Technician", "Computer Technician", "Network Engineer", "Software Developer", "DevOps", "Database Admin", "IS Trainee" -> MUST be "technology-it", NOT "skilled-general-labor".
-        6. HEALTHCARE:
-           - Doctor, Nurse, Midwife, Pharmacist, Lab Technician, "Hygiene & Sanitation Officer" -> MUST be "healthcare", NOT "security-protection".
-        7. EDUCATION & TRAINING:
-           - Teacher (English Teacher, Science Teacher, Kindergarten Teacher, Amharic Teacher), Lecturer, Trainer -> MUST be "education-training", NOT "design-creative".
-        8. HUMAN RESOURCES:
-           - HR Officer, HR Specialist, HR Generalist, Talent Acquisition, Recruiter -> MUST be "human-resources", NOT "business-administration".
-        9. ENGINEERING & CONSTRUCTION vs SKILLED LABOR:
-           - Civil Engineer, Structural Engineer, Electrical Works Coordinator, Surveyor, Surveying Team Leader, Building Project Coordinator -> MUST be "engineering-construction".
-           - Crane Rigger, Equipment Operator, Welder, Mason, Auto Mechanic, Gomista/Tireman -> MUST be "skilled-general-labor" or "engineering-construction".
-        10. SECURITY & PROTECTION:
-           - Security Guard, Security Supervisor, Security Officer -> MUST be "security-protection".
-        11. ACCOUNTING & FINANCE:
-           - Accountant, Senior Accountant, Cashier, Auditor, Financial Analyst, Budget Officer -> MUST be "accounting-finance".
-        12. DESIGN & CREATIVE vs MEDIA:
-           - Graphic Designer, UI/UX, Motion Designer -> "design-creative".
-           - Video Editor, Videographer, Cameraman, Journalist, TV/Podcast Host -> "media-communication".
+           - "Pre-Sales Team Lead" / "Business Development Executive" / "Market Research Officer" -> MUST be "sales-marketing".
+           - Amharic: "የሽያጭ ሰራተኛ", "ገበያ ጥናት" -> MUST be "sales-marketing".
+
+        3. BANKING & INSURANCE vs BUSINESS ADMINISTRATION:
+           - Bank branch operations & branch managers ("Branch Manager", "Branch Business Manager", "Branch Operations Manager", "Customer Relationship Manager", "IFB Operations", "Financing and Investment Officer") at commercial banks (e.g., Dashen Bank, CBE, Awash, Ahadu Bank, Siinqee Bank, Gadaa Bank, Nib, Abyssinia) -> MUST be "banking-insurance", NOT generic "business-administration".
+           - Microfinance loan and credit analysis ("Credit Officer", "Senior Credit Officer", "Loan Officer", "Credit Portfolio Analyst") -> MUST be "banking-insurance", NEVER "technology-it".
+           - Insurance professionals ("Insurance Officer", "Underwriter", "Claims Officer") -> MUST be "banking-insurance".
+
+        4. TECHNOLOGY & IT vs INDUSTRY EMPLOYERS (Role vs Industry):
+           - "Software Engineer", "Backend Developer", "Full Stack", "Cloud Engineer", "DevOps", "Database Admin", "Network Administrator", "IT Support Officer", "Hardware Technician", "IS Trainee" -> MUST be "technology-it".
+           - CRITICAL: "Core Banking System Admin" / "Banking IT Officer" / "Hospital IT Administrator" -> MUST be "technology-it", even if employed by a bank or hospital! Technical IT roles always take precedence over the employer's industry.
+
+        5. ENGINEERING & CONSTRUCTION vs ACCOUNTING & AUDIT (Construction lifecycle disambiguation):
+           - When a job is at an Engineering/Construction company or requires a Civil/Mechanical/Electrical Engineering degree:
+             * "Monitoring and Reporting Division Head" -> "engineering-construction" (monitoring civil works and site progress, NOT financial reporting).
+             * "Project Closing Division Head" -> "engineering-construction" (contractual close-out and commissioning of physical infrastructure, NOT financial year-end closing).
+             * "Project Performance Audit Division Head" -> "engineering-construction" (civil engineering worksite performance auditing, NOT financial/tax auditing).
+             * "Bid Management Division Head" / "Tender & Estimation Specialist" / "BOQ Specialist" / "Quantity Surveyor" -> "engineering-construction".
+             * "Equipment Rental Division Head" / "Rental Officer" / "Concrete Pump Operator" / "Line Pump Operator" -> "engineering-construction".
+           - Civil Engineer, Structural Engineer, Architect, Landscape Designer, Site Supervisor -> "engineering-construction".
+
+        6. SOCIAL SCIENCE & COMMUNITY vs ACCOUNTING (The "Economics" & Humanitarian Trap):
+           - In NGOs and humanitarian programs, "Economic Strengthening Specialist", "Livelihoods Specialist/Officer", "VSLA Facilitator", "Community Engagement Facilitator", "Reintegration Associate" -> MUST be "social-science-community", NOT "accounting-finance" (these are household food security, poverty alleviation, and community empowerment roles).
+           - "GCR Advisor" (Global Compact on Refugees), Refugee Protection, Migration Advisor, Human Rights Officer -> "social-science-community" (or "legal" for legal counsel).
+           - "MEAL" / "M&E" (Monitoring, Evaluation, Accountability, and Learning) Officers and Interns, "Data Collector" in NGOs -> MUST be "social-science-community", NOT "accounting-finance".
+
+        7. HEALTHCARE & MEDICAL:
+           - Doctor, Medical Internist, General Practitioner, Anesthetist, Nurse, Home Care Nurse, Midwife, Pharmacist, Druggist, Lab Technician -> MUST be "healthcare".
+           - Medical health programs: "NCD Project Coordinator" (Non-Communicable Diseases), "RMNCH Officer" (Reproductive, Maternal, Newborn & Child Health), "HIV Prevention Officer", "HIV Service Officer" -> MUST be "healthcare", NEVER "engineering-construction" or "security-protection".
+
+        8. WORKPLACE SAFETY & HSE vs SECURITY:
+           - "Workplace Safety Officer", "Senior Environment and Workplace Safety Officer", "HSE Coordinator", "Environmental Health & Safety" on construction sites or factories -> MUST be "engineering-construction" (if on civil worksites) or "healthcare" (occupational hygiene), NEVER "security-protection".
+           - "security-protection" is STRICTLY reserved for physical security guards ("ጥበቃ"), watchmen, bodyguards, and security escorts.
+
+        9. PROCUREMENT & SUPPLY CHAIN vs LOGISTICS:
+           - "Purchaser", "Purchasing Officer", "Senior Procurement", "Procurement Specialist", "Buyer", "Sourcing Officer", "Storekeeper", "Store Keeper", "Warehouse Materials Keeper" -> MUST be "procurement-supply-chain", NOT "logistics-transportation" or "sales-marketing".
+           - Drivers (truck driver, mixer driver, light vehicle driver, motorbike delivery driver, courier), Fleet Officer, Dispatcher, Freight Forwarder, Customs Clearance -> "logistics-transportation".
+
+        10. SKILLED & GENERAL LABOR:
+           - "Battery Swapper" (electric vehicle battery swapping attendant), Tailor / Garment Maker ("የልብስ ስፌት"), Woodworker / Carpenter ("የእንጨት ሥራ"), Furniture Machinist, Ceramic Professional / Tiler ("የሴራሚክ ባለሙያ"), Welder, Mason, Auto Mechanic, Janitor/Cleaner -> MUST be "skilled-general-labor".
+
+        11. BUSINESS & ADMINISTRATION vs EDUCATION / CLERICAL:
+           - Secretaries, Executive Assistants, Office Administrators, Archive Officers -> "business-administration".
+           - CRITICAL: "TVET Secretary" or "School Secretary" is secretarial/clerical and belongs in "business-administration", NOT "education-training" (which is reserved for teachers, lecturers, and instructors).
+
+        12. MEDIA & COMMUNICATION vs DESIGN & CREATIVE:
+           - Video Editor, Videographer, Social Media Manager, Content Writer, Journalist, Communications Manager, Public Relations -> "media-communication".
+           - Graphic Designer, UI/UX Designer, Motion Graphics Artist, Creative Director -> "design-creative".
+
         13. If none fit, set sectorSlug to null.
         14. Return ONLY a valid JSON object matching this schema:
         {

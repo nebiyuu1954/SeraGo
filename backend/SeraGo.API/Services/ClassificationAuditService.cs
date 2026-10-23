@@ -226,12 +226,19 @@ public sealed class ClassificationAuditService
         CRITICAL EVALUATION RULES:
         1. Compare the Job's Title, Company, and Description against the Current Assigned Sector.
         2. Pay special attention to common confusion points:
-           - "SDR (Sales Development Representative)" / "BPO cold calling" / "Sales rep" -> MUST be "sales-marketing", NOT "technology-it", even if the company is a tech firm or BPO.
-           - "Crane Rigger" / "Equipment Operator" / "Welder" / "Mason" -> MUST be "skilled-general-labor" or "engineering-construction", NOT "technology-it".
+           - "SDR (Sales Development Representative)" / "BPO cold calling" / "Sales rep" / "Sales Consultant" -> MUST be "sales-marketing", NOT "technology-it".
+           - Bank branch operations & branch managers ("Branch Business Manager", "Branch Manager") and credit/loan analysts ("Credit Officer", "Senior Credit Officer") -> MUST be "banking-insurance", NOT "business-administration" or "technology-it".
+           - Technical IT roles ("Core Banking System Admin", "Database Admin", "Cloud Engineer", "IT Officer") -> MUST be "technology-it", even if employed by a bank or hospital.
+           - Construction firm functional heads ("Monitoring and Reporting", "Project Closing", "Bid Management", "Project Performance Audit") requiring Civil/Structural Engineering degrees -> MUST be "engineering-construction", NOT "accounting-finance".
+           - Humanitarian livelihoods ("Economic Strengthening Specialist", "Livelihoods", "GCR Refugee Advisor", "MEAL / M&E") in NGOs -> MUST be "social-science-community", NOT "accounting-finance" (ignore raw scraper tag "Economics").
+           - Health program roles ("NCD Project Coordinator", "RMNCH", "HIV Service Officer") and medical clinicians ("Doctor", "Internist", "Anesthetist", "Nurse", "Pharmacist") -> MUST be "healthcare".
+           - Worksite safety ("Workplace Safety Officer", "HSE Coordinator", "Environment and Safety") -> MUST be "engineering-construction" or "healthcare", NEVER "security-protection" (which is strictly for guards and surveillance).
+           - Sourcing & purchasing ("Purchaser", "Senior Procurement", "Buyer", "Storekeeper") -> MUST be "procurement-supply-chain".
+           - Manual operations ("Battery Swapper", "Tailor", "Ceramic Tiler", "Woodworker") -> MUST be "skilled-general-labor".
+           - Clerical ("TVET Secretary", "Executive Secretary") -> MUST be "business-administration", NOT "education-training".
            - "Accountant" / "Cashier" / "Auditor" -> MUST be "accounting-finance".
            - "Graphic Designer" / "UI/UX Designer" -> MUST be "design-creative".
-           - "Civil Engineer" / "Site Supervisor" -> MUST be "engineering-construction".
-           - "Software Engineer" / "Backend Developer" / "Data Analyst" -> MUST be "technology-it".
+           - "Video Editor" / "Social Media Manager" / "Content Writer" -> MUST be "media-communication".
         3. If the current sector is genuinely accurate, set verdict to "AGREE".
         4. If the current sector is incorrect or misplaced, set verdict to "MISMATCH", specify the true suggestedSectorSlug and suggestedSectorName, and explain why.
         5. Return ONLY a valid JSON object matching the schema below. No markdown wrappers, no commentary outside JSON.

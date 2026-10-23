@@ -56,23 +56,61 @@ public static class AdminJobClassificationEndpoints
         ILogger<object> logger,
         CancellationToken ct)
     {
-        var jobIds = (
-            body.JobId is not null
-                ? new List<Guid> { body.JobId.Value }
-                : (body.JobIds is null or { Count: 0 }
-                    ? throw new ArgumentException("Provide either jobId or jobIds.", nameof(body))
-                    : body.JobIds));
-        var jobIdArr = jobIds.ToArray();
+        List<Job> jobs;
 
-        if (jobIdArr.Length == 0)
+        if (!string.IsNullOrWhiteSpace(body.Date))
         {
-            return Results.Ok(new ClassifyJobsResponse([], 0, 0, "No job ids provided."));
-        }
+            DateTimeOffset startOfDay;
+            DateTimeOffset endOfDay;
 
-        var jobs = await db.Jobs
-            .Include(j => j.Sector)
-            .Where(j => jobIdArr.Contains(j.Id))
-            .ToListAsync(ct);
+            if (body.Date.Equals("today", StringComparison.OrdinalIgnoreCase))
+            {
+                var today = DateOnly.FromDateTime(DateTime.UtcNow);
+                startOfDay = new DateTimeOffset(today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc), TimeSpan.Zero);
+                endOfDay = new DateTimeOffset(today.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc), TimeSpan.Zero);
+            }
+            else if (DateOnly.TryParse(body.Date, out var targetDate))
+            {
+                startOfDay = new DateTimeOffset(targetDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc), TimeSpan.Zero);
+                endOfDay = new DateTimeOffset(targetDate.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc), TimeSpan.Zero);
+            }
+            else
+            {
+                return Results.BadRequest(new ClassifyJobsResponse(0, 0, "Invalid date format. Expected YYYY-MM-DD or 'today'."));
+            }
+
+            var dateQuery = db.Jobs.Include(j => j.Sector).Where(j =>
+                (j.UpdatedAt >= startOfDay && j.UpdatedAt <= endOfDay) ||
+                (j.CreatedAt >= startOfDay && j.CreatedAt <= endOfDay) ||
+                (j.PublishedAt.HasValue && j.PublishedAt.Value >= startOfDay && j.PublishedAt.Value <= endOfDay));
+
+            if (body.Limit.HasValue && body.Limit > 0)
+            {
+                dateQuery = dateQuery.Take(body.Limit.Value);
+            }
+
+            jobs = await dateQuery.ToListAsync(ct);
+        }
+        else
+        {
+            var jobIds = (
+                body.JobId is not null
+                    ? new List<Guid> { body.JobId.Value }
+                    : (body.JobIds is null or { Count: 0 }
+                        ? throw new ArgumentException("Provide either jobId, jobIds, or date.", nameof(body))
+                        : body.JobIds));
+            var jobIdArr = jobIds.ToArray();
+
+            if (jobIdArr.Length == 0)
+            {
+                return Results.Ok(new ClassifyJobsResponse([], 0, 0, "No job ids provided."));
+            }
+
+            jobs = await db.Jobs
+                .Include(j => j.Sector)
+                .Where(j => jobIdArr.Contains(j.Id))
+                .ToListAsync(ct);
+        }
 
         if (jobs.Count == 0)
         {
@@ -80,7 +118,7 @@ public static class AdminJobClassificationEndpoints
                 [],
                 0,
                 0,
-                $"No jobs found for the provided ids ({string.Join(", ", jobIdArr)})."));
+                "No jobs found for the specified criteria."));
         }
 
         var outcomes = await unifiedClassifier.ClassifyAndSaveAsync(jobs, ct);
@@ -148,7 +186,9 @@ public static class AdminJobClassificationEndpoints
 
     public sealed record ClassifyJobRequest(
         Guid? JobId,
-        List<Guid>? JobIds);
+        List<Guid>? JobIds,
+        string? Date = null,
+        int? Limit = null);
 
     public sealed record ClassifyJobsResponse(
         List<ClassificationResultDto> Results,
