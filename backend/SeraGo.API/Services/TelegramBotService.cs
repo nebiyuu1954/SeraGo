@@ -1104,7 +1104,8 @@ public sealed class TelegramBotService
             _botClient,
             chatId,
             testJob,
-            sectorName: sectorName);
+            sectorName: sectorName,
+            logger: _logger);
     }
 
     public async Task SendOrEditCvManagementCardAsync(long chatId, int? messageId, string userId)

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -30,6 +31,9 @@ namespace SeraGo.API.Services;
 public sealed class TelegramJobService
 {
     private enum RecipientSource { Sector, Ai }
+
+    private static readonly ConcurrentDictionary<string, string> _bannerFileIdCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, byte[]> _bannerBytesCache = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<TelegramJobService> _logger;
@@ -364,7 +368,8 @@ public sealed class TelegramJobService
                             chatId.Value,
                             job,
                             linkBase: _options.JobLinkBase,
-                            sectorName: sectorName);
+                            sectorName: sectorName,
+                            logger: _logger);
                         talentSentCounts[setting.UserId] = currentSent + 1;
                     }
                     catch (Exception ex)
@@ -542,12 +547,15 @@ public sealed class TelegramJobService
             new ChatId(_options.ChannelId!),
             job,
             linkBase: _options.JobLinkBase,
-            header: string.Empty);
+            header: string.Empty,
+            logger: _logger);
     }
 
     /// <summary>
     /// Sends a rich job card with verified source banner, bold title, metadata,
     /// and 1-click apply button directly to a Telegram chat.
+    /// Uses file_id and in-memory byte caching with safe caption bounds to ensure
+    /// reliable photo delivery without dropping banners.
     /// </summary>
     public static async Task<Message> SendDirectJobAlertToUserAsync(
         ITelegramBotClient client,
@@ -556,7 +564,8 @@ public sealed class TelegramJobService
         string? linkBase = null,
         string? sectorName = null,
         string? header = null,
-        string? buttonText = null)
+        string? buttonText = null,
+        ILogger? logger = null)
     {
         var baseUrl = (linkBase ?? "https://serago.pro.et/dashboard/talent/jobs").TrimEnd('/');
         var sectorParam = job.SectorId != null ? $"&sectorId={job.SectorId}" : "";
@@ -568,66 +577,122 @@ public sealed class TelegramJobService
             new[] { InlineKeyboardButton.WithUrl(btnText, link) }
         });
 
-        var sb = new StringBuilder();
-        if (!string.IsNullOrWhiteSpace(header))
+        string BuildCaption(int snippetLen, int titleLen = 0, int compLen = 0)
         {
-            sb.AppendLine(header);
-            sb.AppendLine();
-        }
-
-        var card = BuildJobCardText(job, link, maxSnippetLength: 220);
-        sb.Append(card);
-
-        var caption = sb.ToString();
-        if (caption.Length > 1020)
-        {
-            sb.Clear();
+            var builder = new StringBuilder();
             if (!string.IsNullOrWhiteSpace(header))
             {
-                sb.AppendLine(header);
-                sb.AppendLine();
+                builder.AppendLine(header);
+                builder.AppendLine();
             }
-            sb.Append(BuildJobCardText(job, link, maxSnippetLength: 90));
-            caption = sb.ToString();
-            if (caption.Length > 1020) caption = caption[..1015] + "…";
+            builder.Append(BuildJobCardText(job, link, snippetLen, titleLen, compLen));
+            return builder.ToString();
+        }
+
+        // Telegram photo caption hard limit is 1024 characters.
+        // Progressively reduce length without slicing inside HTML tags or entity codes.
+        var caption = BuildCaption(snippetLen: 220);
+        if (caption.Length > 980)
+        {
+            caption = BuildCaption(snippetLen: 80);
+        }
+        if (caption.Length > 980)
+        {
+            caption = BuildCaption(snippetLen: 0);
+        }
+        if (caption.Length > 980)
+        {
+            caption = BuildCaption(snippetLen: 0, titleLen: 120, compLen: 60);
         }
 
         var bannerFileName = GetSourceBannerFileName(job.SourceName);
+
+        // ── 1. Telegram file_id cache ──
+        // If Telegram already assigned a file_id to this banner, reuse it directly.
+        // This delivers in 0ms, uses 0 bandwidth, and avoids all disk/network errors.
+        if (_bannerFileIdCache.TryGetValue(bannerFileName, out var cachedFileId))
+        {
+            try
+            {
+                return await client.SendPhoto(
+                    chatId: chatId,
+                    photo: InputFile.FromFileId(cachedFileId),
+                    caption: caption,
+                    parseMode: ParseMode.Html,
+                    replyMarkup: keyboard);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to send photo with cached Telegram file_id for {Banner}; invalidating cache and retrying with fresh upload", bannerFileName);
+                _bannerFileIdCache.TryRemove(bannerFileName, out _);
+            }
+        }
+
+        // ── 2. Local banner byte cache & resolution ──
         var localBannerPath = TryResolveLocalBannerPath(bannerFileName);
         var photoUrl = GetSourceBannerUrl(job.SourceName);
 
-        FileStream? localStream = null;
+        if (!_bannerBytesCache.TryGetValue(bannerFileName, out var bannerBytes))
+        {
+            if (localBannerPath != null && System.IO.File.Exists(localBannerPath))
+            {
+                try
+                {
+                    bannerBytes = System.IO.File.ReadAllBytes(localBannerPath);
+                    _bannerBytesCache[bannerFileName] = bannerBytes;
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning(ex, "Failed reading banner bytes from {Path}; will fall back to URL", localBannerPath);
+                }
+            }
+        }
+
         try
         {
             InputFile photoInput;
-            if (localBannerPath != null && System.IO.File.Exists(localBannerPath))
+            MemoryStream? memStream = null;
+            try
             {
-                localStream = System.IO.File.OpenRead(localBannerPath);
-                photoInput = InputFile.FromStream(localStream, bannerFileName);
-            }
-            else
-            {
-                photoInput = InputFile.FromUri(photoUrl);
-            }
+                if (bannerBytes != null && bannerBytes.Length > 0)
+                {
+                    memStream = new MemoryStream(bannerBytes, writable: false);
+                    photoInput = InputFile.FromStream(memStream, bannerFileName);
+                }
+                else
+                {
+                    photoInput = InputFile.FromUri(photoUrl);
+                }
 
-            return await client.SendPhoto(
-                chatId: chatId,
-                photo: photoInput,
-                caption: caption,
-                parseMode: ParseMode.Html,
-                replyMarkup: keyboard);
+                var sentMessage = await client.SendPhoto(
+                    chatId: chatId,
+                    photo: photoInput,
+                    caption: caption,
+                    parseMode: ParseMode.Html,
+                    replyMarkup: keyboard);
+
+                // Cache Telegram's assigned file_id for all future sends
+                var uploadedFileId = sentMessage.Photo?.LastOrDefault()?.FileId;
+                if (!string.IsNullOrEmpty(uploadedFileId))
+                {
+                    _bannerFileIdCache[bannerFileName] = uploadedFileId;
+                }
+
+                return sentMessage;
+            }
+            finally
+            {
+                memStream?.Dispose();
+            }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            logger?.LogWarning(ex, "Failed to send photo for job {JobId} ({Title}) to chatId {ChatId}; falling back to SendMessage", job.Id, job.Title, chatId);
             return await client.SendMessage(
                 chatId: chatId,
                 text: caption,
                 parseMode: ParseMode.Html,
                 replyMarkup: keyboard);
-        }
-        finally
-        {
-            localStream?.Dispose();
         }
     }
 
@@ -672,22 +737,31 @@ public sealed class TelegramJobService
                 AppContext.BaseDirectory,
                 System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..")),
                 System.IO.Path.GetFullPath(System.IO.Path.Combine(Directory.GetCurrentDirectory(), "..", "..")),
+                System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, "..")),
+                "/web_app",
+                "/web_app/repos/SeraGo",
+                "/web_app/frontend",
                 @"C:\Users\Nebiyu\Desktop\Projects Projects\SeraGo"
             };
 
             foreach (var root in candidateRoots)
             {
-                var path1 = System.IO.Path.Combine(root, "frontend", "public", "sources", fileName);
-                if (System.IO.File.Exists(path1)) return path1;
+                var candidates = new[]
+                {
+                    System.IO.Path.Combine(root, "frontend", "public", "sources", fileName),
+                    System.IO.Path.Combine(root, "frontend", "dist", "sources", fileName),
+                    System.IO.Path.Combine(root, "dist", "sources", fileName),
+                    System.IO.Path.Combine(root, "public", "sources", fileName),
+                    System.IO.Path.Combine(root, "sources", fileName),
+                    System.IO.Path.Combine(root, "wwwroot", "sources", fileName),
+                    System.IO.Path.Combine(root, "repos", "SeraGo", "frontend", "public", "sources", fileName),
+                    System.IO.Path.Combine(root, "repos", "SeraGo", "frontend", "dist", "sources", fileName)
+                };
 
-                var path2 = System.IO.Path.Combine(root, "public", "sources", fileName);
-                if (System.IO.File.Exists(path2)) return path2;
-
-                var path3 = System.IO.Path.Combine(root, "sources", fileName);
-                if (System.IO.File.Exists(path3)) return path3;
-
-                var path4 = System.IO.Path.Combine(root, "wwwroot", "sources", fileName);
-                if (System.IO.File.Exists(path4)) return path4;
+                foreach (var c in candidates)
+                {
+                    if (System.IO.File.Exists(c)) return c;
+                }
             }
         }
         catch
@@ -705,14 +779,26 @@ public sealed class TelegramJobService
         return $"{_options.JobLinkBase}/{job.Id}?from=telegram&title={Uri.EscapeDataString(job.Title)}{sectorParam}{sectorNameParam}";
     }
 
-    public static string BuildJobCardText(Job job, string link, int maxSnippetLength = 220)
+    public static string BuildJobCardText(Job job, string link, int maxSnippetLength = 220, int maxTitleLength = 0, int maxCompanyLength = 0)
     {
+        var title = job.Title ?? string.Empty;
+        if (maxTitleLength > 0 && title.Length > maxTitleLength)
+        {
+            title = title[..(maxTitleLength - 1)].TrimEnd() + "…";
+        }
+
+        var company = job.Company ?? string.Empty;
+        if (maxCompanyLength > 0 && company.Length > maxCompanyLength)
+        {
+            company = company[..(maxCompanyLength - 1)].TrimEnd() + "…";
+        }
+
         var sb = new StringBuilder();
-        sb.AppendLine($"<b>Title:</b> {Escape(job.Title)}");
+        sb.AppendLine($"<b>Title:</b> {Escape(title)}");
         sb.AppendLine();
 
         var meta = new List<string>();
-        if (!string.IsNullOrWhiteSpace(job.Company)) meta.Add($"🏢 <b>Company:</b> {Escape(job.Company)}");
+        if (!string.IsNullOrWhiteSpace(company)) meta.Add($"🏢 <b>Company:</b> {Escape(company)}");
         if (!string.IsNullOrWhiteSpace(job.Location)) meta.Add($"📍 <b>Location:</b> {Escape(job.Location)}");
         meta.Add($"🧭 <b>Type:</b> {Humanize(job.JobType)} · {Humanize(job.WorkMode)}");
         if (!string.IsNullOrWhiteSpace(job.ExperienceLevel)) meta.Add($"🎯 <b>Experience:</b> {Escape(job.ExperienceLevel)}");
@@ -728,11 +814,14 @@ public sealed class TelegramJobService
 
         foreach (var line in meta) sb.AppendLine(line);
 
-        var snippet = Snippet(job.Description, maxSnippetLength);
-        if (!string.IsNullOrEmpty(snippet))
+        if (maxSnippetLength > 0)
         {
-            sb.AppendLine();
-            sb.AppendLine(snippet);
+            var snippet = Snippet(job.Description, maxSnippetLength);
+            if (!string.IsNullOrEmpty(snippet))
+            {
+                sb.AppendLine();
+                sb.AppendLine(snippet);
+            }
         }
 
         sb.AppendLine();
