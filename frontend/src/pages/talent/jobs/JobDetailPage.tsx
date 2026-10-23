@@ -48,6 +48,7 @@ export interface SimilarJobDisplayItem {
   salary: string
   sourceName: string
   workMode: string
+  jobType: string
   postedAgo: string
   initials: string
   companyLogoUrl?: string | null
@@ -62,6 +63,7 @@ const PLACEHOLDER_SIMILAR_JOBS: SimilarJobDisplayItem[] = [
     salary: 'ETB 60k – 80k',
     sourceName: 'EthioJobs',
     workMode: 'hybrid',
+    jobType: 'Full-time',
     postedAgo: '1d ago',
     initials: 'CBE',
   },
@@ -73,6 +75,7 @@ const PLACEHOLDER_SIMILAR_JOBS: SimilarJobDisplayItem[] = [
     salary: 'ETB 50k – 70k',
     sourceName: 'Afriwork',
     workMode: 'remote',
+    jobType: 'Full-time',
     postedAgo: '2d ago',
     initials: 'CP',
   },
@@ -84,6 +87,7 @@ const PLACEHOLDER_SIMILAR_JOBS: SimilarJobDisplayItem[] = [
     salary: 'ETB 45k – 60k',
     sourceName: 'HaHuJobs',
     workMode: 'onsite',
+    jobType: 'Full-time',
     postedAgo: '3d ago',
     initials: 'RD',
   },
@@ -95,6 +99,7 @@ const PLACEHOLDER_SIMILAR_JOBS: SimilarJobDisplayItem[] = [
     salary: 'ETB 75k – 110k',
     sourceName: 'GeezJobs',
     workMode: 'hybrid',
+    jobType: 'Full-time',
     postedAgo: '4d ago',
     initials: 'SP',
   },
@@ -106,6 +111,7 @@ const PLACEHOLDER_SIMILAR_JOBS: SimilarJobDisplayItem[] = [
     salary: 'ETB 55k – 75k',
     sourceName: 'SeraGo',
     workMode: 'remote',
+    jobType: 'Full-time',
     postedAgo: 'Just now',
     initials: 'EL',
   },
@@ -117,6 +123,7 @@ const PLACEHOLDER_SIMILAR_JOBS: SimilarJobDisplayItem[] = [
     salary: 'ETB 40k – 55k',
     sourceName: 'Ethiopian Reporter Jobs',
     workMode: 'onsite',
+    jobType: 'Full-time',
     postedAgo: '5d ago',
     initials: 'IC',
   },
@@ -572,6 +579,7 @@ export default function JobDetailPage() {
         salary: sal,
         sourceName: j.sourceName || 'SeraGo',
         workMode: j.workMode || 'onsite',
+        jobType: jobTypeLabel(j),
         postedAgo: postedLabel(j.publishedAt, j.refreshedAt) || 'Recently',
         initials: initialsOf(j.company || 'SG'),
         companyLogoUrl: j.companyLogoUrl,
@@ -830,10 +838,10 @@ export default function JobDetailPage() {
         const salaryInfo = formatSalaryDisplay(job)
         return (
           <>
-            <div className="mx-auto mt-6 max-w-[1320px] px-2 sm:px-4">
-              <div className="flex flex-col lg:flex-row gap-8 items-start relative pb-20 lg:pb-10">
-                {/* ================= LEFT PANE (Primary Details: 75% Desktop) ================= */}
-                <div className="w-full lg:w-[calc(100%-364px)] flex flex-col gap-6 min-w-0">
+            <div className="w-full mt-4">
+              <div className="w-full flex flex-col lg:flex-row gap-6 lg:gap-8 items-start relative pb-20 lg:pb-10">
+                {/* ================= LEFT PANE (Primary Details: fills space) ================= */}
+                <div className="flex-1 min-w-0 flex flex-col gap-6">
                   {/* 1. Elevated Hero Header Card */}
                   <div className="relative overflow-hidden rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm sm:p-8">
                     {/* Subtle Gradient Top Accent Edge */}
@@ -858,15 +866,9 @@ export default function JobDetailPage() {
                         )}
 
                         <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-headline-md text-headline-md font-semibold text-on-surface tracking-tight">
-                              {job.company || 'Company Undisclosed'}
-                            </span>
-                            <span className="inline-flex items-center gap-1 rounded-full bg-primary-container/60 px-2 py-0.5 font-label-sm text-label-sm font-medium text-primary">
-                              <span className="material-symbols-outlined text-[14px]">verified</span>
-                              <span>Verified Employer</span>
-                            </span>
-                          </div>
+                          <h2 className="font-headline-md text-headline-md font-semibold text-on-surface tracking-tight">
+                            {job.company || 'Company Undisclosed'}
+                          </h2>
                           {job.location && (
                             <div className="mt-1 flex items-center gap-1.5 font-body-md text-body-md text-on-surface-variant">
                               <span className="material-symbols-outlined text-[18px] text-on-surface-variant">
@@ -1152,13 +1154,13 @@ export default function JobDetailPage() {
                   )}
                 </div>
 
-                {/* ================= RIGHT RAIL (Similar Jobs: 25% Desktop / 340px) ================= */}
-                <aside ref={similarJobsRef} className="w-full shrink-0 flex flex-col gap-4 lg:w-[340px] lg:sticky lg:top-20">
-                  <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-5 shadow-sm">
+                {/* ================= RIGHT RAIL (Similar Jobs: wider & bigger) ================= */}
+                <aside ref={similarJobsRef} className="w-full shrink-0 flex flex-col gap-4 lg:w-[380px] xl:w-[420px] 2xl:w-[450px] lg:sticky lg:top-20">
+                  <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-5 sm:p-6 shadow-sm">
                     <div className="flex items-center justify-between pb-3">
                       <div className="flex items-center gap-2">
-                        <h2 className="font-headline-md text-body-lg font-bold text-on-surface">Similar Jobs</h2>
-                        <span className="rounded-full bg-primary-container/60 px-2 py-0.5 font-label-sm text-label-sm font-semibold text-primary">
+                        <h2 className="font-headline-md text-headline-md font-bold text-on-surface">Similar Jobs</h2>
+                        <span className="rounded-full bg-primary-container/60 px-2.5 py-0.5 font-label-sm text-label-sm font-semibold text-primary">
                           {displayedSimilarJobs.length} found
                         </span>
                       </div>
@@ -1174,8 +1176,8 @@ export default function JobDetailPage() {
                       {job.sectorName ? `Related vacancies in ${job.sectorName}:` : 'Related vacancies in Ethiopia:'}
                     </p>
 
-                    {/* Vertical List of Similar Job Cards (1 per row) */}
-                    <div className="flex flex-col gap-3">
+                    {/* Vertical List of Similar Job Cards (1 per row, wider and bigger) */}
+                    <div className="flex flex-col gap-3.5">
                       {displayedSimilarJobs.map((item) => {
                         const itemSourceLogo = sourceLogo(item.sourceName)
                         const isCurrent = item.id === job.id
@@ -1185,43 +1187,69 @@ export default function JobDetailPage() {
                             key={item.id}
                             onClick={() => handleSelectSimilarJob(item.id)}
                             className={cn(
-                              'group relative rounded-xl border p-3.5 transition-all cursor-pointer',
+                              'group relative rounded-xl border p-4 sm:p-4.5 transition-all cursor-pointer flex flex-col gap-3',
                               isCurrent
                                 ? 'border-primary bg-primary-container/10 shadow-xs'
-                                : 'border-surface-variant bg-surface-container-lowest hover:border-primary/50 hover:bg-surface-container-low/50 hover:shadow-xs',
+                                : 'border-surface-variant bg-surface-container-lowest hover:border-primary/50 hover:bg-surface-container-low/40 hover:shadow-xs',
                             )}
                           >
-                            <div className="flex items-start justify-between gap-2 mb-1.5">
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                {item.companyLogoUrl ? (
-                                  <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-surface-variant bg-surface-container-lowest p-1 shadow-xs flex items-center justify-center">
-                                    <img src={item.companyLogoUrl} alt="" className="max-h-full max-w-full object-contain" />
-                                  </div>
-                                ) : (
-                                  <div className="h-9 w-9 shrink-0 rounded-lg bg-primary-container/50 text-primary font-bold font-label-sm text-label-sm flex items-center justify-center shadow-xs">
-                                    {item.initials || initialsOf(item.company || 'SG')}
-                                  </div>
-                                )}
-                                <div className="min-w-0">
-                                  <h3 className="font-label-md text-label-md font-bold text-on-surface group-hover:text-primary transition-colors line-clamp-1">
-                                    {item.title}
-                                  </h3>
-                                  <p className="font-label-sm text-label-sm text-on-surface-variant truncate">
-                                    {item.company}
-                                  </p>
+                            {/* Row 1: Logo/Avatar + Title & Company */}
+                            <div className="flex items-start gap-3 min-w-0">
+                              {item.companyLogoUrl ? (
+                                <div className="h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-surface-variant bg-surface-container-lowest p-1 shadow-2xs flex items-center justify-center">
+                                  <img src={item.companyLogoUrl} alt="" className="max-h-full max-w-full object-contain" />
                                 </div>
+                              ) : (
+                                <div className="h-11 w-11 shrink-0 rounded-xl bg-primary-container/50 text-primary font-bold font-headline-md text-sm flex items-center justify-center shadow-2xs">
+                                  {item.initials || initialsOf(item.company || 'SG')}
+                                </div>
+                              )}
+
+                              <div className="min-w-0 flex-1">
+                                <h3 className="font-headline-md text-[15px] sm:text-[16px] font-bold text-on-surface group-hover:text-primary transition-colors line-clamp-2 leading-snug">
+                                  {item.title}
+                                </h3>
+                                <p className="mt-0.5 font-body-md text-sm font-medium text-on-surface-variant truncate">
+                                  {item.company}
+                                </p>
                               </div>
                             </div>
 
-                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-surface-variant/40">
-                              <span className="font-label-sm text-label-sm font-semibold text-on-surface">
+                            {/* Row 2: Location & Job Type Chips */}
+                            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                              {/* Location */}
+                              <span className="inline-flex items-center gap-1 text-xs text-on-surface-variant font-medium">
+                                <span className="material-symbols-outlined text-[15px] text-on-surface-variant/80">location_on</span>
+                                <span className="truncate max-w-[150px]">{item.location}</span>
+                              </span>
+
+                              <span className="text-surface-variant">·</span>
+
+                              {/* Job Type */}
+                              <span className="inline-flex items-center gap-1 rounded-md bg-surface-container px-2 py-0.5 text-[11px] font-label-sm font-medium text-on-surface">
+                                <span className="material-symbols-outlined text-[13px] text-on-surface-variant">schedule</span>
+                                {item.jobType || 'Full-time'}
+                              </span>
+
+                              {/* Work Mode */}
+                              {item.workMode && (
+                                <span className="rounded-md bg-primary-container/40 px-2 py-0.5 text-[11px] font-label-sm font-medium text-primary">
+                                  {workModeLabel(item.workMode)}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Row 3: Salary & Source branding */}
+                            <div className="flex items-center justify-between pt-2.5 border-t border-surface-variant/50">
+                              <span className="font-headline-md text-sm font-bold text-on-surface tracking-tight">
                                 {item.salary || 'Competitive'}
                               </span>
+
                               <div className="flex items-center gap-1.5">
                                 {itemSourceLogo ? (
-                                  <img src={itemSourceLogo} alt="" className="h-3.5 w-auto max-w-[50px] object-contain opacity-80" />
+                                  <img src={itemSourceLogo} alt="" className="h-4 w-auto max-w-[55px] object-contain opacity-85" />
                                 ) : null}
-                                <span className="rounded bg-surface-container px-2 py-0.5 text-[11px] font-label-sm font-medium text-on-surface-variant">
+                                <span className="rounded-full bg-surface-container-low border border-surface-variant px-2.5 py-0.5 text-[11px] font-label-sm font-medium text-on-surface-variant">
                                   {item.sourceName || 'SeraGo'}
                                 </span>
                               </div>
