@@ -592,7 +592,7 @@ export default function AdminTelegramMessagesPage() {
               Feature Spotlight schedules.
             </p>
             <button
-              onClick={handleSeedDefaults}
+              onClick={() => handleSeedDefaults(false)}
               disabled={seeding}
               className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 font-label-md text-label-md font-semibold text-on-primary shadow-sm hover:bg-primary/90"
             >
