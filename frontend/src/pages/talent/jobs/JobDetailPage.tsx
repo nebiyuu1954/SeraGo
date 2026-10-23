@@ -1137,13 +1137,8 @@ export default function JobDetailPage() {
                 {/* ================= RIGHT RAIL (Similar Jobs: wider & bigger) ================= */}
                 <aside ref={similarJobsRef} className="w-full shrink-0 flex flex-col gap-4 lg:w-[380px] xl:w-[420px] 2xl:w-[450px] lg:sticky lg:top-20">
                   <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-5 sm:p-6 shadow-sm">
-                    <div className="flex items-center justify-between pb-4">
-                      <div className="flex items-center gap-2">
-                        <h2 className="font-headline-md text-headline-md font-bold text-on-surface">Similar Jobs</h2>
-                        <span className="rounded-full bg-primary-container/60 px-2.5 py-0.5 font-label-sm text-label-sm font-semibold text-primary">
-                          {isLoadingSimilar ? 'Finding...' : `${allSimilarJobs.length} found`}
-                        </span>
-                      </div>
+                    <div className="flex items-center pb-4">
+                      <h2 className="font-headline-md text-headline-md font-bold text-on-surface">Similar Jobs</h2>
                     </div>
 
                     {/* Vertical List of Similar Job Cards (1 per row, wider and bigger) */}
