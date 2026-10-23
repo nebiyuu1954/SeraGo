@@ -21,6 +21,7 @@ public static class AdminEndpoints
         app.MapAdminScraperEndpoints();          // /api/admin/scraper/week-stats + /week/{date}
         app.MapAdminJobClassificationEndpoints(); // /api/admin/jobs/classify (AI sector classification)
         app.MapAdminAiClassificationStatsEndpoint(); // /api/admin/ai/classification/stats (AI usage + token totals)
+        app.MapAdminTelegramMessageEndpoints();      // /api/admin/telegram/messages (Scheduled Telegram messages)
         // Future admin groups go here:
         // app.MapAdminApplicationEndpoints();
         // app.MapAdminScraperEndpoints();

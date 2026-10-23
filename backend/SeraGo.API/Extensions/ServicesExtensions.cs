@@ -342,6 +342,9 @@ public static class ServicesExtensions
         // a bot client they degrade to in-app job alerts only.
         services.AddSingleton<TelegramOptions>();
         services.AddScoped<TelegramJobService>();
+        services.AddScoped<TelegramStatsService>();
+        services.AddScoped<TelegramMessageBuilder>();
+        services.AddScoped<TelegramBroadcastDispatcher>();
         services.AddSingleton<ITelegramAuthService, TelegramAuthService>();
 
         // ── Authorization policies ──

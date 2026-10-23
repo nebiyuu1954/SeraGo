@@ -28,6 +28,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<JobView> JobViews => Set<JobView>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<TelegramScheduledMessage> TelegramScheduledMessages => Set<TelegramScheduledMessage>();
 
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
     {
@@ -275,6 +276,20 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             entity.Property(n => n.ReadAt).HasConversion(utcDateTimeOffset);
             entity.Property(n => n.EmailSentAt).HasConversion(utcDateTimeOffset);
             entity.Property(n => n.TelegramSentAt).HasConversion(utcDateTimeOffset);
+        });
+
+        // Telegram scheduled messages & campaigns
+        modelBuilder.Entity<TelegramScheduledMessage>(entity =>
+        {
+            entity.HasKey(m => m.Id);
+            entity.HasIndex(m => new { m.IsActive, m.ScheduledTime });
+            entity.HasIndex(m => m.MessageType);
+
+            var utcDateTimeOffset = new ValueConverter<DateTimeOffset, DateTimeOffset>(
+                v => v.ToUniversalTime(), v => v);
+            entity.Property(m => m.CreatedAt).HasConversion(utcDateTimeOffset);
+            entity.Property(m => m.UpdatedAt).HasConversion(utcDateTimeOffset);
+            entity.Property(m => m.LastRunAt).HasConversion(utcDateTimeOffset);
         });
     }
 }

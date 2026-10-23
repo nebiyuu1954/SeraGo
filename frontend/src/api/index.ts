@@ -108,3 +108,25 @@ export {
   unlinkTelegram,
 } from './telegram.ts'
 export type { TelegramLinkData, TelegramStatusData } from './telegram.ts'
+export {
+  fetchScheduledMessages,
+  fetchScheduledMessage,
+  createScheduledMessage,
+  updateScheduledMessage,
+  toggleScheduledMessage,
+  deleteScheduledMessage,
+  testSendScheduledMessage,
+  fetchTelegramTestConfig,
+  seedDefaultSchedules,
+} from './adminTelegramMessages.ts'
+export type {
+  TelegramScheduledMessage,
+  TelegramMessageTarget,
+  TelegramMessageType,
+  CreateScheduledMessageRequest,
+  UpdateScheduledMessageRequest,
+  TestSendRequest,
+  TestSendResponse,
+  TestConfigResponse,
+} from './adminTelegramMessages.ts'
+

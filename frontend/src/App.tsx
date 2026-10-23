@@ -30,6 +30,7 @@ import AdminJobDetailPage from './pages/admin/jobs/AdminJobDetailPage.tsx'
 import AdminJobsViewsPage from './pages/admin/jobs/AdminJobsViewsPage.tsx'
 import AdminScraperPage from './pages/admin/scraper/AdminScraperPage.tsx'
 import AdminAiPage from './pages/admin/ai/AdminAiPage.tsx'
+import AdminTelegramMessagesPage from './pages/admin/telegram/AdminTelegramMessagesPage.tsx'
 import AdminScraperWeekDetailPage from './pages/admin/scraper/AdminScraperWeekDetailPage.tsx'
 import TalentProfilePage from './pages/talent/profile/ProfilePage.tsx'
 import TalentProfilePreviewPage from './pages/talent/profile/TalentProfilePreviewPage.tsx'
@@ -97,6 +98,10 @@ function App() {
           <Route
             path="dashboard/admin/sectors"
             element={<AdminSectorsPage />}
+          />
+          <Route
+            path="dashboard/admin/telegram"
+            element={<AdminTelegramMessagesPage />}
           />
           <Route
             path="dashboard/talent/profile"

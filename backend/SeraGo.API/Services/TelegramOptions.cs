@@ -57,6 +57,22 @@ public sealed class TelegramOptions
     /// <summary>AI score-based DMs are part of the current mode.</summary>
     public bool AllowsAiDm => JobDmMode is "ai" or "both";
 
+    // ── Dedicated Testing Configuration ──
+    /// <summary>Testing channel (e.g. "@SeraGo_Test_Channel" or "-100..."). Used for test broadcasts.</summary>
+    public string? TestChannelId { get; }
+
+    /// <summary>Specific Telegram user chatId for DM tests.</summary>
+    public long? TestChatId { get; }
+
+    /// <summary>Optional separate test bot token; if omitted, uses standard TELEGRAM_BOT_TOKEN.</summary>
+    public string? TestBotToken { get; }
+
+    /// <summary>When true, all scheduled messaging routes strictly to test channel / test chat.</summary>
+    public bool MessagingTestMode { get; }
+
+    public bool HasTestChannel => !string.IsNullOrWhiteSpace(TestChannelId);
+    public bool HasTestChat => TestChatId.HasValue && TestChatId.Value != 0;
+
     public TelegramOptions()
     {
         ChannelId = Env("TELEGRAM_CHANNEL_ID");
@@ -84,6 +100,14 @@ public sealed class TelegramOptions
         SyncDmEnabled = syncDmRaw is not null ? IsTruthy(syncDmRaw) : true;
         SyncDmMaxJobs = ParseInt(Env("TELEGRAM_SYNC_DM_MAX_JOBS"), 30);
         TalentDmMaxPerUserPerRun = ParseInt(Env("TELEGRAM_TALENT_DM_MAX_PER_RUN"), 3);
+
+        TestChannelId = Env("TELEGRAM_TEST_CHANNEL_ID");
+        if (long.TryParse(Env("TELEGRAM_TEST_CHAT_ID"), out var parsedChatId))
+        {
+            TestChatId = parsedChatId;
+        }
+        TestBotToken = Env("TELEGRAM_TEST_BOT_TOKEN");
+        MessagingTestMode = IsTruthy(Env("TELEGRAM_MESSAGING_TEST_MODE") ?? "false");
     }
 
     private static string? Env(string key)

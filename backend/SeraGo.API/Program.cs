@@ -142,6 +142,10 @@ builder.Services.AddMemoryCache(); // short-TTL cache for expensive aggregate st
 builder.Services.AddInfrastructure(builder.Configuration); // PostgreSQL DbContext + AuthSeeder
 builder.Services.SetupIdentity(builder.Configuration, builder.Environment); // Identity + JWT
 builder.Services.AddControllers(); // Add API Controllers
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+});
 builder.Services.AddNotificationInfrastructure(builder.Configuration); // Hangfire + Redis + SignalR + NotificationService
 
 // All three pools draw on DefaultConnection but share nothing — count them
@@ -288,6 +292,7 @@ for (var attempt = 1; ; attempt++)
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await db.Database.MigrateAsync();
         await scope.ServiceProvider.GetRequiredService<AuthSeeder>().SeedAsync();
+        await TelegramBroadcastDispatcher.SeedDefaultSchedulesAsync(db);
         break;
     }
     catch (Exception ex) when (attempt < maxStartupRetries && IsTransient(ex))
@@ -438,6 +443,12 @@ if (SeraGo.API.Extensions.ServicesExtensions.HangfireEnabled)
                 "notification-redis-sync",
                 o => o.SyncRedisCounters(),
                 "0 * * * *",  // hourly
+                new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+            recurringJobs.AddOrUpdate<TelegramBroadcastDispatcher>(
+                "telegram-scheduled-messages-dispatcher",
+                d => d.DispatchDueMessagesAsync(CancellationToken.None),
+                "*/5 * * * *", // every 5 minutes
                 new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
             // Ensure the old 10-minute recurring sweep is removed from Hangfire so

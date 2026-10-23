@@ -138,6 +138,20 @@ export const API_ENDPOINTS = {
     /** GET /api/admin/scraper/week/{periodStart} — full scraper week detail. */
     weekDetail: (periodStart: string) => `/admin/scraper/week/${periodStart}`,
   },
+  adminTelegram: {
+    /** GET/POST /api/admin/telegram/messages — scheduled Telegram messages */
+    messages: '/admin/telegram/messages',
+    /** GET/PUT/DELETE /api/admin/telegram/messages/{id} */
+    messageDetail: (id: string) => `/admin/telegram/messages/${id}`,
+    /** PATCH /api/admin/telegram/messages/{id}/toggle */
+    messageToggle: (id: string) => `/admin/telegram/messages/${id}/toggle`,
+    /** POST /api/admin/telegram/messages/{id}/test */
+    messageTest: (id: string) => `/admin/telegram/messages/${id}/test`,
+    /** GET /api/admin/telegram/messages/test-config */
+    testConfig: '/admin/telegram/messages/test-config',
+    /** POST /api/admin/telegram/messages/seed-defaults */
+    seedDefaults: '/admin/telegram/messages/seed-defaults',
+  },
 } as const
 
 export type ApiEndpoint = (typeof API_ENDPOINTS)[keyof typeof API_ENDPOINTS]
