@@ -144,7 +144,6 @@ public sealed class TelegramStatsService
         CancellationToken ct)
     {
         var baseQuery = _db.Jobs.AsNoTracking()
-            .Include(j => j.Sector)
             .Where(j => j.Status == JobStatus.Published &&
                         j.IsActive &&
                         (j.PublishedAt ?? j.CreatedAt) >= startUtc &&
@@ -152,15 +151,30 @@ public sealed class TelegramStatsService
 
         var totalJobs = await baseQuery.CountAsync(ct);
 
-        var sectorStatsRaw = await baseQuery
-            .Where(j => j.SectorId != null && j.Sector != null)
-            .GroupBy(j => new { j.SectorId!.Value, j.Sector!.Name })
-            .Select(g => new DailySectorStat(g.Key.Value, g.Key.Name, g.Count()))
-            .OrderByDescending(s => s.JobCount)
+        var sectorCounts = await baseQuery
+            .Where(j => j.SectorId != null)
+            .GroupBy(j => j.SectorId!.Value)
+            .Select(g => new { SectorId = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count)
             .Take(5)
             .ToListAsync(ct);
 
+        var sectorIds = sectorCounts.Select(x => x.SectorId).ToList();
+        var sectorNames = sectorIds.Count > 0
+            ? await _db.Sectors.AsNoTracking()
+                .Where(s => sectorIds.Contains(s.Id))
+                .ToDictionaryAsync(s => s.Id, s => s.Name, ct)
+            : new Dictionary<Guid, string>();
+
+        var sectorStatsRaw = sectorCounts
+            .Select(x => new DailySectorStat(
+                x.SectorId,
+                sectorNames.TryGetValue(x.SectorId, out var name) ? name : "General",
+                x.Count))
+            .ToList();
+
         var sampleJobs = await baseQuery
+            .Include(j => j.Sector)
             .OrderByDescending(j => j.PublishedAt ?? j.CreatedAt)
             .Take(4)
             .ToListAsync(ct);
