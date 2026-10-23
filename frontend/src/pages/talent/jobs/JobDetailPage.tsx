@@ -34,7 +34,6 @@ import {
 import SourceJobDescription from '../../../components/jobs/SourceJobDescription.tsx'
 import { initialsOf } from '../../../lib/initials.ts'
 import { sourceLogo } from '../../../lib/sourceLogos.ts'
-import seragoLogo from '../../../assets/logos/serago.svg'
 import { saveJob, unsaveJob } from '../../../api'
 import { trackEvent } from '../../../lib/analytics'
 
@@ -497,7 +496,6 @@ export default function JobDetailPage() {
   }, [auth.status, job, isLoading, error, refreshJob])
 
   const { savedIds, refresh: refreshSaved } = useSavedJobsQuery(!isPreview)
-  const brandLogo = job ? sourceLogo(job.sourceName) : null
   const { showToast } = useToast()
 
   // Application tracking — only for Serago jobs.
@@ -847,118 +845,86 @@ export default function JobDetailPage() {
                     {/* Subtle Gradient Top Accent Edge */}
                     <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-primary via-primary-container to-accent" />
 
-                    {/* Top Meta Row: Avatar + Company Name + Source Branding Badge */}
-                    <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-surface-variant/40">
-                      <div className="flex min-w-0 items-center gap-4">
-                        {/* Company Avatar / Logo */}
-                        {job.companyLogoUrl ? (
-                          <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-surface-variant bg-surface-container-low p-2 shadow-xs">
-                            <img
-                              src={job.companyLogoUrl}
-                              alt={job.company ?? ''}
-                              className="max-h-full max-w-full object-contain"
-                            />
-                          </div>
-                        ) : (
-                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-primary-container/60 font-headline-md text-headline-md font-bold text-primary shadow-xs">
-                            {initialsOf(job.company || 'SG')}
-                          </div>
-                        )}
-
-                        <div className="min-w-0">
-                          <h2 className="font-headline-md text-headline-md font-semibold text-on-surface tracking-tight">
-                            {job.company || 'Company Undisclosed'}
-                          </h2>
-                          {job.location && (
-                            <div className="mt-1 flex items-center gap-1.5 font-body-md text-body-md text-on-surface-variant">
-                              <span className="material-symbols-outlined text-[18px] text-on-surface-variant">
-                                location_on
-                              </span>
-                              <span className="truncate">{job.location}</span>
+                    <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+                      {/* Left Column: Avatar + Company Name + Title + Meta Chips */}
+                      <div className="flex-1 min-w-0 space-y-4">
+                        <div className="flex items-center gap-3.5">
+                          {/* Company Avatar / Logo */}
+                          {job.companyLogoUrl ? (
+                            <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-surface-variant bg-surface-container-low p-2 shadow-xs">
+                              <img
+                                src={job.companyLogoUrl}
+                                alt={job.company ?? ''}
+                                className="max-h-full max-w-full object-contain"
+                              />
                             </div>
+                          ) : (
+                            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-primary-container/60 font-headline-md text-headline-md font-bold text-primary shadow-xs">
+                              {initialsOf(job.company || 'SG')}
+                            </div>
+                          )}
+
+                          <div className="min-w-0">
+                            <h2 className="font-headline-md text-headline-md font-semibold text-on-surface tracking-tight">
+                              {job.company || 'Company Undisclosed'}
+                            </h2>
+                            {job.location && (
+                              <div className="mt-1 flex items-center gap-1.5 font-body-md text-body-md text-on-surface-variant">
+                                <span className="material-symbols-outlined text-[18px] text-on-surface-variant">
+                                  location_on
+                                </span>
+                                <span className="truncate">{job.location}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Job Title */}
+                        <h1 className="font-headline-lg text-headline-lg font-bold tracking-tight text-on-surface leading-snug">
+                          {job.title}
+                        </h1>
+
+                        {/* Meta Chips */}
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container px-3 py-1 font-label-sm text-label-sm text-on-surface">
+                            <span className="material-symbols-outlined text-[16px] text-on-surface-variant">
+                              schedule
+                            </span>
+                            {jobTypeLabel(job)}
+                          </span>
+
+                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container px-3 py-1 font-label-sm text-label-sm text-on-surface">
+                            <span className="material-symbols-outlined text-[16px] text-on-surface-variant">
+                              home_work
+                            </span>
+                            {workModeLabel(job.workMode)}
+                          </span>
+
+                          {closesLabel(job.deadline) && (
+                            <span
+                              className={cn(
+                                'inline-flex items-center gap-1.5 rounded-lg px-3 py-1 font-label-sm text-label-sm font-semibold',
+                                new Date(job.deadline!).getTime() - Date.now() <= 7 * DAY_MS
+                                  ? 'bg-error-container/80 text-on-error-container'
+                                  : 'bg-primary-container/60 text-primary',
+                              )}
+                            >
+                              <span className="material-symbols-outlined text-[16px]">alarm</span>
+                              {closesLabel(job.deadline)}
+                            </span>
+                          )}
+
+                          {job.sourceName && job.sourceName.toLowerCase() !== 'serago' && (
+                            <span className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container-low px-3 py-1 font-label-sm text-label-sm text-on-surface-variant">
+                              <span className="material-symbols-outlined text-[16px] text-primary">language</span>
+                              Aggregated vacancy
+                            </span>
                           )}
                         </div>
                       </div>
 
-                      {/* Visual Source Branding Badge */}
-                      <div className="flex items-center gap-2">
-                        {brandLogo ? (
-                          <div className="inline-flex items-center gap-2.5 rounded-full border border-surface-variant bg-surface-container-low/80 px-4 py-2 shadow-xs backdrop-blur-xs">
-                            <span className="font-label-sm text-label-sm font-medium text-on-surface-variant">Via</span>
-                            <img
-                              src={brandLogo}
-                              alt={job.sourceName ?? ''}
-                              className="h-5 w-auto max-w-[90px] object-contain drop-shadow-xs"
-                            />
-                            <span className="font-label-sm text-label-sm font-bold text-on-surface">
-                              {job.sourceName}
-                            </span>
-                            {job.sourceUrl && (
-                              <a
-                                href={job.sourceUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                title={`View original posting on ${job.sourceName}`}
-                                className="ml-0.5 text-on-surface-variant hover:text-primary transition-colors"
-                              >
-                                <span className="material-symbols-outlined text-sm">open_in_new</span>
-                              </a>
-                            )}
-                          </div>
-                        ) : isSerago ? (
-                          <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary-container/25 px-4 py-2 shadow-xs">
-                            <img src={seragoLogo} alt="SeraGo" className="h-4 w-auto object-contain" />
-                            <span className="font-label-sm text-label-sm font-bold text-primary">SeraGo Direct</span>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {/* Job Title & Chips */}
-                    <div className="mt-5 space-y-4">
-                      <h1 className="font-headline-lg text-headline-lg font-bold tracking-tight text-on-surface leading-snug">
-                        {job.title}
-                      </h1>
-
-                      <div className="flex flex-wrap items-center gap-2 pt-1">
-                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container px-3 py-1 font-label-sm text-label-sm text-on-surface">
-                          <span className="material-symbols-outlined text-[16px] text-on-surface-variant">
-                            schedule
-                          </span>
-                          {jobTypeLabel(job)}
-                        </span>
-
-                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container px-3 py-1 font-label-sm text-label-sm text-on-surface">
-                          <span className="material-symbols-outlined text-[16px] text-on-surface-variant">
-                            home_work
-                          </span>
-                          {workModeLabel(job.workMode)}
-                        </span>
-
-                        {closesLabel(job.deadline) && (
-                          <span
-                            className={cn(
-                              'inline-flex items-center gap-1.5 rounded-lg px-3 py-1 font-label-sm text-label-sm font-semibold',
-                              new Date(job.deadline!).getTime() - Date.now() <= 7 * DAY_MS
-                                ? 'bg-error-container/80 text-on-error-container'
-                                : 'bg-primary-container/60 text-primary',
-                            )}
-                          >
-                            <span className="material-symbols-outlined text-[16px]">alarm</span>
-                            {closesLabel(job.deadline)}
-                          </span>
-                        )}
-
-                        {job.sourceName && job.sourceName.toLowerCase() !== 'serago' && (
-                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container-low px-3 py-1 font-label-sm text-label-sm text-on-surface-variant">
-                            <span className="material-symbols-outlined text-[16px] text-primary">language</span>
-                            Aggregated vacancy
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Action Bar */}
-                      <div className="pt-4 flex flex-wrap items-center gap-3">
+                      {/* Right Column: Action Buttons (Apply CTA, Save Job, Share) */}
+                      <div className="flex flex-wrap sm:flex-nowrap lg:flex-wrap items-center lg:items-start lg:justify-end gap-3 shrink-0 pt-2 lg:pt-1">
                         {/* Apply CTA Button */}
                         {isPreview ? (
                           <span className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-outline-variant px-6 py-3 font-label-md text-label-md text-on-surface-variant">
@@ -967,7 +933,7 @@ export default function JobDetailPage() {
                           </span>
                         ) : isSerago ? (
                           hasApplied || applySuccess ? (
-                            <span className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary-container/30 px-7 py-3 font-label-md text-label-md font-semibold text-primary">
+                            <span className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary-container/30 px-7 py-3.5 font-label-md text-label-md font-semibold text-primary">
                               <span className="material-symbols-outlined text-[20px]">check_circle</span>
                               Application Submitted
                             </span>
@@ -1157,7 +1123,7 @@ export default function JobDetailPage() {
                 {/* ================= RIGHT RAIL (Similar Jobs: wider & bigger) ================= */}
                 <aside ref={similarJobsRef} className="w-full shrink-0 flex flex-col gap-4 lg:w-[380px] xl:w-[420px] 2xl:w-[450px] lg:sticky lg:top-20">
                   <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-5 sm:p-6 shadow-sm">
-                    <div className="flex items-center justify-between pb-3">
+                    <div className="flex items-center justify-between pb-4">
                       <div className="flex items-center gap-2">
                         <h2 className="font-headline-md text-headline-md font-bold text-on-surface">Similar Jobs</h2>
                         <span className="rounded-full bg-primary-container/60 px-2.5 py-0.5 font-label-sm text-label-sm font-semibold text-primary">
@@ -1172,9 +1138,6 @@ export default function JobDetailPage() {
                         <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
                       </Link>
                     </div>
-                    <p className="font-label-sm text-label-sm text-on-surface-variant/80 pb-4">
-                      {job.sectorName ? `Related vacancies in ${job.sectorName}:` : 'Related vacancies in Ethiopia:'}
-                    </p>
 
                     {/* Vertical List of Similar Job Cards (1 per row, wider and bigger) */}
                     <div className="flex flex-col gap-3.5">
@@ -1245,13 +1208,19 @@ export default function JobDetailPage() {
                                 {item.salary || 'Competitive'}
                               </span>
 
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center">
                                 {itemSourceLogo ? (
-                                  <img src={itemSourceLogo} alt="" className="h-4 w-auto max-w-[55px] object-contain opacity-85" />
-                                ) : null}
-                                <span className="rounded-full bg-surface-container-low border border-surface-variant px-2.5 py-0.5 text-[11px] font-label-sm font-medium text-on-surface-variant">
-                                  {item.sourceName || 'SeraGo'}
-                                </span>
+                                  <img
+                                    src={itemSourceLogo}
+                                    alt={item.sourceName || ''}
+                                    title={item.sourceName || ''}
+                                    className="h-5 sm:h-5.5 w-auto max-w-[65px] object-contain drop-shadow-2xs"
+                                  />
+                                ) : (
+                                  <span className="rounded-full bg-surface-container-low border border-surface-variant px-2.5 py-0.5 text-[11px] font-label-sm font-medium text-on-surface-variant">
+                                    {item.sourceName || 'SeraGo'}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
