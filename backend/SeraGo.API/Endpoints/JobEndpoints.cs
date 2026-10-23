@@ -1026,12 +1026,31 @@ public static class JobEndpoints
         return words.Count(w => targetTokens.Contains(w));
     }
 
+    private const int MaxSimilarJobs = 24;
+
+    private static List<(Job Job, double Score)> DeduplicateScoredJobs(
+        IEnumerable<(Job Job, double Score)> items,
+        int maxCount)
+    {
+        var result = new List<(Job Job, double Score)>();
+        foreach (var item in items.OrderByDescending(x => x.Score))
+        {
+            if (!result.Any(r => JobDeduplicationHelper.AreDuplicateJobs(r.Job, item.Job)))
+            {
+                result.Add(item);
+                if (result.Count >= maxCount) break;
+            }
+        }
+        return result;
+    }
+
     /// <summary>
-    /// GET /api/jobs/{id}/similar — returns the top 6 similar jobs in the same sector.
+    /// GET /api/jobs/{id}/similar — returns the top deduplicated similar jobs in the same sector (up to 24).
     /// Utilizes an incremental delta-update algorithm with JobSimilarityCache:
-    /// 1. Reads stored top 6. If all are active and no new jobs arrived in this sector, returns stored jobs.
-    /// 2. If new jobs arrived since LastEvaluatedAt, scores ONLY the new delta, merges with top 6, and updates cache.
-    /// 3. If no cache exists (cold start) or stored jobs expired, re-evaluates candidates in the sector and saves cache.
+    /// 1. Excludes cross-site scraper duplicates of the target job and de-duplicates candidate listings.
+    /// 2. Reads stored top 24. If healthy and zero new jobs arrived in this sector, returns stored jobs instantly.
+    /// 3. If new jobs arrived since LastEvaluatedAt, scores ONLY the new delta, merges with top 24, and updates cache.
+    /// 4. If no cache exists (cold start) or stored jobs expired, re-evaluates sector candidates and saves cache.
     /// </summary>
     private static async Task<IResult> GetSimilarJobsAsync(
         Guid id,
@@ -1090,24 +1109,27 @@ public static class JobEndpoints
         List<Job> newJobs = [];
         if (cache != null && job.SectorId != null)
         {
-            newJobs = await db.Jobs.AsNoTracking()
+            var rawNew = await db.Jobs.AsNoTracking()
                 .Where(j => j.SectorId == job.SectorId
                     && j.Id != id
                     && j.Status == JobStatus.Published && j.IsActive
                     && (j.Deadline == null || j.Deadline > graceThreshold)
                     && (j.PublishedAt ?? j.CreatedAt) > cache.LastEvaluatedAt)
                 .OrderByDescending(j => j.PublishedAt ?? j.CreatedAt)
-                .Take(20)
+                .Take(30)
                 .ToListAsync(ct);
+
+            // Filter out any new job that is an external duplicate of the target job
+            newJobs = rawNew.Where(nj => !JobDeduplicationHelper.AreDuplicateJobs(job, nj)).ToList();
         }
 
         // CASE 1: Pure Cache Hit
-        // Stored items are healthy (at least 6), all 6 are still live in DB, and zero new jobs arrived.
+        // Stored items are healthy (at least 6), live stored jobs are present, and zero new jobs arrived.
         if (cache != null && storedItems.Count >= 6 && liveStoredJobs.Count >= 6 && newJobs.Count == 0)
         {
             var ordered = storedItems
                 .Where(s => liveStoredJobDict.ContainsKey(s.JobId))
-                .Take(6)
+                .Take(MaxSimilarJobs)
                 .Select(s => liveStoredJobDict[s.JobId])
                 .Select(j => ToResponse(j, user?.Id))
                 .ToList();
@@ -1116,85 +1138,80 @@ public static class JobEndpoints
         }
 
         // CASE 2: Delta Update
-        // Cache exists and is healthy, but new jobs arrived (e.g. jobs 11 & 12).
+        // Cache exists and is healthy, but new jobs arrived in this sector.
         if (cache != null && newJobs.Count > 0 && liveStoredJobs.Count >= 6)
         {
             // Score ONLY the new jobs against the target job
             var newScores = await matchingClient.GetSimilarJobMatchesAsync(job, newJobs, ct);
+            var newScoresDict = newScores.ToDictionary(ns => ns.JobId, ns => ns.Score);
 
-            var merged = new List<SimilarItemScore>();
+            var pool = new List<(Job Job, double Score)>();
+
+            // Existing live jobs from cache
             foreach (var s in storedItems)
             {
-                if (liveStoredJobDict.ContainsKey(s.JobId))
+                if (liveStoredJobDict.TryGetValue(s.JobId, out var liveJob))
                 {
-                    merged.Add(s);
+                    pool.Add((liveJob, s.Score));
                 }
             }
 
-            if (newScores.Count > 0)
+            // New arrival jobs
+            var targetTokens = ExtractTitleTokens(job.Title);
+            foreach (var nj in newJobs)
             {
-                foreach (var ns in newScores)
+                if (newScoresDict.TryGetValue(nj.Id, out var score))
                 {
-                    merged.Add(new SimilarItemScore { JobId = ns.JobId, Score = ns.Score });
+                    pool.Add((nj, score));
                 }
-            }
-            else
-            {
-                // Fallback scoring for new jobs if AI unavailable
-                var targetTokens = ExtractTitleTokens(job.Title);
-                foreach (var nj in newJobs)
+                else
                 {
                     var matchCount = CountMatchingTokens(nj.Title, targetTokens);
-                    merged.Add(new SimilarItemScore { JobId = nj.Id, Score = 0.5 + (matchCount * 0.1) });
+                    pool.Add((nj, 0.45 + (matchCount * 0.1)));
                 }
             }
 
-            var top6 = merged.OrderByDescending(m => m.Score).Take(6).ToList();
+            // Deduplicate candidate-to-candidate and take top 24
+            var topScored = DeduplicateScoredJobs(pool, MaxSimilarJobs);
+            var topScores = topScored.Select(x => new SimilarItemScore { JobId = x.Job.Id, Score = Math.Round(x.Score, 4) }).ToList();
             var newestTimestamp = newJobs.Max(j => j.PublishedAt ?? j.CreatedAt);
 
-            cache.SimilarJobItemsJson = JsonSerializer.Serialize(top6, JsonOpts);
+            cache.SimilarJobItemsJson = JsonSerializer.Serialize(topScores, JsonOpts);
             cache.LastEvaluatedAt = newestTimestamp > cache.LastEvaluatedAt ? newestTimestamp : cache.LastEvaluatedAt;
             cache.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
 
-            var top6Ids = top6.Select(t => t.JobId).ToList();
-            var allTop6Jobs = await db.Jobs.AsNoTracking()
-                .Where(j => top6Ids.Contains(j.Id))
-                .ToListAsync(ct);
-            var allDict = allTop6Jobs.ToDictionary(j => j.Id);
-
-            var ordered = top6
-                .Where(t => allDict.ContainsKey(t.JobId))
-                .Select(t => allDict[t.JobId])
-                .Select(j => ToResponse(j, user?.Id))
-                .ToList();
-
-            return Results.Ok(ordered);
+            return Results.Ok(topScored.Select(x => ToResponse(x.Job, user?.Id)));
         }
 
         // CASE 3: Cold Start or Cache Backfill (when stored jobs expired)
-        var candidates = await db.Jobs.AsNoTracking()
+        var rawCandidates = await db.Jobs.AsNoTracking()
             .Where(j => j.Id != id
                 && j.Status == JobStatus.Published && j.IsActive
                 && (j.Deadline == null || j.Deadline > graceThreshold)
                 && (job.SectorId != null ? j.SectorId == job.SectorId : true))
             .OrderByDescending(j => j.PublishedAt ?? j.CreatedAt)
-            .Take(50)
+            .Take(70)
             .ToListAsync(ct);
 
-        if (candidates.Count < 6)
+        if (rawCandidates.Count < 6)
         {
-            var candidateIds = candidates.Select(c => c.Id).ToHashSet();
+            var rawCandidateIds = rawCandidates.Select(c => c.Id).ToHashSet();
             var extra = await db.Jobs.AsNoTracking()
                 .Where(j => j.Id != id
                     && j.Status == JobStatus.Published && j.IsActive
                     && (j.Deadline == null || j.Deadline > graceThreshold)
-                    && !candidateIds.Contains(j.Id))
+                    && !rawCandidateIds.Contains(j.Id))
                 .OrderByDescending(j => j.PublishedAt ?? j.CreatedAt)
-                .Take(12 - candidates.Count)
+                .Take(24 - rawCandidates.Count)
                 .ToListAsync(ct);
-            candidates.AddRange(extra);
+            rawCandidates.AddRange(extra);
         }
+
+        // Filter out any candidates that are cross-site duplicates of the target job
+        var candidates = rawCandidates
+            .Where(c => !JobDeduplicationHelper.AreDuplicateJobs(job, c))
+            .ToList();
 
         if (candidates.Count == 0)
         {
@@ -1202,42 +1219,24 @@ public static class JobEndpoints
         }
 
         var matches = await matchingClient.GetSimilarJobMatchesAsync(job, candidates, ct);
+        var matchDict = matches.ToDictionary(m => m.JobId, m => m.Score);
+        var fallbackTokens = ExtractTitleTokens(job.Title);
 
-        List<Job> rankedJobs;
-        List<SimilarItemScore> rankedScores;
-
-        if (matches.Count > 0)
+        var candidatePool = candidates.Select(c =>
         {
-            var matchDict = matches.ToDictionary(m => m.JobId, m => m.Score);
-            var sorted = candidates
-                .OrderByDescending(c => matchDict.TryGetValue(c.Id, out var s) ? s : 0.0)
-                .ThenByDescending(c => c.PublishedAt ?? c.CreatedAt)
-                .Take(6)
-                .ToList();
+            double score = matchDict.TryGetValue(c.Id, out var s)
+                ? s
+                : (0.45 + (CountMatchingTokens(c.Title, fallbackTokens) * 0.1));
+            return (Job: c, Score: score);
+        });
 
-            rankedJobs = sorted;
-            rankedScores = sorted.Select(c => new SimilarItemScore
-            {
-                JobId = c.Id,
-                Score = matchDict.TryGetValue(c.Id, out var s) ? s : 0.5
-            }).ToList();
-        }
-        else
+        // Deduplicate candidate-to-candidate and take top 24
+        var deduplicatedTop = DeduplicateScoredJobs(candidatePool, MaxSimilarJobs);
+        var rankedScores = deduplicatedTop.Select(x => new SimilarItemScore
         {
-            var targetTokens = ExtractTitleTokens(job.Title);
-            var sorted = candidates
-                .OrderByDescending(c => CountMatchingTokens(c.Title, targetTokens))
-                .ThenByDescending(c => c.PublishedAt ?? c.CreatedAt)
-                .Take(6)
-                .ToList();
-
-            rankedJobs = sorted;
-            rankedScores = sorted.Select(c => new SimilarItemScore
-            {
-                JobId = c.Id,
-                Score = 0.5
-            }).ToList();
-        }
+            JobId = x.Job.Id,
+            Score = Math.Round(x.Score, 4)
+        }).ToList();
 
         var highWaterMark = candidates.Max(c => c.PublishedAt ?? c.CreatedAt);
 
@@ -1261,7 +1260,7 @@ public static class JobEndpoints
 
         await db.SaveChangesAsync(ct);
 
-        return Results.Ok(rankedJobs.Select(j => ToResponse(j, user?.Id)));
+        return Results.Ok(deduplicatedTop.Select(x => ToResponse(x.Job, user?.Id)));
     }
 
     /// <summary>POST /api/jobs — create a job (recruiter or admin). Draft by default.</summary>

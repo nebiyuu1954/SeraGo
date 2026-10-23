@@ -561,9 +561,15 @@ export default function JobDetailPage() {
     auth.status === 'authenticated' && !!job?.id,
   )
 
+  const [visibleSimilarCount, setVisibleSimilarCount] = useState(6)
+
+  // Reset in-rail view count back to 6 whenever a new job is opened
+  useEffect(() => {
+    setVisibleSimilarCount(6)
+  }, [jobId])
+
   const liveSimilarJobs: SimilarJobDisplayItem[] = (rawSimilarJobs || [])
     .filter((j) => j.id !== job?.id)
-    .slice(0, 6)
     .map((j) => {
       const sal =
         j.salaryMin != null || j.salaryMax != null
@@ -584,13 +590,17 @@ export default function JobDetailPage() {
       }
     })
 
-  // Show live vector-matched vacancies when loaded; fallback to curated previews if empty
-  const displayedSimilarJobs =
+  // Full deduplicated list of similar vacancies (up to 24)
+  const allSimilarJobs =
     liveSimilarJobs.length > 0
       ? liveSimilarJobs
       : isLoadingSimilar
       ? []
       : PLACEHOLDER_SIMILAR_JOBS
+
+  // Paginated in-rail slice
+  const displayedSimilarJobs = allSimilarJobs.slice(0, visibleSimilarCount)
+  const remainingSimilarCount = Math.max(0, allSimilarJobs.length - visibleSimilarCount)
 
   const copyRoleShareLink = () => {
     if (typeof window !== 'undefined') {
@@ -1131,7 +1141,7 @@ export default function JobDetailPage() {
                       <div className="flex items-center gap-2">
                         <h2 className="font-headline-md text-headline-md font-bold text-on-surface">Similar Jobs</h2>
                         <span className="rounded-full bg-primary-container/60 px-2.5 py-0.5 font-label-sm text-label-sm font-semibold text-primary">
-                          {isLoadingSimilar ? 'Finding...' : `${displayedSimilarJobs.length} found`}
+                          {isLoadingSimilar ? 'Finding...' : `${allSimilarJobs.length} found`}
                         </span>
                       </div>
                       <Link
@@ -1250,6 +1260,17 @@ export default function JobDetailPage() {
                           </div>
                         )
                       }))}
+
+                      {remainingSimilarCount > 0 && !isLoadingSimilar && (
+                        <button
+                          type="button"
+                          onClick={() => setVisibleSimilarCount((prev) => Math.min(prev + 6, allSimilarJobs.length))}
+                          className="w-full mt-1 py-3 px-4 rounded-xl border border-surface-variant bg-surface-container-low hover:bg-surface-container hover:border-primary/40 font-label-md text-sm font-semibold text-primary transition-all flex items-center justify-center gap-1.5 shadow-2xs hover:shadow-xs active:scale-[0.99] group cursor-pointer"
+                        >
+                          <span>Show more similar jobs</span>
+                          <span className="material-symbols-outlined text-[18px] group-hover:translate-y-0.5 transition-transform">expand_more</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </aside>
