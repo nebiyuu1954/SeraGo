@@ -31,17 +31,21 @@ public sealed class TelegramBotService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<TelegramBotService> _logger;
     private readonly ITelegramBotClient? _botClient;
+    private readonly TelegramOptions _options;
     private string? _botUsername; // cached from getMe
     private readonly ConcurrentDictionary<long, int> _pendingUploadPromptMessageIds = new();
+    private static readonly ConcurrentDictionary<long, (bool IsMember, DateTime CheckedAt)> _membershipCache = new();
 
     public TelegramBotService(
         IServiceScopeFactory scopeFactory,
         ILogger<TelegramBotService> logger,
-        ITelegramBotClient? botClient = null)
+        ITelegramBotClient? botClient = null,
+        TelegramOptions? options = null)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
         _botClient = botClient;
+        _options = options ?? new TelegramOptions();
     }
 
     /// <summary>
@@ -456,6 +460,12 @@ public sealed class TelegramBotService
         // User sent a document (e.g. CV file upload in Telegram)
         if (message.Document is not null)
         {
+            if (!await IsUserChannelMemberAsync(chatId))
+            {
+                await SendForceJoinCardAsync(chatId);
+                return;
+            }
+
             await HandleDocumentUploadAsync(chatId, message.Document);
             return;
         }
@@ -497,10 +507,25 @@ public sealed class TelegramBotService
                     var linked = await LinkAccountAsync(linkedUserId, chatId, message.From?.Username, message.From?.FirstName);
                     if (linked)
                     {
+                        if (!await IsUserChannelMemberAsync(chatId))
+                        {
+                            await _botClient.SendMessage(chatId,
+                                "🎉 <b>Your SeraGo account has been successfully linked!</b>\n\nOne last step: please join our official channel to activate real-time notifications.",
+                                parseMode: ParseMode.Html);
+                            await SendForceJoinCardAsync(chatId);
+                            return;
+                        }
+
                         await SendTalentDashboardCardAsync(chatId, linkedUserId, "🎉 <b>Your SeraGo account has been successfully linked!</b>");
                         return;
                     }
                 }
+            }
+
+            if (!await IsUserChannelMemberAsync(chatId))
+            {
+                await SendForceJoinCardAsync(chatId);
+                return;
             }
 
             var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
@@ -515,11 +540,21 @@ public sealed class TelegramBotService
         else if (text.StartsWith("/testalert", StringComparison.OrdinalIgnoreCase) ||
                  text.StartsWith("/latest", StringComparison.OrdinalIgnoreCase))
         {
+            if (!await IsUserChannelMemberAsync(chatId))
+            {
+                await SendForceJoinCardAsync(chatId);
+                return;
+            }
             await SendTestAlertAsync(chatId);
         }
         else if (text.StartsWith("/sectors", StringComparison.OrdinalIgnoreCase) ||
                  text.StartsWith("/mysectors", StringComparison.OrdinalIgnoreCase))
         {
+            if (!await IsUserChannelMemberAsync(chatId))
+            {
+                await SendForceJoinCardAsync(chatId);
+                return;
+            }
             var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
             if (linkedUser is not null)
             {
@@ -533,6 +568,11 @@ public sealed class TelegramBotService
         else if (text.StartsWith("/cv", StringComparison.OrdinalIgnoreCase) ||
                  text.StartsWith("/resume", StringComparison.OrdinalIgnoreCase))
         {
+            if (!await IsUserChannelMemberAsync(chatId))
+            {
+                await SendForceJoinCardAsync(chatId);
+                return;
+            }
             var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
             if (linkedUser is not null)
             {
@@ -588,6 +628,54 @@ public sealed class TelegramBotService
         }
 
         _logger.LogInformation("Telegram CallbackQuery received from chat {ChatId}: {Data}", chatId, data);
+
+        if (data == "verify_channel")
+        {
+            _membershipCache.TryRemove(chatId, out _);
+            var isMember = await IsUserChannelMemberAsync(chatId);
+
+            if (!isMember)
+            {
+                await _botClient.AnswerCallbackQuery(
+                    callbackQuery.Id,
+                    text: "⚠️ You haven't joined yet!\n\nPlease tap the join button above, then tap Verify.",
+                    showAlert: true);
+                return;
+            }
+
+            await _botClient.AnswerCallbackQuery(callbackQuery.Id, text: "🎉 Verified! Welcome to SeraGo.");
+
+            var linkedUser = await FindLinkedUserByChatIdAsync(chatId);
+            if (linkedUser is not null)
+            {
+                await EditOrSendTalentDashboardCardAsync(chatId, callbackQuery.Message?.MessageId, linkedUser.Value.UserId, "✅ <b>Channel membership verified! Welcome back.</b>");
+            }
+            else
+            {
+                try
+                {
+                    if (callbackQuery.Message is not null)
+                    {
+                        await _botClient.DeleteMessage(chatId, callbackQuery.Message.MessageId);
+                    }
+                }
+                catch { }
+
+                await SendUnlinkedWelcomeCardAsync(chatId);
+            }
+            return;
+        }
+
+        // Gating check for all other callback interactions
+        if (!await IsUserChannelMemberAsync(chatId))
+        {
+            await _botClient.AnswerCallbackQuery(
+                callbackQuery.Id,
+                text: "⚠️ Please join our official channel to continue.",
+                showAlert: true);
+            await SendForceJoinCardAsync(chatId, callbackQuery.Message?.MessageId);
+            return;
+        }
 
         if (data == "send_test_alert")
         {
@@ -1299,6 +1387,112 @@ public sealed class TelegramBotService
         }
     }
 
+    /// <summary>
+    /// Checks whether the Telegram user is an active member/admin/creator of the channel.
+    /// Results are cached in memory for 10 minutes to minimize Telegram API latency and rate limits.
+    /// </summary>
+    public async Task<bool> IsUserChannelMemberAsync(long userId, CancellationToken ct = default)
+    {
+        if (!_options.ForceJoinEnabled) return true;
+
+        var channelTarget = _options.ActiveChannelId;
+        if (string.IsNullOrWhiteSpace(channelTarget)) return true;
+        if (_botClient is null) return true;
+
+        // Check in-memory cache first (cached for 10 minutes if confirmed member)
+        if (_membershipCache.TryGetValue(userId, out var cached) &&
+            cached.IsMember &&
+            DateTime.UtcNow - cached.CheckedAt < TimeSpan.FromMinutes(10))
+        {
+            return true;
+        }
+
+        try
+        {
+            var member = await _botClient.GetChatMember(new ChatId(channelTarget), userId, ct);
+
+            var isMember = member.Status is ChatMemberStatus.Creator
+                                         or ChatMemberStatus.Administrator
+                                         or ChatMemberStatus.Member
+                                         or ChatMemberStatus.Restricted;
+
+            if (isMember)
+            {
+                _membershipCache[userId] = (true, DateTime.UtcNow);
+                return true;
+            }
+
+            _membershipCache.TryRemove(userId, out _);
+            return false;
+        }
+        catch (Telegram.Bot.Exceptions.ApiRequestException ex)
+        {
+            if (ex.Message.Contains("user not found", StringComparison.OrdinalIgnoreCase) ||
+                ex.Message.Contains("PARTICIPANT_ID_INVALID", StringComparison.OrdinalIgnoreCase))
+            {
+                _membershipCache.TryRemove(userId, out _);
+                return false;
+            }
+
+            // Fail-open for configuration or bot-admin permission issues to avoid blocking users
+            _logger.LogWarning(ex, "Unable to verify channel membership for user {UserId} in channel {Channel}. Failing open.", userId, channelTarget);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Unexpected error checking channel membership for user {UserId}. Failing open.", userId);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Sends or edits a card requiring the user to join the official channel before proceeding.
+    /// </summary>
+    private async Task SendForceJoinCardAsync(long chatId, int? messageIdToEdit = null)
+    {
+        if (_botClient is null) return;
+
+        var channelDisplay = !string.IsNullOrWhiteSpace(_options.ChannelUsername)
+            ? $"@{_options.ChannelUsername}"
+            : "our official channel";
+
+        var joinUrl = _options.ActiveInviteUrl;
+
+        var keyboard = new InlineKeyboardMarkup(new[]
+        {
+            new[] { InlineKeyboardButton.WithUrl($"📢 Join {channelDisplay}", joinUrl) },
+            new[] { InlineKeyboardButton.WithCallbackData("🔄 I Have Joined — Verify", "verify_channel") }
+        });
+
+        var message =
+            "📢 <b>Channel Membership Required</b>\n\n" +
+            "To activate SeraGo AI job matching, instant sector alerts, and verified Ethiopian job listings, " +
+            $"please join our official channel <b>{channelDisplay}</b>.\n\n" +
+            "1️⃣ Tap <b>📢 Join</b> below\n" +
+            "2️⃣ Tap <b>Join Channel</b> in Telegram\n" +
+            "3️⃣ Return here and tap <b>🔄 I Have Joined — Verify</b>";
+
+        if (messageIdToEdit.HasValue)
+        {
+            try
+            {
+                await _botClient.EditMessageText(
+                    chatId: chatId,
+                    messageId: messageIdToEdit.Value,
+                    text: message,
+                    parseMode: ParseMode.Html,
+                    replyMarkup: keyboard);
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to edit message for force-join, falling back to SendMessage");
+            }
+        }
+
+        await _botClient.SendMessage(chatId, message, parseMode: ParseMode.Html, replyMarkup: keyboard);
+    }
+
     private async Task SendUnlinkedWelcomeCardAsync(long chatId)
     {
         if (_botClient is null) return;
@@ -1308,7 +1502,7 @@ public sealed class TelegramBotService
         var keyboard = new InlineKeyboardMarkup(new[]
         {
             new[] { InlineKeyboardButton.WithUrl("🔗 Connect SeraGo Account", connectUrl) },
-            new[] { InlineKeyboardButton.WithUrl("📢 Join SeraGo Job Channel", "https://t.me/SeraGo2026") },
+            new[] { InlineKeyboardButton.WithUrl("📢 Join Official Channel", _options.ActiveInviteUrl) },
             new[] { InlineKeyboardButton.WithUrl("🔍 Browse Latest Jobs", "https://serago.pro.et/dashboard/talent/jobs") }
         });
 

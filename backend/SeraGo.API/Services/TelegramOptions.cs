@@ -22,6 +22,24 @@ public sealed class TelegramOptions
     /// <summary>True when channel posting is on (explicit flag, or a channel id is present).</summary>
     public bool ChannelEnabled { get; }
 
+    /// <summary>When true, bot users must be members of the official channel before accessing features.</summary>
+    public bool ForceJoinEnabled { get; }
+
+    /// <summary>Channel public handle without '@', e.g. "SeraGo2026".</summary>
+    public string? ChannelUsername { get; }
+
+    /// <summary>Full invite/join URL, e.g. "https://t.me/SeraGo2026".</summary>
+    public string ChannelInviteUrl { get; }
+
+    /// <summary>Active channel target depending on MessagingTestMode.</summary>
+    public string? ActiveChannelId => MessagingTestMode && !string.IsNullOrWhiteSpace(TestChannelId) ? TestChannelId : ChannelId;
+
+    /// <summary>Active invite URL depending on MessagingTestMode.</summary>
+    public string ActiveInviteUrl =>
+        MessagingTestMode && !string.IsNullOrWhiteSpace(TestChannelId) && TestChannelId.StartsWith("@")
+            ? $"https://t.me/{TestChannelId.TrimStart('@')}"
+            : ChannelInviteUrl;
+
     /// <summary>ai | sector | both | off</summary>
     public string JobDmMode { get; }
 
@@ -83,6 +101,39 @@ public sealed class TelegramOptions
         ChannelEnabled = enabledRaw is not null
             ? IsTruthy(enabledRaw)
             : !string.IsNullOrWhiteSpace(ChannelId);
+
+        var forceJoinRaw = Env("TELEGRAM_FORCE_JOIN_ENABLED");
+        ForceJoinEnabled = forceJoinRaw is not null
+            ? IsTruthy(forceJoinRaw)
+            : !string.IsNullOrWhiteSpace(ChannelId);
+
+        var customUsername = Env("TELEGRAM_CHANNEL_USERNAME");
+        if (!string.IsNullOrWhiteSpace(customUsername))
+        {
+            ChannelUsername = customUsername.Trim().TrimStart('@');
+        }
+        else if (!string.IsNullOrWhiteSpace(ChannelId) && ChannelId.StartsWith("@"))
+        {
+            ChannelUsername = ChannelId.TrimStart('@');
+        }
+        else
+        {
+            ChannelUsername = null;
+        }
+
+        var customInviteUrl = Env("TELEGRAM_CHANNEL_INVITE_URL");
+        if (!string.IsNullOrWhiteSpace(customInviteUrl))
+        {
+            ChannelInviteUrl = customInviteUrl.Trim();
+        }
+        else if (!string.IsNullOrWhiteSpace(ChannelUsername))
+        {
+            ChannelInviteUrl = $"https://t.me/{ChannelUsername}";
+        }
+        else
+        {
+            ChannelInviteUrl = "https://t.me/SeraGo2026";
+        }
 
         var mode = (Env("TELEGRAM_JOB_DM_MODE") ?? "both").Trim().ToLowerInvariant();
         JobDmMode = mode is "ai" or "sector" or "both" or "off" ? mode : "both";
