@@ -125,7 +125,7 @@ public sealed class TelegramStatsService
 
         var sampleJobs = await query
             .OrderByDescending(j => j.PublishedAt ?? j.CreatedAt)
-            .Take(5)
+            .Take(50)
             .ToListAsync(ct);
 
         return new UserSectorJobSummary(
@@ -156,7 +156,7 @@ public sealed class TelegramStatsService
             .GroupBy(j => j.SectorId!.Value)
             .Select(g => new { SectorId = g.Key, Count = g.Count() })
             .OrderByDescending(x => x.Count)
-            .Take(5)
+            .Take(10)
             .ToListAsync(ct);
 
         var sectorIds = sectorCounts.Select(x => x.SectorId).ToList();

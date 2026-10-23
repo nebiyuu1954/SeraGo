@@ -54,14 +54,14 @@ const TYPE_CONFIG: Record<
     label: 'Good Night',
     icon: 'nightlight',
     color: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-    defaultTime: '20:30',
-    desc: 'Full day job recap, top 3-4 hiring sectors, evening reflection',
+    defaultTime: '21:00',
+    desc: 'Full day job recap, top 10 hiring sectors, evening reflection',
   },
   CustomAd: {
     label: 'Feature Spotlight',
     icon: 'auto_awesome',
     color: 'bg-pink-50 text-pink-700 border-pink-200',
-    defaultTime: '11:30',
+    defaultTime: '10:30-11:30',
     desc: 'Promotes SeraGo bot, instant alerts, resume matching, and AI features',
   },
   CustomMessage: {
@@ -186,14 +186,24 @@ export default function AdminTelegramMessagesPage() {
     }
   }
 
-  const handleSeedDefaults = async () => {
+  const handleSeedDefaults = async (force = false) => {
     const tokens = getStoredAuthTokens()
     if (!tokens) return
+    if (messages.length > 0 && !force) {
+      if (
+        !window.confirm(
+          'Reset schedules to the 6 standard templates (Morning 08:00, Midday 13:00, Night 21:00, and 3 Randomized Ad windows)?',
+        )
+      ) {
+        return
+      }
+      force = true
+    }
     setSeeding(true)
     try {
-      const seeded = await seedDefaultSchedules(tokens.accessToken)
+      const seeded = await seedDefaultSchedules(tokens.accessToken, force)
       setMessages(seeded)
-      setBannerNotice('Standard Telegram schedules seeded successfully!')
+      setBannerNotice('Standard Telegram schedules loaded successfully!')
       setTimeout(() => setBannerNotice(null), 5000)
     } catch (err) {
       setError(getApiErrorMessage(err))
@@ -394,16 +404,19 @@ export default function AdminTelegramMessagesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {messages.length === 0 && (
-            <button
-              onClick={handleSeedDefaults}
-              disabled={seeding}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3.5 py-2 font-label-md text-label-md font-semibold text-primary transition-all hover:bg-primary/10 active:scale-95"
-            >
-              <span className="material-symbols-outlined text-lg">auto_fix_high</span>
-              {seeding ? 'Seeding...' : 'Seed Defaults'}
-            </button>
-          )}
+          <button
+            onClick={() => handleSeedDefaults(messages.length > 0)}
+            disabled={seeding}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3.5 py-2 font-label-md text-label-md font-semibold text-primary transition-all hover:bg-primary/10 active:scale-95"
+            title="Load or reset to the 6 standard templates (Morning 08:00, Midday 13:00, Night 21:00, and 3 Randomized Ad windows)"
+          >
+            <span className="material-symbols-outlined text-lg">auto_fix_high</span>
+            {seeding
+              ? 'Syncing...'
+              : messages.length === 0
+                ? 'Seed Defaults'
+                : 'Reset Standard Defaults'}
+          </button>
           <button
             onClick={openCreateModal}
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 font-label-md text-label-md font-semibold text-on-primary shadow-sm transition-all hover:bg-primary/90 active:scale-95"
@@ -935,17 +948,31 @@ export default function AdminTelegramMessagesPage() {
                         Rendered Telegram Card Preview
                       </span>
                       <div className="mt-1.5 max-w-md rounded-2xl bg-[#1e293b] p-4 text-white shadow-lg">
-                        <div
-                          className="space-y-2 text-sm leading-relaxed text-slate-100"
-                          dangerouslySetInnerHTML={{ __html: testResult.renderedPreviewHtml }}
-                        />
-                        {testModalTarget.buttonText && (
-                          <div className="mt-3 pt-2 border-t border-slate-700">
-                            <div className="rounded-lg bg-sky-500/20 py-1.5 text-center font-semibold text-xs text-sky-300">
-                              🔗 {testModalTarget.buttonText}
-                            </div>
+                        {testModalTarget.messageType === 'CustomAd' ? (
+                          <div className="mb-2.5 flex items-center gap-1.5 rounded-lg bg-pink-500/20 px-2.5 py-1 text-xs font-semibold text-pink-300">
+                            <span className="material-symbols-outlined text-sm">videocam</span>
+                            Video attached: SeraGoAD.mp4
+                          </div>
+                        ) : (
+                          <div className="mb-2.5 flex items-center gap-1.5 rounded-lg bg-sky-500/20 px-2.5 py-1 text-xs font-semibold text-sky-300">
+                            <span className="material-symbols-outlined text-sm">image</span>
+                            Image attached: serago.jpg
                           </div>
                         )}
+                        <div
+                          className="space-y-2 text-sm leading-relaxed text-slate-100 whitespace-pre-wrap"
+                          dangerouslySetInnerHTML={{ __html: testResult.renderedPreviewHtml }}
+                        />
+                        <div className="mt-3 pt-2 border-t border-slate-700 space-y-1.5">
+                          <div className="rounded-lg bg-sky-500/20 py-1.5 text-center font-semibold text-xs text-sky-300">
+                            🔗 {testModalTarget.buttonText || 'Browse Jobs on SeraGo'}
+                          </div>
+                          {testModalTarget.messageType === 'CustomAd' && (
+                            <div className="rounded-lg bg-purple-500/20 py-1.5 text-center font-semibold text-xs text-purple-300">
+                              👥 Share to friends
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1043,17 +1070,62 @@ export default function AdminTelegramMessagesPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="font-label-md text-label-md font-semibold text-on-surface">
-                    Execution Time (East Africa Time / UTC+3) *
+                    Execution Time (EAT / UTC+3) *
                   </label>
                   <input
-                    type="time"
+                    type="text"
                     required
                     value={formScheduledTime}
                     onChange={(e) => setFormScheduledTime(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface focus:border-primary focus:outline-none"
+                    placeholder="e.g. 08:00 or 10:30-11:30"
+                    className="mt-1 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-mono text-sm text-on-surface focus:border-primary focus:outline-none"
                   />
+                  <div className="mt-1.5 flex flex-wrap gap-1 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setFormScheduledTime('08:00')}
+                      className="rounded bg-surface-container-low px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-container hover:text-primary"
+                    >
+                      Morning (08:00)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormScheduledTime('13:00')}
+                      className="rounded bg-surface-container-low px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-container hover:text-primary"
+                    >
+                      Afternoon (13:00)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormScheduledTime('21:00')}
+                      className="rounded bg-surface-container-low px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-container hover:text-primary"
+                    >
+                      Night (21:00)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormScheduledTime('10:30-11:30')}
+                      className="rounded bg-pink-50 px-1.5 py-0.5 text-pink-700 hover:bg-pink-100"
+                    >
+                      Ad (10:30-11:30)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormScheduledTime('14:30-15:30')}
+                      className="rounded bg-pink-50 px-1.5 py-0.5 text-pink-700 hover:bg-pink-100"
+                    >
+                      Ad (14:30-15:30)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormScheduledTime('19:30-20:30')}
+                      className="rounded bg-pink-50 px-1.5 py-0.5 text-pink-700 hover:bg-pink-100"
+                    >
+                      Ad (19:30-20:30)
+                    </button>
+                  </div>
                   <span className="mt-1 block text-xs text-on-surface-variant">
-                    Ethiopia Standard Time (EAT / UTC+3)
+                    Use fixed time (HH:mm) or range (HH:mm-HH:mm) for randomized time.
                   </span>
                 </div>
 

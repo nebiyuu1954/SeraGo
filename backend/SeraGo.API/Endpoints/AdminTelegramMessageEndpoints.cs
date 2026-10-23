@@ -214,9 +214,9 @@ public static class AdminTelegramMessageEndpoints
         .WithOpenApi();
 
         // ── Seed Default Templates ───────────────────────────────────────────
-        group.MapPost("/seed-defaults", async (ApplicationDbContext db, CancellationToken ct) =>
+        group.MapPost("/seed-defaults", async ([FromQuery] bool force, ApplicationDbContext db, CancellationToken ct) =>
         {
-            await TelegramBroadcastDispatcher.SeedDefaultSchedulesAsync(db);
+            await TelegramBroadcastDispatcher.SeedDefaultSchedulesAsync(db, force);
             var all = await db.TelegramScheduledMessages.AsNoTracking().ToListAsync(ct);
             return Results.Ok(all);
         })

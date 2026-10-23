@@ -36,6 +36,9 @@ public sealed class TelegramBroadcastDispatcher
     private readonly ILogger<TelegramBroadcastDispatcher> _logger;
     private readonly TelegramOptions _options;
 
+    private static string? _seragoPhotoFileId;
+    private static string? _seragoVideoFileId;
+
     public TelegramBroadcastDispatcher(
         IServiceScopeFactory scopeFactory,
         ILogger<TelegramBroadcastDispatcher> logger,
@@ -49,6 +52,9 @@ public sealed class TelegramBroadcastDispatcher
     /// <summary>
     /// Evaluates all active schedules against the current Ethiopian local time (EAT / UTC+3).
     /// Executed by Hangfire recurring job every 5 minutes.
+    /// Supports exact times (e.g. "08:00", "13:00", "21:00") and randomized time ranges
+    /// (e.g. "10:30-11:30", "14:30-15:30", "19:30-20:30") where Channel and Bot DMs
+    /// are dispatched at different unexpectable times.
     /// </summary>
     [Queue("telegram")]
     [DisableConcurrentExecution(300)]
@@ -92,34 +98,75 @@ public sealed class TelegramBroadcastDispatcher
 
             if (!isDayMatch) continue;
 
-            // 2. Time match (within +/- 5 minutes of current dispatch interval)
-            if (!TimeSpan.TryParse(message.ScheduledTime, out var scheduledSpan))
-            {
-                continue;
-            }
+            // 2. Time match (handles exact times "HH:mm" and randomized ranges "HH:mm-HH:mm")
+            var isTimeMatch = false;
+            var sendChannel = false;
+            var sendBot = false;
 
-            var schedTotalMinutes = (int)scheduledSpan.TotalMinutes;
-            var diff = Math.Abs(currentTotalMinutes - schedTotalMinutes);
-            if (diff > 5 && diff < (1440 - 5))
+            if (message.ScheduledTime.Contains('-'))
             {
-                continue;
-            }
-
-            // 3. Prevent duplicate execution on the same calendar day (EAT)
-            if (message.LastRunAt.HasValue)
-            {
-                var lastRunEat = message.LastRunAt.Value.ToOffset(TimeSpan.FromHours(3));
-                if (lastRunEat.Date == nowEat.Date && Math.Abs((nowEat - lastRunEat).TotalMinutes) < 60)
+                var parts = message.ScheduledTime.Split('-');
+                if (parts.Length == 2 &&
+                    TimeSpan.TryParse(parts[0].Trim(), out var startSpan) &&
+                    TimeSpan.TryParse(parts[1].Trim(), out var endSpan))
                 {
-                    continue; // Already ran today in this time slot
+                    var startMin = (int)startSpan.TotalMinutes;
+                    var endMin = (int)endSpan.TotalMinutes;
+                    if (endMin > startMin)
+                    {
+                        var span = endMin - startMin;
+                        var half = span / 2;
+                        var seed = Math.Abs(nowEat.Year * 10000 + nowEat.DayOfYear * 100 + message.Id.GetHashCode());
+
+                        // Channel target in first half (e.g. min 5 to 25 of the window)
+                        var channelMin = startMin + (seed % Math.Max(5, half - 5));
+                        // Bot target in second half (e.g. min 30 to 55 of the window)
+                        var botMin = startMin + half + ((seed / 17) % Math.Max(5, half - 5));
+
+                        if (Math.Abs(currentTotalMinutes - channelMin) <= 3)
+                        {
+                            sendChannel = message.Target == TelegramMessageTarget.Channel || message.Target == TelegramMessageTarget.Both;
+                        }
+
+                        if (Math.Abs(currentTotalMinutes - botMin) <= 3)
+                        {
+                            sendBot = message.Target == TelegramMessageTarget.BotDm || message.Target == TelegramMessageTarget.Both;
+                        }
+
+                        isTimeMatch = sendChannel || sendBot;
+                    }
+                }
+            }
+            else if (TimeSpan.TryParse(message.ScheduledTime, out var scheduledSpan))
+            {
+                var schedTotalMinutes = (int)scheduledSpan.TotalMinutes;
+                var diff = Math.Abs(currentTotalMinutes - schedTotalMinutes);
+                if (diff <= 3 || diff >= (1440 - 3))
+                {
+                    isTimeMatch = true;
+                    sendChannel = message.Target == TelegramMessageTarget.Channel || message.Target == TelegramMessageTarget.Both;
+                    sendBot = message.Target == TelegramMessageTarget.BotDm || message.Target == TelegramMessageTarget.Both;
                 }
             }
 
-            _logger.LogInformation("Executing due Telegram scheduled broadcast: {Title} (ID: {Id})", message.Title, message.Id);
+            if (!isTimeMatch) continue;
+
+            // 3. Prevent duplicate execution in this time slot on the same day
+            if (message.LastRunAt.HasValue)
+            {
+                var lastRunEat = message.LastRunAt.Value.ToOffset(TimeSpan.FromHours(3));
+                if (lastRunEat.Date == nowEat.Date && Math.Abs((nowEat - lastRunEat).TotalMinutes) < 40)
+                {
+                    continue;
+                }
+            }
+
+            _logger.LogInformation("Executing due Telegram scheduled broadcast: {Title} (ID: {Id}, Channel: {SendChan}, Bot: {SendBot})",
+                message.Title, message.Id, sendChannel, sendBot);
 
             try
             {
-                await ExecuteBroadcastAsync(scope, client, db, message, isTest: _options.MessagingTestMode, ct);
+                await ExecuteBroadcastAsync(scope, client, db, message, isTest: _options.MessagingTestMode, sendChannel, sendBot, ct);
             }
             catch (Exception ex)
             {
@@ -239,6 +286,8 @@ public sealed class TelegramBroadcastDispatcher
         ApplicationDbContext db,
         TelegramScheduledMessage message,
         bool isTest,
+        bool sendChannel,
+        bool sendBot,
         CancellationToken ct)
     {
         var statsService = scope.ServiceProvider.GetRequiredService<TelegramStatsService>();
@@ -247,7 +296,7 @@ public sealed class TelegramBroadcastDispatcher
         var totalRecipients = 0;
 
         // ── 1. Channel Broadcast ─────────────────────────────────────────────
-        if (message.Target == TelegramMessageTarget.Channel || message.Target == TelegramMessageTarget.Both)
+        if (sendChannel)
         {
             var channelTarget = isTest
                 ? (_options.TestChannelId ?? _options.ChannelId)
@@ -270,11 +319,10 @@ public sealed class TelegramBroadcastDispatcher
         }
 
         // ── 2. Bot DMs ───────────────────────────────────────────────────────
-        if (message.Target == TelegramMessageTarget.BotDm || message.Target == TelegramMessageTarget.Both)
+        if (sendBot)
         {
             if (isTest)
             {
-                // In Test Mode: only send to configured TestChatId
                 if (_options.TestChatId.HasValue)
                 {
                     try
@@ -291,7 +339,6 @@ public sealed class TelegramBroadcastDispatcher
             }
             else
             {
-                // Production: send personalized DMs to linked talents
                 var activeUsers = await db.Users.AsNoTracking()
                     .Where(u => u.IsActive && (u.UserType == UserType.Talent || u.UserType == UserType.Admin))
                     .Select(u => new { u.Id, u.FirstName })
@@ -322,7 +369,6 @@ public sealed class TelegramBroadcastDispatcher
                         await SendFormattedAsync(client, new ChatId(chatId.Value), botMsg);
                         totalRecipients++;
 
-                        // Anti-flood throttle (40ms spacing between DMs)
                         await Task.Delay(40, ct);
                     }
                     catch (Exception ex)
@@ -396,29 +442,160 @@ public sealed class TelegramBroadcastDispatcher
         }
     }
 
+    private static string? TryResolveLocalPath(string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath)) return null;
+        if (File.Exists(relativePath)) return Path.GetFullPath(relativePath);
+
+        var clean = relativePath.TrimStart('/', '\\').Replace('/', Path.DirectorySeparatorChar);
+
+        var candidates = new List<string>
+        {
+            Path.Combine(AppContext.BaseDirectory, clean),
+            Path.Combine(Directory.GetCurrentDirectory(), clean),
+            Path.Combine(AppContext.BaseDirectory, "frontend", "public", clean),
+            Path.Combine(Directory.GetCurrentDirectory(), "frontend", "public", clean),
+            Path.Combine(AppContext.BaseDirectory, "..", "frontend", "public", clean),
+            Path.Combine(Directory.GetCurrentDirectory(), "..", "frontend", "public", clean),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "frontend", "public", clean),
+            Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "frontend", "public", clean),
+            // Server Linux paths
+            Path.Combine("/web_app", "repos", "SeraGo", "frontend", "public", clean),
+            Path.Combine("/web_app", "frontend", "dist", clean),
+            Path.Combine("/web_app", "frontend", "public", clean),
+            Path.Combine("/web_app", "frontend", clean)
+        };
+
+        foreach (var c in candidates)
+        {
+            try
+            {
+                if (File.Exists(c)) return Path.GetFullPath(c);
+            }
+            catch { }
+        }
+
+        return null;
+    }
+
     private static async Task SendFormattedAsync(
         ITelegramBotClient client,
         ChatId chatId,
         BuiltTelegramMessage message)
     {
-        if (!string.IsNullOrWhiteSpace(message.BannerUrl))
+        // Safe caption truncation (Telegram photo/video caption limit is 1024 chars)
+        var caption = message.Text;
+        if (caption.Length > 1000)
+        {
+            var cutIndex = caption.LastIndexOf('\n', 950);
+            if (cutIndex <= 0) cutIndex = 950;
+            caption = caption[..cutIndex] + "\n\n<i>...visit SeraGo for more listings!</i>";
+        }
+
+        // 1. Photo Message
+        if (message.MediaType == TelegramMediaType.Photo)
         {
             try
             {
-                await client.SendPhoto(
+                if (!string.IsNullOrWhiteSpace(_seragoPhotoFileId))
+                {
+                    await client.SendPhoto(
+                        chatId: chatId,
+                        photo: InputFile.FromFileId(_seragoPhotoFileId),
+                        caption: caption,
+                        parseMode: ParseMode.Html,
+                        replyMarkup: message.Keyboard);
+                    return;
+                }
+
+                var localPath = TryResolveLocalPath(message.MediaPathOrUrl ?? "sources/serago.jpg");
+                if (localPath is not null)
+                {
+                    await using var stream = File.OpenRead(localPath);
+                    var sent = await client.SendPhoto(
+                        chatId: chatId,
+                        photo: InputFile.FromStream(stream, Path.GetFileName(localPath)),
+                        caption: caption,
+                        parseMode: ParseMode.Html,
+                        replyMarkup: message.Keyboard);
+
+                    _seragoPhotoFileId = sent.Photo?.LastOrDefault()?.FileId;
+                    return;
+                }
+
+                // Fall back to public URL
+                var publicUrl = message.MediaPathOrUrl?.StartsWith("http", StringComparison.OrdinalIgnoreCase) == true
+                    ? message.MediaPathOrUrl
+                    : $"https://serago.pro.et/{message.MediaPathOrUrl?.TrimStart('/') ?? "sources/serago.jpg"}";
+
+                var sentRemote = await client.SendPhoto(
                     chatId: chatId,
-                    photo: InputFile.FromUri(message.BannerUrl),
-                    caption: message.Text,
+                    photo: InputFile.FromUri(publicUrl),
+                    caption: caption,
                     parseMode: ParseMode.Html,
                     replyMarkup: message.Keyboard);
+
+                _seragoPhotoFileId = sentRemote.Photo?.LastOrDefault()?.FileId;
                 return;
             }
             catch
             {
-                // Fall back to SendMessage if photo fails
+                // Fall through to SendMessage if photo fails
+            }
+        }
+        // 2. Video Message (Ads)
+        else if (message.MediaType == TelegramMediaType.Video)
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(_seragoVideoFileId))
+                {
+                    await client.SendVideo(
+                        chatId: chatId,
+                        video: InputFile.FromFileId(_seragoVideoFileId),
+                        caption: caption,
+                        parseMode: ParseMode.Html,
+                        replyMarkup: message.Keyboard);
+                    return;
+                }
+
+                var localPath = TryResolveLocalPath(message.MediaPathOrUrl ?? "sources/SeraGoAD.mp4");
+                if (localPath is not null)
+                {
+                    await using var stream = File.OpenRead(localPath);
+                    var sent = await client.SendVideo(
+                        chatId: chatId,
+                        video: InputFile.FromStream(stream, Path.GetFileName(localPath)),
+                        caption: caption,
+                        parseMode: ParseMode.Html,
+                        replyMarkup: message.Keyboard);
+
+                    _seragoVideoFileId = sent.Video?.FileId;
+                    return;
+                }
+
+                // Fall back to public URL
+                var publicUrl = message.MediaPathOrUrl?.StartsWith("http", StringComparison.OrdinalIgnoreCase) == true
+                    ? message.MediaPathOrUrl
+                    : $"https://serago.pro.et/{message.MediaPathOrUrl?.TrimStart('/') ?? "sources/SeraGoAD.mp4"}";
+
+                var sentRemote = await client.SendVideo(
+                    chatId: chatId,
+                    video: InputFile.FromUri(publicUrl),
+                    caption: caption,
+                    parseMode: ParseMode.Html,
+                    replyMarkup: message.Keyboard);
+
+                _seragoVideoFileId = sentRemote.Video?.FileId;
+                return;
+            }
+            catch
+            {
+                // Fall through to SendMessage if video fails
             }
         }
 
+        // 3. Fallback: Standard text message
         await client.SendMessage(
             chatId: chatId,
             text: message.Text,
@@ -470,11 +647,18 @@ public sealed class TelegramBroadcastDispatcher
     }
 
     /// <summary>
-    /// Seeds default Morning, Afternoon, Night, and Promotional schedules if the table is empty.
+    /// Seeds default Morning, Afternoon, Night, and 3 Randomized Ad schedules.
+    /// Can force reset if requested from Admin UI.
     /// </summary>
-    public static async Task SeedDefaultSchedulesAsync(ApplicationDbContext db)
+    public static async Task SeedDefaultSchedulesAsync(ApplicationDbContext db, bool forceReset = false)
     {
-        if (await db.TelegramScheduledMessages.AnyAsync())
+        if (forceReset)
+        {
+            var existing = await db.TelegramScheduledMessages.ToListAsync();
+            db.TelegramScheduledMessages.RemoveRange(existing);
+            await db.SaveChangesAsync();
+        }
+        else if (await db.TelegramScheduledMessages.AnyAsync())
         {
             return;
         }
@@ -484,11 +668,14 @@ public sealed class TelegramBroadcastDispatcher
             new()
             {
                 Id = Guid.NewGuid(),
-                Title = "☀️ Good Morning Ethiopian Job Pulse",
+                Title = "☀️ Good Morning Job Report",
                 Target = TelegramMessageTarget.Both,
                 MessageType = TelegramMessageType.GoodMorning,
                 DaysOfWeek = "[\"*\"]", // Everyday
                 ScheduledTime = "08:00",
+                BannerUrl = "sources/serago.jpg",
+                ButtonText = "🔍 Browse Jobs on SeraGo",
+                ButtonUrl = "https://serago.pro.et/login",
                 IsActive = true,
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow
@@ -499,8 +686,11 @@ public sealed class TelegramBroadcastDispatcher
                 Title = "🌤️ Midday Fresh Opportunities Pulse",
                 Target = TelegramMessageTarget.Both,
                 MessageType = TelegramMessageType.GoodAfternoon,
-                DaysOfWeek = "[\"Monday\",\"Tuesday\",\"Wednesday\",\"Thursday\",\"Friday\"]",
-                ScheduledTime = "13:30",
+                DaysOfWeek = "[\"*\"]", // Everyday
+                ScheduledTime = "13:00",
+                BannerUrl = "sources/serago.jpg",
+                ButtonText = "⚡ Explore Morning Jobs",
+                ButtonUrl = "https://serago.pro.et/login",
                 IsActive = true,
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow
@@ -508,11 +698,14 @@ public sealed class TelegramBroadcastDispatcher
             new()
             {
                 Id = Guid.NewGuid(),
-                Title = "🌙 Evening Daily Job Summary & Wrap-Up",
+                Title = "🌙 Daily Wrap-Up Report",
                 Target = TelegramMessageTarget.Both,
                 MessageType = TelegramMessageType.GoodNight,
                 DaysOfWeek = "[\"*\"]", // Everyday
-                ScheduledTime = "20:30",
+                ScheduledTime = "21:00",
+                BannerUrl = "sources/serago.jpg",
+                ButtonText = "📋 Review Today's Job Catalog",
+                ButtonUrl = "https://serago.pro.et/login",
                 IsActive = true,
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow
@@ -520,13 +713,44 @@ public sealed class TelegramBroadcastDispatcher
             new()
             {
                 Id = Guid.NewGuid(),
-                Title = "🚀 SeraGo Superpowers & AI Features Spotlight",
-                Target = TelegramMessageTarget.Channel,
+                Title = "🚀 Morning SeraGo Feature Spotlight",
+                Target = TelegramMessageTarget.Both,
                 MessageType = TelegramMessageType.CustomAd,
-                DaysOfWeek = "[\"Tuesday\",\"Friday\"]",
-                ScheduledTime = "16:30",
-                ButtonText = "🌟 Try SeraGo AI Matching",
-                ButtonUrl = "https://serago.pro.et",
+                DaysOfWeek = "[\"*\"]", // Everyday
+                ScheduledTime = "10:30-11:30", // Randomized between 10:30 and 11:30
+                BannerUrl = "sources/SeraGoAD.mp4",
+                ButtonText = "🚀 Visit SeraGo Website",
+                ButtonUrl = "https://serago.pro.et/login",
+                IsActive = true,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                Title = "🚀 Afternoon SeraGo Feature Spotlight",
+                Target = TelegramMessageTarget.Both,
+                MessageType = TelegramMessageType.CustomAd,
+                DaysOfWeek = "[\"*\"]", // Everyday
+                ScheduledTime = "14:30-15:30", // Randomized between 14:30 and 15:30
+                BannerUrl = "sources/SeraGoAD.mp4",
+                ButtonText = "🚀 Visit SeraGo Website",
+                ButtonUrl = "https://serago.pro.et/login",
+                IsActive = true,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                Title = "🚀 Evening SeraGo Feature Spotlight",
+                Target = TelegramMessageTarget.Both,
+                MessageType = TelegramMessageType.CustomAd,
+                DaysOfWeek = "[\"*\"]", // Everyday
+                ScheduledTime = "19:30-20:30", // Randomized between 19:30 and 20:30
+                BannerUrl = "sources/SeraGoAD.mp4",
+                ButtonText = "🚀 Visit SeraGo Website",
+                ButtonUrl = "https://serago.pro.et/login",
                 IsActive = true,
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow

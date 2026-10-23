@@ -171,8 +171,14 @@ export function fetchTelegramTestConfig(token: string): Promise<TestConfigRespon
 }
 
 /** POST /api/admin/telegram/messages/seed-defaults */
-export function seedDefaultSchedules(token: string): Promise<TelegramScheduledMessage[]> {
-  return request<TelegramScheduledMessage[]>(API_ENDPOINTS.adminTelegram.seedDefaults, {
+export function seedDefaultSchedules(
+  token: string,
+  force = false,
+): Promise<TelegramScheduledMessage[]> {
+  const url = force
+    ? `${API_ENDPOINTS.adminTelegram.seedDefaults}?force=true`
+    : API_ENDPOINTS.adminTelegram.seedDefaults
+  return request<TelegramScheduledMessage[]>(url, {
     method: 'POST',
     headers: auth(token),
   })

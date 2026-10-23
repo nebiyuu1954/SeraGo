@@ -4,10 +4,18 @@ using Telegram.Bot.Types.ReplyMarkups;
 
 namespace SeraGo.API.Services;
 
+public enum TelegramMediaType
+{
+    None = 0,
+    Photo = 1,
+    Video = 2
+}
+
 public record BuiltTelegramMessage(
     string Text,
     InlineKeyboardMarkup? Keyboard,
-    string? BannerUrl);
+    string? MediaPathOrUrl,
+    TelegramMediaType MediaType = TelegramMediaType.Photo);
 
 /// <summary>
 /// Assembles engaging, beautifully formatted HTML message cards and inline buttons
@@ -16,24 +24,15 @@ public record BuiltTelegramMessage(
 public sealed class TelegramMessageBuilder
 {
     private readonly TelegramOptions _options;
+    private const string LoginUrl = "https://serago.pro.et/login";
+    private const string DefaultPhotoPath = "sources/serago.jpg";
+    private const string DefaultVideoPath = "sources/SeraGoAD.mp4";
+    private const string ShareUrl = "https://t.me/share/url?url=https://serago.pro.et&text=Check%20out%20SeraGo%20-%20Ethiopia%27s%20unified%20job%20platform%20with%20AI%20matching!";
 
     public TelegramMessageBuilder(TelegramOptions options)
     {
         _options = options;
     }
-
-    private static readonly string[] CareerTips = new[]
-    {
-        "💡 <b>Career Tip:</b> Recruiters spend an average of 7 seconds on the initial CV scan. Put your strongest technical skills right at the top!",
-        "💡 <b>Pro Tip:</b> Tailor your CV keywords to the job description — automated ATS scanners look for direct skill matches.",
-        "💡 <b>Market Fact:</b> Over 70% of hiring managers contact applicants within the first 48 hours of posting. Early applications win interviews!",
-        "💡 <b>Career Tip:</b> Keep your SeraGo profile up to date with your latest work experience so our AI matching engine scores you at the top.",
-        "💡 <b>Did You Know?</b> SeraGo aggregates jobs from 5 major Ethiopian platforms every 15 minutes so you never miss a new role.",
-        "💡 <b>Pro Tip:</b> Even if you match 70% of a job's requirements, apply! Most companies hire for potential, enthusiasm, and culture fit."
-    };
-
-    private static string GetRandomCareerTip() =>
-        CareerTips[Random.Shared.Next(CareerTips.Length)];
 
     // ── Good Morning ────────────────────────────────────────────────────────
 
@@ -41,20 +40,20 @@ public sealed class TelegramMessageBuilder
     {
         var dateDisplay = stats.PeriodStartEat.ToString("dddd, MMMM dd");
         var sb = new StringBuilder();
-        sb.AppendLine("☀️ <b>Good Morning, Ethiopia!</b>");
+        sb.AppendLine("☀️ <b>Good Morning, Everyone!</b>");
         sb.AppendLine();
-        sb.AppendLine($"Here is your morning job market pulse for <b>{dateDisplay}</b>:");
+        sb.AppendLine($"Here is your morning job report for <b>{dateDisplay}</b>:");
         sb.AppendLine();
 
         if (stats.TotalJobs > 0)
         {
-            sb.AppendLine($"📊 <b>{stats.TotalJobs} new job{(stats.TotalJobs == 1 ? "" : "s")}</b> were published yesterday!");
+            sb.AppendLine($"📊 <b>Over +{stats.TotalJobs} new jobs</b> were published yesterday!");
             sb.AppendLine();
 
             if (stats.TopSectors.Count > 0)
             {
                 sb.AppendLine("🏆 <b>Top Hiring Sectors:</b>");
-                foreach (var s in stats.TopSectors)
+                foreach (var s in stats.TopSectors.Take(10))
                 {
                     sb.AppendLine($" • <b>{Escape(s.SectorName)}</b> — {s.JobCount} {(s.JobCount == 1 ? "role" : "roles")}");
                 }
@@ -67,17 +66,16 @@ public sealed class TelegramMessageBuilder
             sb.AppendLine();
         }
 
-        sb.AppendLine(GetRandomCareerTip());
+        sb.AppendLine("💡 <b>Pro Tip:</b> Go to the website and Run AI matching to see which job fits you from yesterdays listing");
         sb.AppendLine();
         sb.AppendLine("Get personalized alerts directly in our bot: @My_Serago_Bot");
 
-        var url = $"{_options.JobLinkBase}?from=tg_channel_morning";
         var keyboard = new InlineKeyboardMarkup(new[]
         {
-            new[] { InlineKeyboardButton.WithUrl("🔍 Browse Today's Jobs on SeraGo", url) }
+            new[] { InlineKeyboardButton.WithUrl("🔍 Browse Jobs on SeraGo", LoginUrl) }
         });
 
-        return new BuiltTelegramMessage(sb.ToString(), keyboard, null);
+        return new BuiltTelegramMessage(sb.ToString().TrimEnd(), keyboard, DefaultPhotoPath, TelegramMediaType.Photo);
     }
 
     public BuiltTelegramMessage BuildMorningBotDm(string userName, UserSectorJobSummary userStats)
@@ -93,15 +91,28 @@ public sealed class TelegramMessageBuilder
 
         if (userStats.MatchingJobsCount > 0)
         {
-            sb.AppendLine($"Yesterday, <b>{userStats.MatchingJobsCount} new job{(userStats.MatchingJobsCount == 1 ? "" : "s")}</b> were published in your sector{(userStats.SectorNames.Count > 1 ? "s" : "")}:");
+            sb.AppendLine($"Yesterday, <b>{userStats.MatchingJobsCount} new job{(userStats.MatchingJobsCount == 1 ? "" : "s")}</b> were published in your sector:");
             sb.AppendLine($"🏷️ <b>{sectorsDisplay}</b>");
             sb.AppendLine();
 
-            sb.AppendLine("🔥 <b>Latest Highlights:</b>");
-            foreach (var job in userStats.SampleJobs.Take(3))
+            sb.AppendLine("🔥 <b>Latest yesterdays listing:</b>");
+            const int maxCaptionLength = 950;
+            var listed = 0;
+            foreach (var job in userStats.SampleJobs)
             {
                 var comp = !string.IsNullOrWhiteSpace(job.Company) ? $" at {Escape(job.Company)}" : "";
-                sb.AppendLine($" • <b>{Escape(job.Title)}</b>{comp}");
+                var line = $" • <b>{Escape(job.Title)}</b>{comp}\n";
+                if (sb.Length + line.Length > maxCaptionLength)
+                {
+                    var remaining = userStats.MatchingJobsCount - listed;
+                    if (remaining > 0)
+                    {
+                        sb.AppendLine($"<i>...and {remaining} more jobs on the website!</i>");
+                    }
+                    break;
+                }
+                sb.Append(line);
+                listed++;
             }
             sb.AppendLine();
             sb.AppendLine("Make sure to review these opportunities early today!");
@@ -113,13 +124,12 @@ public sealed class TelegramMessageBuilder
             sb.AppendLine("We will notify you immediately the moment a matching role is found today! 🚀");
         }
 
-        var url = $"{_options.JobLinkBase}?from=tg_bot_morning";
         var keyboard = new InlineKeyboardMarkup(new[]
         {
-            new[] { InlineKeyboardButton.WithUrl("🎯 View My Matches on SeraGo", url) }
+            new[] { InlineKeyboardButton.WithUrl("🔍 Browse Jobs on SeraGo", LoginUrl) }
         });
 
-        return new BuiltTelegramMessage(sb.ToString(), keyboard, null);
+        return new BuiltTelegramMessage(sb.ToString().TrimEnd(), keyboard, DefaultPhotoPath, TelegramMediaType.Photo);
     }
 
     // ── Good Afternoon ──────────────────────────────────────────────────────
@@ -127,18 +137,18 @@ public sealed class TelegramMessageBuilder
     public BuiltTelegramMessage BuildAfternoonChannel(DailyJobSummary stats)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("🌤️ <b>Good Afternoon! Midday Career Pulse</b>");
+        sb.AppendLine("🌤️ <b>Good Afternoon Everyone!</b>");
         sb.AppendLine();
 
         if (stats.TotalJobs > 0)
         {
-            sb.AppendLine($"⚡ <b>{stats.TotalJobs} fresh job{(stats.TotalJobs == 1 ? "" : "s")}</b> were posted this morning!");
+            sb.AppendLine($"⚡ <b>{stats.TotalJobs} fresh jobs</b> were posted this morning!");
             sb.AppendLine();
 
             if (stats.TopSectors.Count > 0)
             {
                 sb.AppendLine("🔥 <b>Active Right Now:</b>");
-                foreach (var s in stats.TopSectors)
+                foreach (var s in stats.TopSectors.Take(10))
                 {
                     sb.AppendLine($" • <b>{Escape(s.SectorName)}</b> ({s.JobCount})");
                 }
@@ -151,17 +161,16 @@ public sealed class TelegramMessageBuilder
             sb.AppendLine();
         }
 
-        sb.AppendLine(GetRandomCareerTip());
+        sb.AppendLine("💡 <b>Pro Tip:</b> Keep your SeraGo profile up to date with your latest work experience so our AI matching engine scores you at the top.");
         sb.AppendLine();
-        sb.AppendLine("Take a midday break, review your CV, and make your move on SeraGo!");
+        sb.AppendLine("Get personalized alerts directly in our bot: @My_Serago_Bot");
 
-        var url = $"{_options.JobLinkBase}?from=tg_channel_afternoon";
         var keyboard = new InlineKeyboardMarkup(new[]
         {
-            new[] { InlineKeyboardButton.WithUrl("⚡ Explore Fresh Opportunities", url) }
+            new[] { InlineKeyboardButton.WithUrl("⚡ Explore Morning Jobs", LoginUrl) }
         });
 
-        return new BuiltTelegramMessage(sb.ToString(), keyboard, null);
+        return new BuiltTelegramMessage(sb.ToString().TrimEnd(), keyboard, DefaultPhotoPath, TelegramMediaType.Photo);
     }
 
     public BuiltTelegramMessage BuildAfternoonBotDm(string userName, UserSectorJobSummary userStats)
@@ -177,14 +186,27 @@ public sealed class TelegramMessageBuilder
 
         if (userStats.MatchingJobsCount > 0)
         {
-            sb.AppendLine($"Midday check-in: <b>{userStats.MatchingJobsCount} fresh position{(userStats.MatchingJobsCount == 1 ? "" : "s")}</b> were listed this morning in:");
+            sb.AppendLine($"<b>{userStats.MatchingJobsCount} fresh positions</b> were listed this morning in:");
             sb.AppendLine($"🏷️ <b>{sectorsDisplay}</b>");
             sb.AppendLine();
 
-            foreach (var job in userStats.SampleJobs.Take(3))
+            const int maxCaptionLength = 950;
+            var listed = 0;
+            foreach (var job in userStats.SampleJobs)
             {
                 var comp = !string.IsNullOrWhiteSpace(job.Company) ? $" · {Escape(job.Company)}" : "";
-                sb.AppendLine($" • <b>{Escape(job.Title)}</b>{comp}");
+                var line = $" • <b>{Escape(job.Title)}</b>{comp}\n";
+                if (sb.Length + line.Length > maxCaptionLength)
+                {
+                    var remaining = userStats.MatchingJobsCount - listed;
+                    if (remaining > 0)
+                    {
+                        sb.AppendLine($"<i>...and {remaining} more fresh jobs on the website!</i>");
+                    }
+                    break;
+                }
+                sb.Append(line);
+                listed++;
             }
             sb.AppendLine();
             sb.AppendLine("Check them out while they are still brand new!");
@@ -196,13 +218,12 @@ public sealed class TelegramMessageBuilder
             sb.AppendLine("Check back or explore related sectors to widen your horizon!");
         }
 
-        var url = $"{_options.JobLinkBase}?from=tg_bot_afternoon";
         var keyboard = new InlineKeyboardMarkup(new[]
         {
-            new[] { InlineKeyboardButton.WithUrl("🚀 View Midday Listings", url) }
+            new[] { InlineKeyboardButton.WithUrl("⚡ View Morning Jobs", LoginUrl) }
         });
 
-        return new BuiltTelegramMessage(sb.ToString(), keyboard, null);
+        return new BuiltTelegramMessage(sb.ToString().TrimEnd(), keyboard, DefaultPhotoPath, TelegramMediaType.Photo);
     }
 
     // ── Good Night ──────────────────────────────────────────────────────────
@@ -210,7 +231,7 @@ public sealed class TelegramMessageBuilder
     public BuiltTelegramMessage BuildNightChannel(DailyJobSummary stats)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("🌙 <b>Good Night & Daily Wrap-Up</b>");
+        sb.AppendLine("<b>Daily Wrap-Up report</b>");
         sb.AppendLine();
 
         if (stats.TotalJobs > 0)
@@ -221,7 +242,7 @@ public sealed class TelegramMessageBuilder
             if (stats.TopSectors.Count > 0)
             {
                 sb.AppendLine("📊 <b>Today's Leading Sectors:</b>");
-                foreach (var s in stats.TopSectors)
+                foreach (var s in stats.TopSectors.Take(10))
                 {
                     sb.AppendLine($" • <b>{Escape(s.SectorName)}</b> — {s.JobCount} {(s.JobCount == 1 ? "listing" : "listings")}");
                 }
@@ -234,17 +255,18 @@ public sealed class TelegramMessageBuilder
             sb.AppendLine();
         }
 
-        sb.AppendLine("🌟 <i>\"Small daily steps lead to life-changing career milestones.\"</i>");
+        sb.AppendLine("💡 <b>Pro Tip:</b> Go to the website and Run AI matching to see which job fits you from todays listing");
         sb.AppendLine();
-        sb.AppendLine("Rest well tonight, and stay ready for tomorrow's openings! Good night! ✨");
+        sb.AppendLine("Get personalized alerts directly in our bot: @My_Serago_Bot");
+        sb.AppendLine();
+        sb.AppendLine("Good night Everyone! ✨");
 
-        var url = $"{_options.JobLinkBase}?from=tg_channel_night";
         var keyboard = new InlineKeyboardMarkup(new[]
         {
-            new[] { InlineKeyboardButton.WithUrl("📋 Review Today's Job Catalog", url) }
+            new[] { InlineKeyboardButton.WithUrl("📋 Review Today's Job Catalog", LoginUrl) }
         });
 
-        return new BuiltTelegramMessage(sb.ToString(), keyboard, null);
+        return new BuiltTelegramMessage(sb.ToString().TrimEnd(), keyboard, DefaultPhotoPath, TelegramMediaType.Photo);
     }
 
     public BuiltTelegramMessage BuildNightBotDm(string userName, UserSectorJobSummary userStats)
@@ -261,16 +283,31 @@ public sealed class TelegramMessageBuilder
         if (userStats.MatchingJobsCount > 0)
         {
             sb.AppendLine($"Here is your complete daily recap in <b>{sectorsDisplay}</b>:");
-            sb.AppendLine($"📋 <b>{userStats.MatchingJobsCount} matching job{(userStats.MatchingJobsCount == 1 ? "" : "s")}</b> were posted today!");
+            sb.AppendLine($"📋 <b>{userStats.MatchingJobsCount} matching jobs</b> were posted today!");
             sb.AppendLine();
 
-            foreach (var job in userStats.SampleJobs.Take(4))
+            const int maxCaptionLength = 950;
+            var listed = 0;
+            foreach (var job in userStats.SampleJobs)
             {
-                var loc = !string.IsNullOrWhiteSpace(job.Location) ? $" ({Escape(job.Location)})" : "";
-                sb.AppendLine($" • <b>{Escape(job.Title)}</b>{loc}");
+                var loc = !string.IsNullOrWhiteSpace(job.Company)
+                    ? $" ({Escape(job.Company)})"
+                    : (!string.IsNullOrWhiteSpace(job.Location) ? $" ({Escape(job.Location)})" : "");
+                var line = $" • <b>{Escape(job.Title)}</b>{loc}\n";
+                if (sb.Length + line.Length > maxCaptionLength)
+                {
+                    var remaining = userStats.MatchingJobsCount - listed;
+                    if (remaining > 0)
+                    {
+                        sb.AppendLine($"<i>...and {remaining} more jobs on the website!</i>");
+                    }
+                    break;
+                }
+                sb.Append(line);
+                listed++;
             }
             sb.AppendLine();
-            sb.AppendLine("Bookmark or apply before you sleep so you're first in line tomorrow morning.");
+            sb.AppendLine("Make sure to review these opportunities from today!");
         }
         else
         {
@@ -279,13 +316,12 @@ public sealed class TelegramMessageBuilder
             sb.AppendLine("Rest up — our automated scrapers start fresh at dawn! Have a wonderful night! 💤");
         }
 
-        var url = $"{_options.JobLinkBase}?from=tg_bot_night";
         var keyboard = new InlineKeyboardMarkup(new[]
         {
-            new[] { InlineKeyboardButton.WithUrl("📑 Review All Matching Roles", url) }
+            new[] { InlineKeyboardButton.WithUrl("🌙 Review Today's Jobs", LoginUrl) }
         });
 
-        return new BuiltTelegramMessage(sb.ToString(), keyboard, null);
+        return new BuiltTelegramMessage(sb.ToString().TrimEnd(), keyboard, DefaultPhotoPath, TelegramMediaType.Photo);
     }
 
     // ── Promotional / Feature Ads ───────────────────────────────────────────
@@ -298,27 +334,31 @@ public sealed class TelegramMessageBuilder
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine("🚀 <b>Why Thousands of Ethiopian Talents Choose SeraGo</b>");
+        sb.AppendLine("🚀 <b>Why Thousands of Ethiopian job seekers Choose SeraGo</b>");
         sb.AppendLine();
-        sb.AppendLine("Tired of checking 5 different job boards every single day?");
+        sb.AppendLine("Tired of checking multiple different job boards every single day?");
         sb.AppendLine();
         sb.AppendLine("SeraGo unifies Ethiopia's entire job market in one clean platform:");
-        sb.AppendLine(" • 🔄 <b>Automated Sync:</b> Ethiojobs, HaHuJobs, Afriwork, GeezJobs & Reporter synced every 15 mins.");
-        sb.AppendLine(" • 🤖 <b>AI Matching:</b> Upload your CV to @My_Serago_Bot and get matched instantly.");
-        sb.AppendLine(" • 🔔 <b>Instant Alerts:</b> Personalized job alerts straight to your Telegram DM.");
-        sb.AppendLine(" • ⚡ <b>1-Click Apply:</b> Direct ATS and verified employer contacts.");
+        sb.AppendLine(" • 🔄 <b>Automated Sync:</b> Ethiojobs, HaHuJobs, Afriwork, GeezJobs & Reporter jobs synced and tailored to your profile.");
+        sb.AppendLine(" • 🤖 <b>AI Matching:</b> Upload your CV to our website and get matched instantly.");
+        sb.AppendLine(" • 🔔 <b>Instant Alerts:</b> Personalized job alerts straight to your Telegram DM with our bot @My_Serago_Bot.");
+        sb.AppendLine(" • ⚡️ <b>1-Click Apply:</b> Direct ATS and verified employer contacts.");
         sb.AppendLine();
-        sb.AppendLine("Level up your career today — it's 100% free for talents!");
+        sb.AppendLine("Level up your career today — it's 100% free for everyone to use!");
+        sb.AppendLine();
+        sb.AppendLine("Serago Team");
 
-        var btnText = !string.IsNullOrWhiteSpace(message.ButtonText) ? message.ButtonText : "🌟 Explore SeraGo Platform";
-        var btnUrl = !string.IsNullOrWhiteSpace(message.ButtonUrl) ? message.ButtonUrl : "https://serago.pro.et";
+        var btnText = !string.IsNullOrWhiteSpace(message.ButtonText) ? message.ButtonText : "🚀 Visit SeraGo Website";
+        var btnUrl = !string.IsNullOrWhiteSpace(message.ButtonUrl) ? message.ButtonUrl : LoginUrl;
 
         var keyboard = new InlineKeyboardMarkup(new[]
         {
-            new[] { InlineKeyboardButton.WithUrl(btnText, btnUrl) }
+            new[] { InlineKeyboardButton.WithUrl(btnText, btnUrl) },
+            new[] { InlineKeyboardButton.WithUrl("👥 Share to friends", ShareUrl) }
         });
 
-        return new BuiltTelegramMessage(sb.ToString(), keyboard, message.BannerUrl);
+        var videoPath = !string.IsNullOrWhiteSpace(message.BannerUrl) ? message.BannerUrl : DefaultVideoPath;
+        return new BuiltTelegramMessage(sb.ToString().TrimEnd(), keyboard, videoPath, TelegramMediaType.Video);
     }
 
     // ── Custom Template Compiler ────────────────────────────────────────────
@@ -335,7 +375,7 @@ public sealed class TelegramMessageBuilder
         var sectorsListText = "";
         if (dailyStats?.TopSectors != null && dailyStats.TopSectors.Count > 0)
         {
-            sectorsListText = string.Join("\n", dailyStats.TopSectors.Select(s => $" • {Escape(s.SectorName)}: {s.JobCount}"));
+            sectorsListText = string.Join("\n", dailyStats.TopSectors.Take(10).Select(s => $" • {Escape(s.SectorName)}: {s.JobCount}"));
         }
 
         var userSectorsText = userStats?.SectorNames != null && userStats.SectorNames.Count > 0
@@ -364,7 +404,11 @@ public sealed class TelegramMessageBuilder
             });
         }
 
-        return new BuiltTelegramMessage(compiled, keyboard, message.BannerUrl);
+        var mediaType = !string.IsNullOrWhiteSpace(message.BannerUrl) && message.BannerUrl.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
+            ? TelegramMediaType.Video
+            : (!string.IsNullOrWhiteSpace(message.BannerUrl) ? TelegramMediaType.Photo : TelegramMediaType.None);
+
+        return new BuiltTelegramMessage(compiled, keyboard, message.BannerUrl, mediaType);
     }
 
     private static string Escape(string? text) => string.IsNullOrEmpty(text)
