@@ -1144,13 +1144,6 @@ export default function JobDetailPage() {
                           {isLoadingSimilar ? 'Finding...' : `${allSimilarJobs.length} found`}
                         </span>
                       </div>
-                      <Link
-                        to={job.sectorId ? `/dashboard/talent?sectorId=${job.sectorId}` : '/dashboard/talent'}
-                        className="font-label-sm text-label-sm font-semibold text-primary hover:underline flex items-center gap-0.5"
-                      >
-                        <span>Browse all</span>
-                        <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
-                      </Link>
                     </div>
 
                     {/* Vertical List of Similar Job Cards (1 per row, wider and bigger) */}
