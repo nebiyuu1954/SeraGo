@@ -34,7 +34,7 @@ public sealed class GeminiClient
 
         _model = config["GEMINI_MODEL"]
             ?? Environment.GetEnvironmentVariable("GEMINI_MODEL")
-            ?? "gemini-1.5-flash";
+            ?? "gemini-2.0-flash";
 
         var http = factory.CreateClient($"Gemini-{Guid.NewGuid():N}");
         http.BaseAddress = new Uri("https://generativelanguage.googleapis.com/v1beta/");

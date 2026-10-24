@@ -8,30 +8,34 @@ using SeraGo.Infrastructure.Data;
 namespace SeraGo.API.Services;
 
 /// <summary>
-/// 4-Tier unified job classification pipeline:
-///   Tier 1: Google Gemini Flash (Multilingual / Amharic / High Speed)
-///   Tier 2: Groq Cloud LLM (Ultra-fast fallback)
-///   Tier 3: Local Ollama (Offline / On-Premise fallback)
-///   Tier 4: Semantic Cosine Similarity against historical classified jobs
+/// 5-Tier unified job classification pipeline:
+///   Tier 1: OpenRouter (NVIDIA Nemotron 3 Ultra 550B / Google DeepMind Gemma 4 with Dual-Key Failover)
+///   Tier 2: Groq Cloud LLM (Meta Llama 3.3 70B - 1,000 free req/day)
+///   Tier 3: Google Gemini (Gemini 2.0 Flash / Flash Thinking - 1,500 free req/day)
+///   Tier 4: Local Ollama (Offline / On-Premise fallback)
+///   Tier 5: Semantic Cosine Similarity against historical classified jobs
 /// </summary>
 public sealed class UnifiedJobClassificationService
 {
     private readonly ApplicationDbContext _db;
-    private readonly GeminiClient _gemini;
+    private readonly OpenRouterClient _openRouter;
     private readonly GroqClient _groq;
+    private readonly GeminiClient _gemini;
     private readonly OllamaClient _ollama;
     private readonly ILogger<UnifiedJobClassificationService> _logger;
 
     public UnifiedJobClassificationService(
         ApplicationDbContext db,
-        GeminiClient gemini,
+        OpenRouterClient openRouter,
         GroqClient groq,
+        GeminiClient gemini,
         OllamaClient ollama,
         ILogger<UnifiedJobClassificationService> logger)
     {
         _db = db;
-        _gemini = gemini;
+        _openRouter = openRouter;
         _groq = groq;
+        _gemini = gemini;
         _ollama = ollama;
         _logger = logger;
     }
@@ -188,7 +192,39 @@ public sealed class UnifiedJobClassificationService
         }
         """;
 
-        var userItems = jobs.Select(j => new
+        if (jobs.Count > 20)
+        {
+            var chunks = jobs.Chunk(20).ToList();
+            _logger.LogInformation(
+                "Batch of {Total} jobs split into {Count} micro-batches of <= 20 jobs for maximum classification accuracy.",
+                jobs.Count, chunks.Count);
+
+            var aggregatedResults = new List<UnifiedJobClassificationResult>(jobs.Count);
+            for (var i = 0; i < chunks.Count; i++)
+            {
+                var chunk = chunks[i];
+                var chunkResults = await EvaluateChunkAsync(chunk, sectors, sectorBySlug, systemPrompt, ct);
+                aggregatedResults.AddRange(chunkResults);
+
+                if (i + 1 < chunks.Count)
+                {
+                    await Task.Delay(1000, ct);
+                }
+            }
+            return aggregatedResults;
+        }
+
+        return await EvaluateChunkAsync(jobs, sectors, sectorBySlug, systemPrompt, ct);
+    }
+
+    private async Task<List<UnifiedJobClassificationResult>> EvaluateChunkAsync(
+        IReadOnlyList<Job> chunk,
+        List<Sector> sectors,
+        Dictionary<string, Sector> sectorBySlug,
+        string systemPrompt,
+        CancellationToken ct)
+    {
+        var userItems = chunk.Select(j => new
         {
             jobId = j.Id.ToString(),
             title = j.Title,
@@ -200,37 +236,37 @@ public sealed class UnifiedJobClassificationService
         });
 
         var userPrompt = $$"""
-        Classify the following {{jobs.Count}} job postings into canonical sectors:
+        Classify the following {{chunk.Count}} job postings into canonical sectors:
 
         {{JsonSerializer.Serialize(userItems, new JsonSerializerOptions { WriteIndented = true })}}
         """;
 
-        // ── TIER 1: Google Gemini Flash ───────────────────────────────────────
-        if (_gemini.IsConfigured)
+        // ── TIER 1: OpenRouter (NVIDIA Nemotron 3 Ultra 550B / Google Gemma 4 with Dual-Key Failover) ──
+        if (_openRouter.IsConfigured)
         {
             try
             {
-                _logger.LogInformation("Attempting Tier 1 (Gemini Flash) classification for {Count} jobs.", jobs.Count);
-                var geminiEnvelope = await _gemini.GenerateJsonAsync<ClassificationEnvelope>(
-                    systemPrompt, userPrompt, ct);
+                _logger.LogInformation("Attempting Tier 1 (OpenRouter Nemotron 550B) classification for {Count} jobs.", chunk.Count);
+                var openRouterEnvelope = await _openRouter.ChatJsonAsync<ClassificationEnvelope>(
+                    systemPrompt, userPrompt, timeoutSeconds: 35, ct: ct);
 
-                if (geminiEnvelope?.Results is { Count: > 0 })
+                if (openRouterEnvelope?.Results is { Count: > 0 })
                 {
-                    return MapResults(jobs, geminiEnvelope.Results, sectorBySlug, "Gemini");
+                    return MapResults(chunk, openRouterEnvelope.Results, sectorBySlug, "OpenRouter Nemotron");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Tier 1 (Gemini) classification failed or was rate-limited. Falling back to Tier 2 (Groq).");
+                _logger.LogWarning(ex, "Tier 1 (OpenRouter) classification failed or was rate-limited. Falling back to Tier 2 (Groq).");
             }
         }
 
-        // ── TIER 2: Groq Cloud LLM ───────────────────────────────────────────
+        // ── TIER 2: Groq Cloud LLM (Meta Llama 3.3 70B - 1,000 free req/day) ──
         if (_groq.IsConfigured)
         {
             try
             {
-                _logger.LogInformation("Attempting Tier 2 (Groq) classification for {Count} jobs.", jobs.Count);
+                _logger.LogInformation("Attempting Tier 2 (Groq Llama 3.3 70B) classification for {Count} jobs.", chunk.Count);
                 var groqEnvelope = await _groq.ChatJsonAsync<ClassificationEnvelope>(
                     model: "",
                     systemPrompt: systemPrompt,
@@ -240,35 +276,55 @@ public sealed class UnifiedJobClassificationService
 
                 if (groqEnvelope?.Results is { Count: > 0 })
                 {
-                    return MapResults(jobs, groqEnvelope.Results, sectorBySlug, "Groq");
+                    return MapResults(chunk, groqEnvelope.Results, sectorBySlug, "Groq");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Tier 2 (Groq) classification failed. Falling back to Tier 3 (Ollama).");
+                _logger.LogWarning(ex, "Tier 2 (Groq) classification failed. Falling back to Tier 3 (Google Gemini).");
             }
         }
 
-        // ── TIER 3: Local Ollama (Offline / On-Prem) ──────────────────────────
+        // ── TIER 3: Google Gemini (Gemini 2.0 Flash / Flash Thinking - 1,500 free req/day) ──
+        if (_gemini.IsConfigured)
+        {
+            try
+            {
+                _logger.LogInformation("Attempting Tier 3 (Gemini 2.0 Flash) classification for {Count} jobs.", chunk.Count);
+                var geminiEnvelope = await _gemini.GenerateJsonAsync<ClassificationEnvelope>(
+                    systemPrompt, userPrompt, ct);
+
+                if (geminiEnvelope?.Results is { Count: > 0 })
+                {
+                    return MapResults(chunk, geminiEnvelope.Results, sectorBySlug, "Gemini");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Tier 3 (Gemini) classification failed or was rate-limited. Falling back to Tier 4 (Ollama).");
+            }
+        }
+
+        // ── TIER 4: Local Ollama (Offline / On-Prem) ──────────────────────────
         try
         {
-            _logger.LogInformation("Attempting Tier 3 (Local Ollama) classification for {Count} jobs.", jobs.Count);
+            _logger.LogInformation("Attempting Tier 4 (Local Ollama) classification for {Count} jobs.", chunk.Count);
             var ollamaEnvelope = await _ollama.ChatJsonAsync<ClassificationEnvelope>(
                 systemPrompt, userPrompt, ct);
 
             if (ollamaEnvelope?.Results is { Count: > 0 })
             {
-                return MapResults(jobs, ollamaEnvelope.Results, sectorBySlug, "Ollama");
+                return MapResults(chunk, ollamaEnvelope.Results, sectorBySlug, "Ollama");
             }
         }
         catch (Exception ex)
         {
-            _logger.LogInformation("Tier 3 (Ollama) unavailable or failed: {Message}. Falling back to Tier 4 (Cosine Similarity).", ex.Message);
+            _logger.LogInformation("Tier 4 (Ollama) unavailable or failed: {Message}. Falling back to Tier 5 (Cosine Similarity).", ex.Message);
         }
 
-        // ── TIER 4: Semantic Cosine Similarity against historical classified jobs ─
-        _logger.LogInformation("Executing Tier 4 (Semantic Cosine Similarity) fallback for {Count} jobs.", jobs.Count);
-        return await FallbackCosineSimilarityAsync(jobs, sectors, ct);
+        // ── TIER 5: Semantic Cosine Similarity against historical classified jobs ─
+        _logger.LogInformation("Executing Tier 5 (Semantic Cosine Similarity) fallback for {Count} jobs.", chunk.Count);
+        return await FallbackCosineSimilarityAsync(chunk, sectors, ct);
     }
 
     private static List<UnifiedJobClassificationResult> MapResults(
@@ -287,13 +343,17 @@ public sealed class UnifiedJobClassificationService
             {
                 if (sectorBySlug.TryGetValue(res.SectorSlug, out var sec))
                 {
+                    var reasoningText = !string.IsNullOrWhiteSpace(res.Reasoning)
+                        ? $"[{method}] {res.Reasoning}"
+                        : $"[{method}] Sector assigned based on title and core responsibilities";
+
                     finalResults.Add(new UnifiedJobClassificationResult(
                         j.Id,
                         sec.Id,
                         sec.Name,
                         sec.Slug,
                         res.Confidence,
-                        res.Reasoning ?? $"{method} classification",
+                        reasoningText,
                         method,
                         null));
                     continue;
@@ -306,7 +366,7 @@ public sealed class UnifiedJobClassificationService
                 null,
                 null,
                 0.0,
-                "No sector matched or classified uncategorized",
+                $"[{method}] No sector matched or classified uncategorized",
                 method,
                 null));
         }

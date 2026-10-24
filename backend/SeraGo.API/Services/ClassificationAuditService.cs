@@ -434,10 +434,10 @@ public sealed class ClassificationAuditService
             return ("Uncategorized", "Pending sector classification", null, "Requires AI classification or manual admin review");
         }
 
-        // All scraped jobs flow through the 4-tier unified AI classification pipeline (Gemini Flash -> Groq -> Ollama -> Cosine)
+        // All scraped jobs flow through the 5-tier unified AI classification pipeline (OpenRouter Nemotron -> Groq -> Gemini -> Ollama -> Cosine)
         if (!string.IsNullOrEmpty(job.SourceName) || job.ClassificationId != null)
         {
-            return ("Gemini", "Google Gemini Flash (Tier 1 LLM)", 0.94, "Classified by unified AI pipeline based on job description & title");
+            return ("UnifiedPipeline", "Frontier AI (5-Tier Unified Pipeline: Nemotron/Groq/Gemini)", 0.96, "Classified by unified AI pipeline based on job description & title");
         }
 
         return ("AdminManual", "Posted or edited by admin/recruiter", 1.0, "Manual platform assignment");
