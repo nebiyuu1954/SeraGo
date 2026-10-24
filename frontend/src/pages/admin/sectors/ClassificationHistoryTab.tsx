@@ -972,6 +972,7 @@ ${JSON.stringify(payload, null, 2)}
         open={showBatchModal}
         onClose={() => setShowBatchModal(false)}
         sectors={sectors}
+        historyJobs={items}
         token={token}
         onSuccess={(count) => {
           setToastMessage(`Successfully updated ${count} jobs to their canonical sectors!`)

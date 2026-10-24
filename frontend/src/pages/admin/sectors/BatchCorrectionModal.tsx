@@ -1,20 +1,24 @@
-import { useMemo, useState } from 'react'
-import type { SectorDetailResponse } from '../../../types'
-import { bulkSetJobSectors, getApiErrorMessage } from '../../../api'
+import { useEffect, useMemo, useState } from 'react'
+import type { ClassificationHistoryItem, SectorDetailResponse } from '../../../types'
+import { fetchJob, bulkSetJobSectors, getApiErrorMessage } from '../../../api'
 
 interface BatchCorrectionModalProps {
   open: boolean
   onClose: () => void
   sectors: SectorDetailResponse[]
+  historyJobs?: ClassificationHistoryItem[]
   token: string
   onSuccess: (count: number) => void
 }
 
 interface ParsedCorrection {
   jobId: string
+  jobTitle: string
+  company: string
+  currentSector: string
   sectorId: string | null
   sectorSlug: string | null
-  sectorName: string
+  targetSectorName: string
   status: 'valid' | 'invalid_job_id' | 'invalid_sector'
   error?: string
 }
@@ -23,6 +27,7 @@ export default function BatchCorrectionModal({
   open,
   onClose,
   sectors,
+  historyJobs = [],
   token,
   onSuccess,
 }: BatchCorrectionModalProps) {
@@ -30,6 +35,9 @@ export default function BatchCorrectionModal({
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
   const [successCount, setSuccessCount] = useState<number | null>(null)
+  const [fetchedMetadata, setFetchedMetadata] = useState<
+    Record<string, { title: string; company: string; currentSector: string }>
+  >({})
 
   // Fast sector lookup maps
   const { sectorById, sectorBySlug } = useMemo(() => {
@@ -44,6 +52,15 @@ export default function BatchCorrectionModal({
 
     return { sectorById: byId, sectorBySlug: bySlug }
   }, [sectors])
+
+  // Fast map of existing history jobs
+  const historyJobsMap = useMemo(() => {
+    const map = new Map<string, ClassificationHistoryItem>()
+    for (const j of historyJobs) {
+      map.set(j.id.toLowerCase(), j)
+    }
+    return map
+  }, [historyJobs])
 
   // Parse raw pasted input (Array, Object with results, or Key-Value map)
   const { items, parseError } = useMemo(() => {
@@ -108,19 +125,46 @@ export default function BatchCorrectionModal({
         .toString()
         .trim()
 
+      const historyMatch = historyJobsMap.get(jobId.toLowerCase())
+      const fetchedMatch = fetchedMetadata[jobId.toLowerCase()]
+
+      const jobTitle =
+        rawItem.title ||
+        rawItem.jobTitle ||
+        historyMatch?.title ||
+        fetchedMatch?.title ||
+        'Loading title…'
+
+      const company =
+        rawItem.company ||
+        historyMatch?.company ||
+        fetchedMatch?.company ||
+        'Company Undisclosed'
+
+      const currentSector =
+        rawItem.beforeSector ||
+        rawItem.currentSector ||
+        rawItem.oldSector ||
+        historyMatch?.sectorName ||
+        fetchedMatch?.currentSector ||
+        'Current Sector'
+
       if (!jobId || !uuidRegex.test(jobId)) {
         resolved.push({
           jobId: jobId || 'missing-id',
+          jobTitle: jobTitle !== 'Loading title…' ? jobTitle : 'Invalid Job ID',
+          company,
+          currentSector,
           sectorId: null,
           sectorSlug: null,
-          sectorName: 'Invalid UUID',
+          targetSectorName: 'Invalid UUID',
           status: 'invalid_job_id',
           error: 'Job ID must be a valid 36-character UUID',
         })
         continue
       }
 
-      // Try resolving sector by ID first
+      // Try resolving target sector by ID first
       let matchedSector: SectorDetailResponse | undefined
       if (sectorIdInput) {
         matchedSector = sectorById.get(sectorIdInput.toLowerCase())
@@ -134,17 +178,23 @@ export default function BatchCorrectionModal({
       if (matchedSector) {
         resolved.push({
           jobId,
+          jobTitle,
+          company,
+          currentSector,
           sectorId: matchedSector.id,
           sectorSlug: matchedSector.slug,
-          sectorName: matchedSector.name,
+          targetSectorName: matchedSector.name,
           status: 'valid',
         })
       } else {
         resolved.push({
           jobId,
+          jobTitle,
+          company,
+          currentSector,
           sectorId: null,
           sectorSlug: sectorSlugInput || null,
-          sectorName: sectorSlugInput || 'Unknown Sector',
+          targetSectorName: sectorSlugInput || 'Unknown Sector',
           status: 'invalid_sector',
           error: `Sector "${sectorSlugInput || sectorIdInput}" not found in canonical list`,
         })
@@ -152,9 +202,49 @@ export default function BatchCorrectionModal({
     }
 
     return { items: resolved, parseError: null }
-  }, [rawInput, sectorById, sectorBySlug])
+  }, [rawInput, sectorById, sectorBySlug, historyJobsMap, fetchedMetadata])
 
   const validItems = useMemo(() => items.filter((i) => i.status === 'valid'), [items])
+
+  // Asynchronously fetch job metadata for jobs not found in historyJobs or raw JSON
+  useEffect(() => {
+    if (!open) return
+
+    const missingIds = items
+      .filter(
+        (i) =>
+          i.status === 'valid' &&
+          (i.jobTitle === 'Loading title…' || i.currentSector === 'Current Sector') &&
+          !fetchedMetadata[i.jobId.toLowerCase()],
+      )
+      .map((i) => i.jobId)
+
+    if (missingIds.length === 0) return
+
+    // Limit to batch of 25 parallel requests
+    missingIds.slice(0, 25).forEach(async (id) => {
+      try {
+        const job = await fetchJob(id, token)
+        setFetchedMetadata((prev) => ({
+          ...prev,
+          [id.toLowerCase()]: {
+            title: job.title || 'Untitled Job',
+            company: job.company || 'Company Undisclosed',
+            currentSector: job.sectorName || 'Uncategorized',
+          },
+        }))
+      } catch {
+        setFetchedMetadata((prev) => ({
+          ...prev,
+          [id.toLowerCase()]: {
+            title: `Job ${id.slice(0, 8)}…`,
+            company: 'N/A',
+            currentSector: 'Uncategorized',
+          },
+        }))
+      }
+    })
+  }, [items, fetchedMetadata, open, token])
 
   const handleApply = async () => {
     if (validItems.length === 0 || submitting) return
@@ -188,7 +278,7 @@ export default function BatchCorrectionModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="relative w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl border border-surface-variant bg-surface-container-lowest shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-4xl max-h-[92vh] flex flex-col rounded-2xl border border-surface-variant bg-surface-container-lowest shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-surface-variant px-6 py-4 bg-gradient-to-r from-purple-50/80 via-indigo-50/50 to-surface-container-lowest">
           <div className="flex items-center gap-2.5">
@@ -200,7 +290,7 @@ export default function BatchCorrectionModal({
                 Batch Sector Corrections
               </h2>
               <p className="font-body-sm text-body-sm text-on-surface-variant">
-                Paste the correction JSON from your AI audit report to update misclassified jobs in one click.
+                Review job titles, companies, before/after sectors, and apply updates in one click.
               </p>
             </div>
           </div>
@@ -248,10 +338,10 @@ export default function BatchCorrectionModal({
             </div>
             <textarea
               id="batch-json-input"
-              rows={6}
+              rows={4}
               value={rawInput}
               onChange={(e) => setRawInput(e.target.value)}
-              placeholder={`[\n  {\n    "jobId": "c18ba00c-b400-4ffd-9dbb-fcd16f35c261",\n    "sectorSlug": "sales-marketing"\n  },\n  {\n    "jobId": "d60b2e91-9123-4754-a7ed-6f68a5a12113",\n    "sectorSlug": "procurement-supply-chain"\n  }\n]`}
+              placeholder={`[\n  {\n    "jobId": "be1fbb3d-2096-4177-a0f6-1a10d86481f9",\n    "sectorSlug": "design-creative"\n  }\n]`}
               className="w-full font-mono text-xs rounded-xl border border-outline-variant bg-surface-container-low p-3 text-on-surface placeholder:text-on-surface-variant focus:border-purple-600 focus:outline-none focus:ring-1 focus:ring-purple-600"
             />
           </div>
@@ -277,37 +367,78 @@ export default function BatchCorrectionModal({
                 )}
               </div>
 
-              <div className="max-h-56 overflow-y-auto rounded-xl border border-surface-variant divide-y divide-surface-variant bg-surface-container-lowest">
+              {/* Rich Preview List */}
+              <div className="max-h-72 overflow-y-auto rounded-xl border border-surface-variant divide-y divide-surface-variant bg-surface-container-lowest shadow-inner">
                 {items.map((item, idx) => (
                   <div
                     key={`${item.jobId}-${idx}`}
-                    className="flex items-center justify-between px-3 py-2 text-xs"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 hover:bg-surface-container-high/40 transition-colors"
                   >
-                    <div className="flex items-center gap-2 font-mono text-on-surface">
-                      <span className="text-on-surface-variant font-sans font-semibold">#{idx + 1}</span>
-                      <span className="truncate max-w-[200px] sm:max-w-[280px]" title={item.jobId}>
-                        {item.jobId}
-                      </span>
+                    {/* Left: Job Title, Company, UUID & Clickable Link */}
+                    <div className="flex-1 min-w-0 pr-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-label-sm text-xs font-bold text-on-surface-variant/70 min-w-[22px]">
+                          #{idx + 1}
+                        </span>
+                        <a
+                          href={`/dashboard/talent/jobs/${item.jobId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-headline-sm text-sm font-bold text-purple-900 hover:text-purple-700 hover:underline inline-flex items-center gap-1 truncate"
+                          title="Open public job post in a new tab"
+                        >
+                          <span className="truncate">{item.jobTitle}</span>
+                          <span className="material-symbols-outlined text-xs flex-shrink-0 text-purple-600">
+                            open_in_new
+                          </span>
+                        </a>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-on-surface-variant mt-1 pl-[30px]">
+                        <span className="font-semibold text-on-surface">{item.company}</span>
+                        <span>•</span>
+                        <span className="font-mono text-[11px] text-on-surface-variant/70">
+                          {item.jobId}
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <span className="material-symbols-outlined text-sm text-on-surface-variant">
+                    {/* Right: Before -> After Transition */}
+                    <div className="flex items-center gap-2 flex-shrink-0 pl-[30px] sm:pl-0">
+                      {/* Before Sector */}
+                      <div className="flex flex-col items-end">
+                        <span className="text-[10px] uppercase font-bold text-on-surface-variant/70 tracking-wider">
+                          Before
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 border border-rose-200 px-2 py-0.5 text-xs font-semibold text-rose-800 line-through">
+                          {item.currentSector}
+                        </span>
+                      </div>
+
+                      <span className="material-symbols-outlined text-base text-on-surface-variant mt-3">
                         arrow_forward
                       </span>
-                      {item.status === 'valid' ? (
-                        <span className="inline-flex items-center gap-1 font-semibold text-purple-900 bg-purple-100 px-2 py-0.5 rounded-md">
-                          <span className="material-symbols-outlined text-xs text-purple-700">check</span>
-                          {item.sectorName}
+
+                      {/* After / Target Sector */}
+                      <div className="flex flex-col items-start">
+                        <span className="text-[10px] uppercase font-bold text-purple-700 tracking-wider">
+                          New Target
                         </span>
-                      ) : (
-                        <span
-                          className="inline-flex items-center gap-1 font-semibold text-red-900 bg-red-100 px-2 py-0.5 rounded-md"
-                          title={item.error}
-                        >
-                          <span className="material-symbols-outlined text-xs text-red-700">error</span>
-                          {item.error || 'Invalid'}
-                        </span>
-                      )}
+                        {item.status === 'valid' ? (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-purple-100 border border-purple-300 px-2.5 py-0.5 text-xs font-bold text-purple-950 shadow-xs">
+                            <span className="material-symbols-outlined text-xs text-purple-700">check_circle</span>
+                            <span>{item.targetSectorName}</span>
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-md bg-red-100 border border-red-300 px-2.5 py-0.5 text-xs font-bold text-red-950"
+                            title={item.error}
+                          >
+                            <span className="material-symbols-outlined text-xs text-red-700">error</span>
+                            <span>{item.error || 'Invalid Sector'}</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
