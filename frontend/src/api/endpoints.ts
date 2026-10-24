@@ -65,6 +65,8 @@ export const API_ENDPOINTS = {
     forYouMatch: '/jobs/for-you/match',
     /** POST/PATCH /api/jobs/sectors/bulk — bulk assign sectors to multiple jobs (admin). */
     bulkSectors: '/jobs/sectors/bulk',
+    /** POST /api/jobs/metadata/bulk — fast batch lookup of job title, company, current sector. */
+    bulkMetadata: '/jobs/metadata/bulk',
   },
   savedJobs: {
     /** GET /api/saved-jobs — my saved jobs with lifecycle status. */

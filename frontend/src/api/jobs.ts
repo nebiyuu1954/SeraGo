@@ -234,6 +234,28 @@ export function bulkSetJobSectors(
   })
 }
 
+export interface BulkJobMetadataItem {
+  id: string
+  title: string
+  company: string
+  sectorName: string | null
+  sectorSlug: string | null
+}
+
+/**
+ * POST /api/jobs/metadata/bulk — fast batch lookup of job title, company, and current sector.
+ */
+export function fetchJobsMetadataBulk(
+  jobIds: string[],
+  accessToken: string,
+): Promise<BulkJobMetadataItem[]> {
+  return request<BulkJobMetadataItem[]>(API_ENDPOINTS.jobs.bulkMetadata, {
+    method: 'POST',
+    body: { jobIds },
+    headers: auth(accessToken),
+  })
+}
+
 /**
  * POST /api/admin/jobs/classify
  */

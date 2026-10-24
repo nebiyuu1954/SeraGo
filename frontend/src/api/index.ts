@@ -30,6 +30,7 @@ export {
   restoreJob,
   setJobSector,
   bulkSetJobSectors,
+  fetchJobsMetadataBulk,
   classifyJobs,
   runForYouMatching,
   submitJob,

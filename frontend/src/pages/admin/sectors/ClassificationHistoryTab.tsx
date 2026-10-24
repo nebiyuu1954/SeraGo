@@ -93,6 +93,18 @@ ${canonicalSectors}
    - Reason why it is misclassified and why the recommended sector is superior.
 3. Calculate the overall classification accuracy percentage for this batch.
 4. Provide any actionable tips for improving the classification prompts or regex/keyword rules.
+5. AT THE VERY END OF YOUR RESPONSE, provide a clean JSON code block for SeraGo's 1-Click Batch Fix Tool containing ALL misclassified jobs formatted as:
+\`\`\`json
+[
+  {
+    "jobId": "<UUID>",
+    "title": "<Job Title>",
+    "company": "<Company Name>",
+    "beforeSector": "<Current Sector>",
+    "sectorSlug": "<canonical-slug>"
+  }
+]
+\`\`\`
 
 ### BATCH OF JOBS CLASSIFIED ON ${selectedDate} (${jobs.length} TOTAL):
 ${formattedJobs}

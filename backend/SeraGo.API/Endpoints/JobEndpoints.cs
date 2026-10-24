@@ -87,6 +87,7 @@ public static class JobEndpoints
         group.MapPatch("/{id:guid}/sector", SetJobSectorAsync).WithOpenApi();
         group.MapPost("/sectors/bulk", SetJobSectorsBulkAsync).WithOpenApi();
         group.MapPatch("/sectors/bulk", SetJobSectorsBulkAsync).WithOpenApi();
+        group.MapPost("/metadata/bulk", GetJobsMetadataBulkAsync).WithOpenApi();
 
         return app;
     }
@@ -180,6 +181,8 @@ public static class JobEndpoints
     public sealed record BulkSetJobSectorItem(Guid JobId, Guid? SectorId = null, string? SectorSlug = null);
     public sealed record BulkSetJobSectorRequest(IReadOnlyList<BulkSetJobSectorItem> Assignments, bool SyncToTelegram = true);
     public sealed record BulkSetJobSectorResponse(int UpdatedCount, IReadOnlyList<Guid> UpdatedJobIds);
+    public sealed record BulkJobMetadataRequest(IReadOnlyList<Guid> JobIds);
+    public sealed record BulkJobMetadataItem(Guid Id, string Title, string Company, string? SectorName, string? SectorSlug);
 
     public sealed record RejectJobRequest(string? Reason);
 
@@ -1968,6 +1971,33 @@ public static class JobEndpoints
         }
 
         return Results.Ok(new BulkSetJobSectorResponse(updated.Count, updated));
+    }
+
+    /// <summary>POST /api/jobs/metadata/bulk — fast batch lookup of job title, company, and current sector for preview.</summary>
+    [Authorize(Roles = Roles.Admin)]
+    private static async Task<IResult> GetJobsMetadataBulkAsync(
+        BulkJobMetadataRequest request,
+        ApplicationDbContext db)
+    {
+        if (request.JobIds is null || request.JobIds.Count == 0)
+        {
+            return Results.Ok(Array.Empty<BulkJobMetadataItem>());
+        }
+
+        var distinctIds = request.JobIds.Distinct().Take(200).ToList();
+        var jobs = await db.Jobs.AsNoTracking()
+            .Include(j => j.Sector)
+            .Where(j => distinctIds.Contains(j.Id))
+            .Select(j => new BulkJobMetadataItem(
+                j.Id,
+                j.Title,
+                j.Company,
+                j.Sector != null ? j.Sector.Name : j.SectorName,
+                j.Sector != null ? j.Sector.Slug : null
+            ))
+            .ToListAsync();
+
+        return Results.Ok(jobs);
     }
 
     /// <summary>PATCH /api/jobs/{id}/restore — admin unhides a soft-deleted job (is_active=true).</summary>

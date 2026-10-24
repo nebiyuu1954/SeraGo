@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ClassificationHistoryItem, SectorDetailResponse } from '../../../types'
-import { fetchJob, bulkSetJobSectors, getApiErrorMessage } from '../../../api'
+import { bulkSetJobSectors, fetchJobsMetadataBulk, getApiErrorMessage } from '../../../api'
 
 interface BatchCorrectionModalProps {
   open: boolean
@@ -207,9 +207,9 @@ export default function BatchCorrectionModal({
 
   const validItems = useMemo(() => items.filter((i) => i.status === 'valid'), [items])
 
-  // Asynchronously fetch job metadata for jobs not found in historyJobs or raw JSON
+  // Asynchronously fetch job metadata in one batch request for jobs not found in historyJobs or raw JSON
   useEffect(() => {
-    if (!open) return
+    if (!open || !token) return
 
     const missingIds = items
       .filter(
@@ -222,29 +222,29 @@ export default function BatchCorrectionModal({
 
     if (missingIds.length === 0) return
 
-    // Limit to batch of 25 parallel requests
-    missingIds.slice(0, 25).forEach(async (id) => {
-      try {
-        const job = await fetchJob(id, token)
-        setFetchedMetadata((prev) => ({
-          ...prev,
-          [id.toLowerCase()]: {
-            title: job.title || 'Untitled Job',
-            company: job.company || 'Company Undisclosed',
-            currentSector: job.sectorName || 'Uncategorized',
-          },
-        }))
-      } catch {
-        setFetchedMetadata((prev) => ({
-          ...prev,
-          [id.toLowerCase()]: {
-            title: `Job ${id.slice(0, 8)}…`,
-            company: 'N/A',
-            currentSector: 'Uncategorized',
-          },
-        }))
-      }
-    })
+    const batchToFetch = Array.from(new Set(missingIds)).slice(0, 100)
+
+    let isSubscribed = true
+    fetchJobsMetadataBulk(batchToFetch, token)
+      .then((records) => {
+        if (!isSubscribed) return
+        const updates: Record<string, { title: string; company: string; currentSector: string }> = {}
+        for (const r of records) {
+          updates[r.id.toLowerCase()] = {
+            title: r.title || 'Untitled Job',
+            company: r.company || 'Company Undisclosed',
+            currentSector: r.sectorName || 'Uncategorized',
+          }
+        }
+        setFetchedMetadata((prev) => ({ ...prev, ...updates }))
+      })
+      .catch((err) => {
+        console.error('Failed to bulk fetch job metadata', err)
+      })
+
+    return () => {
+      isSubscribed = false
+    }
   }, [items, fetchedMetadata, open, token])
 
   const handleApply = async () => {
