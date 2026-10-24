@@ -10,6 +10,7 @@ import type {
   SectorDetailResponse,
 } from '../../../types'
 import { cn } from '../../../lib/cn.ts'
+import BatchCorrectionModal from './BatchCorrectionModal.tsx'
 
 interface ClassificationHistoryTabProps {
   sectors: SectorDetailResponse[]
@@ -122,6 +123,7 @@ export default function ClassificationHistoryTab({
   const [filterByDate, setFilterByDate] = useState<boolean>(false)
   const [isExportingPrompt, setIsExportingPrompt] = useState(false)
   const [dailyPromptCopied, setDailyPromptCopied] = useState(false)
+  const [showBatchModal, setShowBatchModal] = useState(false)
 
   // Selection & UI state
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set())
@@ -536,6 +538,17 @@ ${JSON.stringify(payload, null, 2)}
                 ? `Copied Prompt to Clipboard!`
                 : `Copy Prompt for ${selectedDate}`}
             </span>
+          </button>
+
+          {/* Quick Batch Corrections button */}
+          <button
+            type="button"
+            onClick={() => setShowBatchModal(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-purple-300 bg-white hover:bg-purple-100/80 text-purple-900 px-4 py-2.5 font-label-md text-label-md font-bold shadow-xs hover:shadow-sm transition-all"
+            title="Paste JSON from Chief Auditor report to update misclassified sectors in one click"
+          >
+            <span className="material-symbols-outlined text-purple-700 text-xl">bolt</span>
+            <span>Batch Fix</span>
           </button>
         </div>
       </div>
@@ -952,6 +965,18 @@ ${JSON.stringify(payload, null, 2)}
           </div>
         </div>
       )}
+
+      {/* 5. Batch Classification Correction Modal */}
+      <BatchCorrectionModal
+        open={showBatchModal}
+        onClose={() => setShowBatchModal(false)}
+        sectors={sectors}
+        token={token}
+        onSuccess={(count) => {
+          setToastMessage(`Successfully updated ${count} jobs to their canonical sectors!`)
+          loadHistory()
+        }}
+      />
     </div>
   )
 }
@@ -1010,17 +1035,23 @@ function getMethodIcon(method: string): string {
 
 function formatMethodLabel(method: string): string {
   switch (method?.toLowerCase()) {
-    case 'gemini':
-      return 'Google Gemini Flash (Tier 1)'
+    case 'openrouter':
+    case 'openrouternemotron':
+    case 'nemotron':
+      return 'NVIDIA Nemotron 3 Ultra (Tier 1 OpenRouter)'
     case 'groq':
       return 'Groq Cloud LLM (Tier 2)'
+    case 'gemini':
+      return 'Google Gemini Flash (Tier 3)'
     case 'ollama':
-      return 'Local Ollama (Tier 3)'
+      return 'Local Ollama (Tier 4)'
     case 'cosinesimilarity':
     case 'cosine':
-      return 'Cosine Similarity (Tier 4 Vector)'
+      return 'Cosine Similarity (Tier 5 Vector)'
     case 'ai':
-      return 'Google Gemini Flash (Tier 1)'
+      return 'Frontier AI (Unified Pipeline)'
+    case 'unifiedpipeline':
+      return 'Frontier AI (5-Tier Unified Pipeline)'
     case 'aliasrule':
     case 'alias':
       return 'Scraper Alias Rule'

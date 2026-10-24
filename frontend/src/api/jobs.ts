@@ -210,7 +210,8 @@ export function setJobSector(
 
 export interface BulkSectorAssignmentItem {
   jobId: string
-  sectorId: string | null
+  sectorId?: string | null
+  sectorSlug?: string | null
 }
 
 export interface BulkSectorAssignmentResponse {

@@ -176,7 +176,7 @@ public static class JobEndpoints
     }
 
     public sealed record SetJobSectorRequest(Guid? SectorId);
-    public sealed record BulkSetJobSectorItem(Guid JobId, Guid? SectorId);
+    public sealed record BulkSetJobSectorItem(Guid JobId, Guid? SectorId = null, string? SectorSlug = null);
     public sealed record BulkSetJobSectorRequest(IReadOnlyList<BulkSetJobSectorItem> Assignments);
     public sealed record BulkSetJobSectorResponse(int UpdatedCount, IReadOnlyList<Guid> UpdatedJobIds);
 
@@ -1872,9 +1872,19 @@ public static class JobEndpoints
             .Distinct()
             .ToList();
 
-        var sectors = await db.Sectors.AsNoTracking()
+        var sectorSlugs = request.Assignments
+            .Where(a => !string.IsNullOrWhiteSpace(a.SectorSlug))
+            .Select(a => a.SectorSlug!.Trim().ToLowerInvariant())
+            .Distinct()
+            .ToList();
+
+        var sectorsById = await db.Sectors.AsNoTracking()
             .Where(s => sectorIds.Contains(s.Id))
             .ToDictionaryAsync(s => s.Id);
+
+        var sectorsBySlug = await db.Sectors.AsNoTracking()
+            .Where(s => sectorSlugs.Contains(s.Slug.ToLower()))
+            .ToDictionaryAsync(s => s.Slug.ToLower());
 
         var updated = new List<Guid>();
         var now = DateTimeOffset.UtcNow;
@@ -1883,17 +1893,24 @@ public static class JobEndpoints
         {
             if (!jobDict.TryGetValue(item.JobId, out var job)) continue;
 
-            if (item.SectorId.HasValue)
+            Sector? sector = null;
+            if (item.SectorId.HasValue && sectorsById.TryGetValue(item.SectorId.Value, out var sById))
             {
-                if (sectors.TryGetValue(item.SectorId.Value, out var sector))
-                {
-                    job.SectorId = sector.Id;
-                    job.SectorName = sector.Name;
-                    job.UpdatedAt = now;
-                    updated.Add(job.Id);
-                }
+                sector = sById;
             }
-            else
+            else if (!string.IsNullOrWhiteSpace(item.SectorSlug) && sectorsBySlug.TryGetValue(item.SectorSlug.Trim().ToLowerInvariant(), out var sBySlug))
+            {
+                sector = sBySlug;
+            }
+
+            if (sector != null)
+            {
+                job.SectorId = sector.Id;
+                job.SectorName = sector.Name;
+                job.UpdatedAt = now;
+                updated.Add(job.Id);
+            }
+            else if (!item.SectorId.HasValue && string.IsNullOrWhiteSpace(item.SectorSlug))
             {
                 job.SectorId = null;
                 job.SectorName = null;
