@@ -61,6 +61,8 @@ public sealed class UnifiedJobClassificationService
         var sectorById = sectors.ToDictionary(s => s.Id);
 
         var updatedCount = 0;
+        var now = DateTimeOffset.UtcNow;
+
         foreach (var r in results)
         {
             var job = jobs.FirstOrDefault(j => j.Id == r.JobId);
@@ -76,17 +78,86 @@ public sealed class UnifiedJobClassificationService
                 assignedSector = sSlugMatch;
             }
 
+            string modelUsed;
+            string modelTier;
+
+            switch (r.Method.ToLowerInvariant())
+            {
+                case "openrouter nemotron":
+                case "openrouter":
+                case "nemotron":
+                    modelUsed = "OpenRouter Nemotron";
+                    modelTier = "Tier 1 (NVIDIA Nemotron 3 Ultra 550B via OpenRouter)";
+                    break;
+                case "groq":
+                case "groq llama":
+                    modelUsed = "Groq Llama 3.3 70B";
+                    modelTier = "Tier 2 (Meta Llama 3.3 70B via Groq Cloud)";
+                    break;
+                case "gemini":
+                case "google gemini":
+                    modelUsed = "Google Gemini 2.0 Flash";
+                    modelTier = "Tier 3 (Google Gemini 2.0 Flash)";
+                    break;
+                case "ollama":
+                case "local ollama":
+                    modelUsed = "Local Ollama";
+                    modelTier = "Tier 4 (Local Ollama Offline LLM)";
+                    break;
+                case "cosine":
+                case "cosinesimilarity":
+                    modelUsed = "Cosine Similarity";
+                    modelTier = "Tier 5 (Vector Semantic Similarity Fallback)";
+                    break;
+                default:
+                    modelUsed = r.Method;
+                    modelTier = $"AI Model ({r.Method})";
+                    break;
+            }
+
             if (assignedSector != null)
             {
                 job.SectorId = assignedSector.Id;
                 job.SectorName = assignedSector.Name;
-                job.UpdatedAt = DateTimeOffset.UtcNow;
+                job.UpdatedAt = now;
                 updatedCount++;
+
+                var record = new JobClassificationRecord
+                {
+                    Id = Guid.NewGuid(),
+                    JobId = job.Id,
+                    ModelUsed = modelUsed,
+                    ModelTier = modelTier,
+                    SectorSlug = assignedSector.Slug,
+                    SectorName = assignedSector.Name,
+                    Confidence = r.Confidence,
+                    Reasoning = r.Reasoning,
+                    ClassifiedAt = now
+                };
+
+                _db.JobClassificationRecords.Add(record);
+                job.ClassificationId = record.Id;
             }
             else
             {
                 job.SectorId = null;
                 job.SectorName = null;
+
+                var record = new JobClassificationRecord
+                {
+                    Id = Guid.NewGuid(),
+                    JobId = job.Id,
+                    ModelUsed = modelUsed,
+                    ModelTier = modelTier,
+                    SectorSlug = null,
+                    SectorName = null,
+                    Confidence = r.Confidence,
+                    Reasoning = !string.IsNullOrWhiteSpace(r.Reasoning) ? r.Reasoning : "No confident sector match found across taxonomy",
+                    ClassifiedAt = now
+                };
+
+                _db.JobClassificationRecords.Add(record);
+                job.ClassificationId = record.Id;
             }
         }
 

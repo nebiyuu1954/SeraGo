@@ -293,6 +293,25 @@ for (var attempt = 1; ; attempt++)
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await db.Database.MigrateAsync();
+
+        // Ensure JobClassificationRecords table exists for detailed audit tracing
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "JobClassificationRecords" (
+                "Id" uuid NOT NULL PRIMARY KEY,
+                "JobId" uuid NOT NULL,
+                "ModelUsed" text NOT NULL,
+                "ModelTier" text NOT NULL,
+                "SectorSlug" text NULL,
+                "SectorName" text NULL,
+                "Confidence" double precision NOT NULL,
+                "Reasoning" text NOT NULL,
+                "ClassifiedAt" timestamp with time zone NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS "IX_JobClassificationRecords_JobId" ON "JobClassificationRecords" ("JobId");
+            CREATE INDEX IF NOT EXISTS "IX_JobClassificationRecords_ModelUsed" ON "JobClassificationRecords" ("ModelUsed");
+            CREATE INDEX IF NOT EXISTS "IX_JobClassificationRecords_ClassifiedAt" ON "JobClassificationRecords" ("ClassifiedAt");
+        """);
+
         await scope.ServiceProvider.GetRequiredService<AuthSeeder>().SeedAsync();
         await TelegramBroadcastDispatcher.SeedDefaultSchedulesAsync(db);
         break;

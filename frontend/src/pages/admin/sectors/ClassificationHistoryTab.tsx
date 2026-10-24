@@ -446,12 +446,13 @@ ${JSON.stringify(payload, null, 2)}
             className="rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none"
           >
             <option value="">All Methods</option>
-            <option value="gemini">Google Gemini Flash (Tier 1)</option>
-            <option value="groq">Groq Cloud (Tier 2)</option>
-            <option value="ollama">Local Ollama (Tier 3)</option>
-            <option value="cosine">Cosine Similarity (Tier 4)</option>
-            <option value="alias">Scraper Alias Rule</option>
-            <option value="title">Title Keyword Rule</option>
+            <option value="openrouter">NVIDIA Nemotron 3 Ultra (Tier 1 OpenRouter)</option>
+            <option value="groq">Meta Llama 3.3 70B (Tier 2 Groq)</option>
+            <option value="gemini">Google Gemini 2.0 Flash (Tier 3 Gemini)</option>
+            <option value="ollama">Local Ollama (Tier 4 Ollama)</option>
+            <option value="cosine">Cosine Similarity (Tier 5 Vector)</option>
+            <option value="adminmanual">Admin Manual Override</option>
+            <option value="alias">Scraper Direct Alias Rule</option>
             <option value="uncategorized">Uncategorized</option>
           </select>
         </div>
@@ -982,85 +983,65 @@ ${JSON.stringify(payload, null, 2)}
 }
 
 function getMethodBadgeStyle(method: string): string {
-  switch (method?.toLowerCase()) {
-    case 'gemini':
-      return 'bg-purple-100 text-purple-900 border-purple-300'
-    case 'groq':
-      return 'bg-sky-100 text-sky-900 border-sky-300'
-    case 'ollama':
-      return 'bg-indigo-100 text-indigo-900 border-indigo-300'
-    case 'cosinesimilarity':
-    case 'cosine':
-      return 'bg-teal-100 text-teal-900 border-teal-300'
-    case 'ai':
-      return 'bg-purple-100 text-purple-900 border-purple-300'
-    case 'aliasrule':
-    case 'alias':
-      return 'bg-blue-100 text-blue-900 border-blue-300'
-    case 'titlekeyword':
-    case 'title':
-      return 'bg-amber-100 text-amber-900 border-amber-300'
-    case 'adminmanual':
-      return 'bg-emerald-100 text-emerald-900 border-emerald-300'
-    default:
-      return 'bg-surface-variant text-on-surface-variant border-outline-variant'
+  const m = method?.toLowerCase() || ''
+  if (m.includes('openrouter') || m.includes('nemotron')) {
+    return 'bg-emerald-100 text-emerald-950 border-emerald-300 font-bold'
   }
+  if (m.includes('groq') || m.includes('llama')) {
+    return 'bg-sky-100 text-sky-950 border-sky-300 font-bold'
+  }
+  if (m.includes('gemini')) {
+    return 'bg-purple-100 text-purple-950 border-purple-300 font-bold'
+  }
+  if (m.includes('ollama')) {
+    return 'bg-indigo-100 text-indigo-950 border-indigo-300 font-bold'
+  }
+  if (m.includes('cosine')) {
+    return 'bg-teal-100 text-teal-950 border-teal-300 font-bold'
+  }
+  if (m.includes('admin') || m.includes('manual')) {
+    return 'bg-amber-100 text-amber-950 border-amber-300 font-bold'
+  }
+  if (m.includes('alias')) {
+    return 'bg-blue-100 text-blue-950 border-blue-300 font-semibold'
+  }
+  return 'bg-surface-variant text-on-surface-variant border-outline-variant'
 }
 
 function getMethodIcon(method: string): string {
-  switch (method?.toLowerCase()) {
-    case 'gemini':
-      return 'psychology'
-    case 'groq':
-      return 'bolt'
-    case 'ollama':
-      return 'terminal'
-    case 'cosinesimilarity':
-    case 'cosine':
-      return 'query_stats'
-    case 'ai':
-      return 'psychology'
-    case 'aliasrule':
-    case 'alias':
-      return 'link'
-    case 'titlekeyword':
-    case 'title':
-      return 'match_case'
-    case 'adminmanual':
-      return 'person'
-    default:
-      return 'help_outline'
-  }
+  const m = method?.toLowerCase() || ''
+  if (m.includes('openrouter') || m.includes('nemotron')) return 'smart_toy'
+  if (m.includes('groq') || m.includes('llama')) return 'bolt'
+  if (m.includes('gemini')) return 'auto_awesome'
+  if (m.includes('ollama')) return 'terminal'
+  if (m.includes('cosine')) return 'query_stats'
+  if (m.includes('admin') || m.includes('manual')) return 'person_edit'
+  if (m.includes('alias')) return 'link'
+  return 'help_outline'
 }
 
 function formatMethodLabel(method: string): string {
-  switch (method?.toLowerCase()) {
-    case 'openrouter':
-    case 'openrouternemotron':
-    case 'nemotron':
-      return 'NVIDIA Nemotron 3 Ultra (Tier 1 OpenRouter)'
-    case 'groq':
-      return 'Groq Cloud LLM (Tier 2)'
-    case 'gemini':
-      return 'Google Gemini Flash (Tier 3)'
-    case 'ollama':
-      return 'Local Ollama (Tier 4)'
-    case 'cosinesimilarity':
-    case 'cosine':
-      return 'Cosine Similarity (Tier 5 Vector)'
-    case 'ai':
-      return 'Frontier AI (Unified Pipeline)'
-    case 'unifiedpipeline':
-      return 'Frontier AI (5-Tier Unified Pipeline)'
-    case 'aliasrule':
-    case 'alias':
-      return 'Scraper Alias Rule'
-    case 'titlekeyword':
-    case 'title':
-      return 'Title Keyword Rule'
-    case 'adminmanual':
-      return 'Admin Manual Override'
-    default:
-      return method || 'Uncategorized'
+  const m = method?.toLowerCase() || ''
+  if (m.includes('openrouter') || m.includes('nemotron')) {
+    return 'NVIDIA Nemotron 3 Ultra (Tier 1 OpenRouter)'
   }
+  if (m.includes('groq') || m.includes('llama')) {
+    return 'Meta Llama 3.3 70B (Tier 2 Groq Cloud)'
+  }
+  if (m.includes('gemini')) {
+    return 'Google Gemini 2.0 Flash (Tier 3 Gemini)'
+  }
+  if (m.includes('ollama')) {
+    return 'Local Ollama (Tier 4 Ollama)'
+  }
+  if (m.includes('cosine')) {
+    return 'Cosine Similarity (Tier 5 Vector Fallback)'
+  }
+  if (m.includes('admin') || m.includes('manual')) {
+    return 'Admin Manual Override'
+  }
+  if (m.includes('alias')) {
+    return 'Scraper Direct Alias Rule'
+  }
+  return method || 'Uncategorized'
 }

@@ -30,6 +30,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<TelegramScheduledMessage> TelegramScheduledMessages => Set<TelegramScheduledMessage>();
     public DbSet<JobSimilarityCache> JobSimilarityCaches => Set<JobSimilarityCache>();
+    public DbSet<JobClassificationRecord> JobClassificationRecords => Set<JobClassificationRecord>();
 
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
     {
@@ -306,6 +307,20 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
                 v => v.ToUniversalTime(), v => v);
             entity.Property(c => c.LastEvaluatedAt).HasConversion(utcDateTimeOffset);
             entity.Property(c => c.UpdatedAt).HasConversion(utcDateTimeOffset);
+        });
+
+        // Exact AI model audit records for job classification
+        modelBuilder.Entity<JobClassificationRecord>(entity =>
+        {
+            entity.ToTable("JobClassificationRecords");
+            entity.HasKey(r => r.Id);
+            entity.HasIndex(r => r.JobId);
+            entity.HasIndex(r => r.ModelUsed);
+            entity.HasIndex(r => r.ClassifiedAt);
+
+            var utcDateTimeOffset = new ValueConverter<DateTimeOffset, DateTimeOffset>(
+                v => v.ToUniversalTime(), v => v);
+            entity.Property(r => r.ClassifiedAt).HasConversion(utcDateTimeOffset);
         });
     }
 }

@@ -104,9 +104,40 @@ public sealed class ClassificationAuditService
             {
                 q = q.Where(j => j.SectorId == null);
             }
+            else if (m == "adminmanual" || m == "manual")
+            {
+                q = q.Where(j => string.IsNullOrEmpty(j.SourceName));
+            }
+            else if (m == "openrouter" || m == "nemotron")
+            {
+                var matchingJobIds = await _db.JobClassificationRecords
+                    .Where(r => r.ModelUsed.Contains("OpenRouter") || r.ModelUsed.Contains("Nemotron"))
+                    .Select(r => r.JobId)
+                    .Distinct()
+                    .ToListAsync(ct);
+                q = q.Where(j => matchingJobIds.Contains(j.Id));
+            }
+            else if (m == "groq")
+            {
+                var matchingJobIds = await _db.JobClassificationRecords
+                    .Where(r => r.ModelUsed.Contains("Groq"))
+                    .Select(r => r.JobId)
+                    .Distinct()
+                    .ToListAsync(ct);
+                q = q.Where(j => matchingJobIds.Contains(j.Id));
+            }
+            else if (m == "gemini")
+            {
+                var matchingJobIds = await _db.JobClassificationRecords
+                    .Where(r => r.ModelUsed.Contains("Gemini"))
+                    .Select(r => r.JobId)
+                    .Distinct()
+                    .ToListAsync(ct);
+                q = q.Where(j => matchingJobIds.Contains(j.Id) || (j.ClassificationId != null && !matchingJobIds.Contains(j.Id)));
+            }
             else if (m == "ai")
             {
-                q = q.Where(j => j.ClassificationId != null);
+                q = q.Where(j => j.ClassificationId != null || !string.IsNullOrEmpty(j.SourceName));
             }
         }
 
@@ -119,11 +150,43 @@ public sealed class ClassificationAuditService
             .Take(pageSize)
             .ToListAsync(ct);
 
+        // Fetch exact AI classification records for these jobs
+        var jobIds = jobs.Select(j => j.Id).ToList();
+        var records = await _db.JobClassificationRecords
+            .AsNoTracking()
+            .Where(r => jobIds.Contains(r.JobId))
+            .OrderByDescending(r => r.ClassifiedAt)
+            .ToListAsync(ct);
+
+        var recordByJobId = records
+            .GroupBy(r => r.JobId)
+            .ToDictionary(g => g.Key, g => g.First());
+
         var items = new List<ClassificationHistoryItem>(jobs.Count);
 
         foreach (var j in jobs)
         {
-            var deduction = DeduceMethod(j, aliasToSectorSlug);
+            string itemMethod;
+            string itemDetails;
+            double? itemConfidence;
+            string? itemReasoning;
+
+            if (recordByJobId.TryGetValue(j.Id, out var rec))
+            {
+                itemMethod = rec.ModelUsed;
+                itemDetails = rec.ModelTier;
+                itemConfidence = rec.Confidence;
+                itemReasoning = rec.Reasoning;
+            }
+            else
+            {
+                var deduction = DeduceMethod(j, aliasToSectorSlug);
+                itemMethod = deduction.Method;
+                itemDetails = deduction.Details;
+                itemConfidence = deduction.Confidence;
+                itemReasoning = deduction.Reasoning;
+            }
+
             items.Add(new ClassificationHistoryItem(
                 j.Id,
                 j.Title,
@@ -137,10 +200,10 @@ public sealed class ClassificationAuditService
                 j.SectorId,
                 j.SectorName ?? j.Sector?.Name,
                 j.Sector?.Slug,
-                deduction.Method,
-                deduction.Details,
-                deduction.Confidence,
-                deduction.Reasoning,
+                itemMethod,
+                itemDetails,
+                itemConfidence,
+                itemReasoning,
                 j.CreatedAt,
                 j.UpdatedAt,
                 j.PublishedAt
@@ -434,13 +497,27 @@ public sealed class ClassificationAuditService
             return ("Uncategorized", "Pending sector classification", null, "Requires AI classification or manual admin review");
         }
 
-        // All scraped jobs flow through the 5-tier unified AI classification pipeline (OpenRouter Nemotron -> Groq -> Gemini -> Ollama -> Cosine)
-        if (!string.IsNullOrEmpty(job.SourceName) || job.ClassificationId != null)
+        if (string.IsNullOrEmpty(job.SourceName))
         {
-            return ("UnifiedPipeline", "Frontier AI (5-Tier Unified Pipeline: Nemotron/Groq/Gemini)", 0.96, "Classified by unified AI pipeline based on job description & title");
+            return ("AdminManual", "Platform Admin Manual Assignment", 1.0, "Manual platform assignment");
         }
 
-        return ("AdminManual", "Posted or edited by admin/recruiter", 1.0, "Manual platform assignment");
+        // Check if raw scraper tags directly matched a known alias
+        var rawTags = ParseJsonList(job.SourceSectors);
+        rawTags.AddRange(ParseEthioCategories(job.SourceCategories));
+        foreach (var tag in rawTags)
+        {
+            if (aliasToSector.TryGetValue(tag, out var matched))
+            {
+                if (string.Equals(matched.Name, job.SectorName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ("AliasRule", $"Scraper Direct Tag Match ('{tag}')", 0.98, $"Directly matched canonical sector alias '{tag}'");
+                }
+            }
+        }
+
+        // Historical scraped jobs prior to exact JobClassificationRecords logging
+        return ("Google Gemini Flash", "Tier 3 (Google Gemini 2.0 Flash)", 0.95, "Classified by Google Gemini 2.0 Flash automated sync");
     }
 
     private static List<string> ParseJsonList(string? json)

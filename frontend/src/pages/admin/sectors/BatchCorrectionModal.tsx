@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { SectorDetailResponse } from '../../../types'
 import { bulkSetJobSectors, getApiErrorMessage } from '../../../api'
-import { cn } from '../../../lib/cn.ts'
 
 interface BatchCorrectionModalProps {
   open: boolean

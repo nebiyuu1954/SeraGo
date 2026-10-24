@@ -1847,6 +1847,24 @@ public static class JobEndpoints
         job.SectorName = sector?.Name;
         job.UpdatedAt = DateTimeOffset.UtcNow;
 
+        if (sector != null)
+        {
+            var record = new JobClassificationRecord
+            {
+                Id = Guid.NewGuid(),
+                JobId = job.Id,
+                ModelUsed = "AdminManual",
+                ModelTier = "Admin Manual Override",
+                SectorSlug = sector.Slug,
+                SectorName = sector.Name,
+                Confidence = 1.0,
+                Reasoning = "Sector manually assigned by platform administrator",
+                ClassifiedAt = job.UpdatedAt
+            };
+            db.JobClassificationRecords.Add(record);
+            job.ClassificationId = record.Id;
+        }
+
         await db.SaveChangesAsync();
         return Results.Ok(ToResponse(job, string.Empty));
     }
@@ -1909,6 +1927,21 @@ public static class JobEndpoints
                 job.SectorName = sector.Name;
                 job.UpdatedAt = now;
                 updated.Add(job.Id);
+
+                var record = new JobClassificationRecord
+                {
+                    Id = Guid.NewGuid(),
+                    JobId = job.Id,
+                    ModelUsed = "AdminManual",
+                    ModelTier = "Admin Manual Override",
+                    SectorSlug = sector.Slug,
+                    SectorName = sector.Name,
+                    Confidence = 1.0,
+                    Reasoning = "Sector manually assigned or corrected by platform administrator",
+                    ClassifiedAt = now
+                };
+                db.JobClassificationRecords.Add(record);
+                job.ClassificationId = record.Id;
             }
             else if (!item.SectorId.HasValue && string.IsNullOrWhiteSpace(item.SectorSlug))
             {
