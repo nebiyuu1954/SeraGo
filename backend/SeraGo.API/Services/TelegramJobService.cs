@@ -184,6 +184,108 @@ public sealed class TelegramJobService
     }
 
     /// <summary>
+    /// Triggered when an admin batch-fixes misclassified jobs.
+    /// 1. Updates Telegram Channel posts in-place (EditMessageCaption) if previously posted,
+    ///    or posts freshly if never posted to the channel.
+    /// 2. Dispatches fresh Bot DMs to all users subscribed to the updated sectors.
+    /// </summary>
+    [Queue("telegram")]
+    [AutomaticRetry(Attempts = 2)]
+    public async Task SyncBatchFixedJobsToTelegramAsync(List<Guid> jobIds)
+    {
+        if (jobIds == null || jobIds.Count == 0) return;
+
+        using var scope = _scopeFactory.CreateScope();
+        var client = scope.ServiceProvider.GetService<ITelegramBotClient>();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var jobs = await db.Jobs
+            .Include(j => j.Sector)
+            .Where(j => jobIds.Contains(j.Id) && j.Status == JobStatus.Published && j.IsActive && j.SectorId != null)
+            .ToListAsync();
+
+        if (jobs.Count == 0) return;
+
+        // ── 1. Channel Synchronization (Edit in-place or post fresh) ──
+        if (_options.WantsChannel && client != null && !string.IsNullOrWhiteSpace(_options.ChannelId))
+        {
+            var channelChatId = new ChatId(_options.ChannelId);
+
+            foreach (var job in jobs)
+            {
+                var link = BuildJobLink(job);
+                var keyboard = new InlineKeyboardMarkup(new[]
+                {
+                    new[] { InlineKeyboardButton.WithUrl("See More on SeraGo", link) }
+                });
+
+                var caption = BuildJobCaption(job, link);
+
+                if (job.TelegramChannelMessageId.HasValue && job.TelegramChannelMessageId.Value > 0)
+                {
+                    try
+                    {
+                        await client.EditMessageCaption(
+                            chatId: channelChatId,
+                            messageId: (int)job.TelegramChannelMessageId.Value,
+                            caption: caption,
+                            parseMode: ParseMode.Html,
+                            replyMarkup: keyboard);
+
+                        _logger.LogInformation(
+                            "Updated existing Telegram channel message {MessageId} for batch-fixed job {JobId} ({Title}) with sector {Sector}",
+                            job.TelegramChannelMessageId.Value, job.Id, job.Title, job.SectorName);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex,
+                            "Failed editing channel message {MessageId} for job {JobId}. Falling back to fresh post.",
+                            job.TelegramChannelMessageId.Value, job.Id);
+
+                        try
+                        {
+                            var sent = await SendChannelPostAsync(client, job, link, keyboard);
+                            job.TelegramChannelPostedAt = DateTimeOffset.UtcNow;
+                            job.TelegramChannelMessageId = sent.MessageId;
+                            await db.SaveChangesAsync();
+                        }
+                        catch (Exception postEx)
+                        {
+                            _logger.LogWarning(postEx, "Failed posting fallback channel message for job {JobId}", job.Id);
+                        }
+                    }
+                }
+                else
+                {
+                    // Not previously posted to channel — post fresh
+                    try
+                    {
+                        var sent = await SendChannelPostAsync(client, job, link, keyboard);
+                        job.TelegramChannelPostedAt = DateTimeOffset.UtcNow;
+                        job.TelegramChannelMessageId = sent.MessageId;
+                        await db.SaveChangesAsync();
+
+                        _logger.LogInformation(
+                            "Posted fresh Telegram channel message {MessageId} for batch-fixed job {JobId} ({Title})",
+                            sent.MessageId, job.Id, job.Title);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed sending fresh channel post for job {JobId}", job.Id);
+                    }
+                }
+
+                // Respect Telegram rate limits (1.5 seconds between channel edits/posts)
+                await Task.Delay(1500);
+            }
+        }
+
+        // ── 2. Bot User Direct Messages ──
+        // Sends shiny new job alert DM to every user matching the corrected sector
+        await DispatchSyncedTalentDmsAsync(jobIds);
+    }
+
+    /// <summary>
     /// Fallback / safety net: posts any live, published jobs not yet broadcast.
     /// Only considers jobs from the last 24 hours to prevent historical backfill floods.
     /// Shuffles order and paces posts dynamically across the configured window.
@@ -551,6 +653,27 @@ public sealed class TelegramJobService
             logger: _logger);
     }
 
+    public static string BuildJobCaption(Job job, string link, string? header = null)
+    {
+        string Build(int snippetLen, int titleLen = 0, int compLen = 0)
+        {
+            var builder = new StringBuilder();
+            if (!string.IsNullOrWhiteSpace(header))
+            {
+                builder.AppendLine(header);
+                builder.AppendLine();
+            }
+            builder.Append(BuildJobCardText(job, link, snippetLen, titleLen, compLen));
+            return builder.ToString();
+        }
+
+        var caption = Build(snippetLen: 220);
+        if (caption.Length > 980) caption = Build(snippetLen: 80);
+        if (caption.Length > 980) caption = Build(snippetLen: 0);
+        if (caption.Length > 980) caption = Build(snippetLen: 0, titleLen: 120, compLen: 60);
+        return caption;
+    }
+
     /// <summary>
     /// Sends a rich job card with verified source banner, bold title, metadata,
     /// and 1-click apply button directly to a Telegram chat.
@@ -574,33 +697,7 @@ public sealed class TelegramJobService
             new[] { InlineKeyboardButton.WithUrl(btnText, link) }
         });
 
-        string BuildCaption(int snippetLen, int titleLen = 0, int compLen = 0)
-        {
-            var builder = new StringBuilder();
-            if (!string.IsNullOrWhiteSpace(header))
-            {
-                builder.AppendLine(header);
-                builder.AppendLine();
-            }
-            builder.Append(BuildJobCardText(job, link, snippetLen, titleLen, compLen));
-            return builder.ToString();
-        }
-
-        // Telegram photo caption hard limit is 1024 characters.
-        // Progressively reduce length without slicing inside HTML tags or entity codes.
-        var caption = BuildCaption(snippetLen: 220);
-        if (caption.Length > 980)
-        {
-            caption = BuildCaption(snippetLen: 80);
-        }
-        if (caption.Length > 980)
-        {
-            caption = BuildCaption(snippetLen: 0);
-        }
-        if (caption.Length > 980)
-        {
-            caption = BuildCaption(snippetLen: 0, titleLen: 120, compLen: 60);
-        }
+        var caption = BuildJobCaption(job, link, header);
 
         var bannerFileName = GetSourceBannerFileName(job.SourceName);
 

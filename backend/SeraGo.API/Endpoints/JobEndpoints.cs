@@ -10,6 +10,7 @@ using SeraGo.API.Services;
 using SeraGo.Core.Domain;
 using SeraGo.Core.Domain.Entities;
 using SeraGo.Core.Domain.Enums;
+using Hangfire;
 using SeraGo.Infrastructure.Context;
 
 namespace SeraGo.API.Endpoints;
@@ -177,7 +178,7 @@ public static class JobEndpoints
 
     public sealed record SetJobSectorRequest(Guid? SectorId);
     public sealed record BulkSetJobSectorItem(Guid JobId, Guid? SectorId = null, string? SectorSlug = null);
-    public sealed record BulkSetJobSectorRequest(IReadOnlyList<BulkSetJobSectorItem> Assignments);
+    public sealed record BulkSetJobSectorRequest(IReadOnlyList<BulkSetJobSectorItem> Assignments, bool SyncToTelegram = true);
     public sealed record BulkSetJobSectorResponse(int UpdatedCount, IReadOnlyList<Guid> UpdatedJobIds);
 
     public sealed record RejectJobRequest(string? Reason);
@@ -1953,6 +1954,19 @@ public static class JobEndpoints
         }
 
         await db.SaveChangesAsync();
+
+        if (request.SyncToTelegram && updated.Count > 0)
+        {
+            try
+            {
+                BackgroundJob.Enqueue<TelegramJobService>(s => s.SyncBatchFixedJobsToTelegramAsync(updated));
+            }
+            catch
+            {
+                // Background job enqueue failure should not fail the API response
+            }
+        }
+
         return Results.Ok(new BulkSetJobSectorResponse(updated.Count, updated));
     }
 

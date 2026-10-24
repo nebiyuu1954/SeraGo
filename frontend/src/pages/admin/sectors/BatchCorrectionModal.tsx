@@ -35,6 +35,7 @@ export default function BatchCorrectionModal({
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
   const [successCount, setSuccessCount] = useState<number | null>(null)
+  const [syncToTelegram, setSyncToTelegram] = useState(true)
   const [fetchedMetadata, setFetchedMetadata] = useState<
     Record<string, { title: string; company: string; currentSector: string }>
   >({})
@@ -258,7 +259,7 @@ export default function BatchCorrectionModal({
         sectorSlug: i.sectorSlug,
       }))
 
-      const res = await bulkSetJobSectors(payload, token)
+      const res = await bulkSetJobSectors(payload, token, syncToTelegram)
       setSuccessCount(res.updatedCount)
 
       setTimeout(() => {
@@ -448,16 +449,35 @@ export default function BatchCorrectionModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-surface-variant px-6 py-4 bg-surface-container-low">
-          <div className="text-xs text-on-surface-variant">
-            {validItems.length > 0 ? (
-              <span>Ready to update <b>{validItems.length}</b> jobs instantly.</span>
-            ) : (
-              <span>Paste JSON above to preview changes.</span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-surface-variant px-6 py-4 bg-surface-container-low">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <label className="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-on-surface">
+              <input
+                type="checkbox"
+                checked={syncToTelegram}
+                onChange={(e) => setSyncToTelegram(e.target.checked)}
+                className="h-4 w-4 rounded border-outline-variant text-purple-600 focus:ring-purple-500 cursor-pointer"
+              />
+              <span className="inline-flex items-center gap-1.5 font-medium text-on-surface">
+                <span className="material-symbols-outlined text-sm text-sky-600">send</span>
+                <span>Sync to Telegram (Bot DMs & Channel Edit)</span>
+              </span>
+            </label>
+
+            {validItems.length > 0 && (
+              <span className="text-xs text-on-surface-variant hidden sm:inline">•</span>
             )}
+
+            <div className="text-xs text-on-surface-variant">
+              {validItems.length > 0 ? (
+                <span>Ready to update <b>{validItems.length}</b> jobs instantly.</span>
+              ) : (
+                <span>Paste JSON above to preview changes.</span>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 justify-end">
             <button
               type="button"
               onClick={onClose}

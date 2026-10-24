@@ -225,10 +225,11 @@ export interface BulkSectorAssignmentResponse {
 export function bulkSetJobSectors(
   assignments: BulkSectorAssignmentItem[],
   accessToken: string,
+  syncToTelegram: boolean = true,
 ): Promise<BulkSectorAssignmentResponse> {
   return request<BulkSectorAssignmentResponse>(API_ENDPOINTS.jobs.bulkSectors, {
     method: 'POST',
-    body: { assignments },
+    body: { assignments, syncToTelegram },
     headers: auth(accessToken),
   })
 }
