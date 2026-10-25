@@ -17,10 +17,16 @@ import { config } from '../config'
 
 let ready = false
 
-/** Initialise GA4 once. No-op when unconfigured or outside production. */
+/** Initialise GA4 once when measurement ID is configured. */
 export function initAnalytics(): void {
-  if (ready || !config.gaMeasurementId || !config.isProd) return
+  if (ready) return
 
+  if (!config.gaMeasurementId) {
+    console.warn('GA4 Initialization failed: Missing Measurement ID')
+    return
+  }
+
+  console.log('GA4 Initialized with ID:', config.gaMeasurementId)
   ReactGA.initialize(config.gaMeasurementId, {
     gtagOptions: { send_page_view: false },
   })

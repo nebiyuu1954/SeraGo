@@ -70,8 +70,10 @@ export default function AnalyticsTracker() {
   const location = useLocation()
 
   useEffect(() => {
+    const pagePath = location.pathname + location.search
     document.title = `${titleFor(location.pathname)} · ${BASE_TITLE}`
-    trackPageView(location.pathname + location.search, document.title)
+    trackPageView(pagePath, document.title)
+    console.log('GA4 PageView Fired:', pagePath)
   }, [location.pathname, location.search])
 
   return null
