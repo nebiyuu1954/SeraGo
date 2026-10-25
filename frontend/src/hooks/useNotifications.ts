@@ -117,7 +117,11 @@ export function useNotifications() {
 
         if (cancelled) return
 
-        const hubUrl = config.apiBaseUrl.replace('/api', '') + '/hubs/notifications'
+        // Strip trailing /api or /api/ from apiBaseUrl to reach the root /hubs/notifications endpoint
+        const hubBase = config.apiBaseUrl.startsWith('http')
+          ? new URL(config.apiBaseUrl).origin
+          : config.apiBaseUrl.replace(/\/api\/?$/, '')
+        const hubUrl = `${hubBase}/hubs/notifications`
 
         connection = new signalR.HubConnectionBuilder()
           .withUrl(hubUrl, {

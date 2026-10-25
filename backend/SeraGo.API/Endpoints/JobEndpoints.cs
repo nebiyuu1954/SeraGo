@@ -63,7 +63,7 @@ public static class JobEndpoints
         group.MapGet("/locations", ListLocationsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
         group.MapGet("/job-types", ListJobTypesAsync).RequireRateLimiting("jobs_read").WithOpenApi();
         group.MapGet("/{id:guid}", GetJobAsync).RequireRateLimiting("jobs_read").WithOpenApi();
-        group.MapGet("/{id:guid}/similar", GetSimilarJobsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
+        group.MapGet("/{id:guid}/similar", GetSimilarJobsAsync).AllowAnonymous().RequireRateLimiting("jobs_read").WithOpenApi();
 
         group.MapPost("/", CreateJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();
         // Talent-initiated: score the caller's For You feed now ("Run AI matching").
@@ -1056,6 +1056,7 @@ public static class JobEndpoints
     /// 3. If new jobs arrived since LastEvaluatedAt, scores ONLY the new delta, merges with top 24, and updates cache.
     /// 4. If no cache exists (cold start) or stored jobs expired, re-evaluates sector candidates and saves cache.
     /// </summary>
+    [AllowAnonymous]
     private static async Task<IResult> GetSimilarJobsAsync(
         Guid id,
         ClaimsPrincipal claims,

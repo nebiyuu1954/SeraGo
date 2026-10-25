@@ -492,7 +492,7 @@ export default function JobDetailPage() {
   // Similar jobs query: calls the dedicated vector similarity + incremental cache API
   const { similarJobs: rawSimilarJobs, isLoading: isLoadingSimilar } = useSimilarJobsQuery(
     job?.id,
-    auth.status === 'authenticated' && !!job?.id,
+    !!job?.id,
   )
 
   const [visibleSimilarCount, setVisibleSimilarCount] = useState(6)
