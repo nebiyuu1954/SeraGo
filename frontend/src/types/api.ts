@@ -415,6 +415,10 @@ export interface JobResponse {
   matchedSkills: string[] | null
   /** Job requirements the talent's profile doesn't cover. */
   missingSkills: string[] | null
+  /** AI generated executive summary of the job listing. */
+  aiSummary?: string | null
+  /** AI generated salary estimate and compensation benchmark. */
+  salaryEstimate?: string | null
 }
 
 /** A canonical job sector — the vocabulary of GET /api/sectors. */

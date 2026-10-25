@@ -14,6 +14,7 @@ export default function PublicJobsPage() {
   const [searchInput, setSearchInput] = useState(searchParams.get('q') || '')
   const [sectorId, setSectorId] = useState(searchParams.get('sectorId') || '')
   const [location, setLocation] = useState(searchParams.get('location') || '')
+  const [jobType, setJobType] = useState(searchParams.get('type') || searchParams.get('jobType') || '')
   const [sort, setSort] = useState(searchParams.get('sort') || 'newest')
   const [page, setPage] = useState(1)
   const pageSize = 10
@@ -29,6 +30,33 @@ export default function PublicJobsPage() {
   const { sectors, isLoading: sectorsLoading } = useSectorsQuery()
   const { locations, isLoading: locationsLoading } = useJobLocationsQuery()
 
+  // Sync state when URL search params change (e.g., clicking taxonomy filters)
+  useEffect(() => {
+    const qParam = searchParams.get('q') || ''
+    const sectorParam = searchParams.get('sectorId') || searchParams.get('sector') || ''
+    const locParam = searchParams.get('location') || ''
+    const typeParam = searchParams.get('type') || searchParams.get('jobType') || ''
+    const sortParam = searchParams.get('sort') || 'newest'
+
+    let resolvedSectorId = sectorParam
+    if (sectorParam && sectors.length > 0) {
+      const matched = sectors.find(
+        (s) =>
+          s.id.toLowerCase() === sectorParam.toLowerCase() ||
+          s.name.toLowerCase() === sectorParam.toLowerCase() ||
+          s.slug.toLowerCase() === sectorParam.toLowerCase(),
+      )
+      if (matched) resolvedSectorId = matched.id
+    }
+
+    setSearchInput(qParam)
+    setSectorId(resolvedSectorId)
+    setLocation(locParam)
+    setJobType(typeParam)
+    setSort(sortParam)
+    setPage(1)
+  }, [searchParams, sectors])
+
   // Sort sectors from highest job count to lowest
   const sortedSectors = [...sectors].sort(
     (a, b) => (b.jobCount ?? 0) - (a.jobCount ?? 0) || a.name.localeCompare(b.name),
@@ -38,21 +66,22 @@ export default function PublicJobsPage() {
     q: searchInput.trim() || undefined,
     sectorId: sectorId || undefined,
     location: location || undefined,
+    jobType: jobType || undefined,
     sort,
     page,
     pageSize,
   })
 
   const hasActiveFilters =
-    Boolean(searchInput.trim()) || Boolean(sectorId) || Boolean(location)
+    Boolean(searchInput.trim()) || Boolean(sectorId) || Boolean(location) || Boolean(jobType)
 
   const clearFilters = () => {
     setSearchInput('')
     setSectorId('')
     setLocation('')
+    setJobType('')
     setPage(1)
   }
-
 
   const selectedSectorName = sectors.find((s) => s.id === sectorId)?.name
 

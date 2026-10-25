@@ -107,17 +107,32 @@ export default function JobCard({
           : `Up to ${job.experienceMaxYears} years`
       : job.experienceLevel || ''
 
-  const meta = [
+  const meta: { icon: string; label: string; href?: string }[] = [
     {
       icon: 'location_on',
       label: job.location || 'Location not specified',
+      href: job.location ? `/jobs?location=${encodeURIComponent(job.location)}` : undefined,
     },
     ...(salaryLabel
       ? [{ icon: 'payments', label: salaryLabel }]
       : [{ icon: 'payments', label: 'Salary not specified' }]),
-    { icon: 'schedule', label: jobTypeLabel(job) },
+    {
+      icon: 'schedule',
+      label: jobTypeLabel(job),
+      href: `/jobs?type=${encodeURIComponent(job.jobType)}`,
+    },
     ...(experienceLabel ? [{ icon: 'work', label: experienceLabel }] : []),
-    ...(job.sectorName ? [{ icon: 'domain', label: job.sectorName }] : []),
+    ...(job.sectorName
+      ? [
+          {
+            icon: 'domain',
+            label: job.sectorName,
+            href: job.sectorId
+              ? `/jobs?sectorId=${encodeURIComponent(job.sectorId)}`
+              : `/jobs?sector=${encodeURIComponent(job.sectorName)}`,
+          },
+        ]
+      : []),
     ...(job.numberOfPositions > 1
       ? [{ icon: 'group', label: `${job.numberOfPositions} positions` }]
       : []),
@@ -246,7 +261,18 @@ export default function JobCard({
               >
                 {item.icon}
               </span>
-              <span className="truncate">{item.label}</span>
+              {item.href ? (
+                <Link
+                  to={item.href}
+                  onClick={(e) => e.stopPropagation()}
+                  className="truncate hover:text-primary hover:underline transition-colors cursor-pointer"
+                  title={`Filter by ${item.label}`}
+                >
+                  {item.label}
+                </Link>
+              ) : (
+                <span className="truncate">{item.label}</span>
+              )}
             </div>
           ))}
         </div>

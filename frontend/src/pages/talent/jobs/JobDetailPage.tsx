@@ -395,87 +395,26 @@ export default function JobDetailPage() {
   useEffect(() => {
     if (!jobId || isPreview) return
 
-    if (auth.status === 'unauthenticated') {
-      try {
-        sessionStorage.setItem('serago_pending_target_job_id', jobId)
-        localStorage.setItem('serago_pending_target_job_id', jobId)
-        if (urlTitle) {
-          sessionStorage.setItem('serago_pending_target_job_title', urlTitle)
-          localStorage.setItem('serago_pending_target_job_title', urlTitle)
-        }
-        if (urlSectorId) {
-          sessionStorage.setItem('serago_pending_target_job_sector_id', urlSectorId)
-          localStorage.setItem('serago_pending_target_job_sector_id', urlSectorId)
-        }
-        if (urlSectorName) {
-          sessionStorage.setItem('serago_pending_target_job_sector_name', urlSectorName)
-          localStorage.setItem('serago_pending_target_job_sector_name', urlSectorName)
-        }
-      } catch {}
-
-      if (!urlTitle || (!urlSectorId && !urlSectorName)) {
-        fetchJob(jobId)
-          .then((j) => {
-            if (j?.title) {
-              sessionStorage.setItem('serago_pending_target_job_title', j.title)
-              localStorage.setItem('serago_pending_target_job_title', j.title)
-            }
-            if (j?.sectorId) {
-              sessionStorage.setItem('serago_pending_target_job_sector_id', j.sectorId)
-              localStorage.setItem('serago_pending_target_job_sector_id', j.sectorId)
-            }
-            if (j?.sectorName) {
-              sessionStorage.setItem('serago_pending_target_job_sector_name', j.sectorName)
-              localStorage.setItem('serago_pending_target_job_sector_name', j.sectorName)
-            }
-          })
-          .catch(() => {})
+    // Save job context to local/session storage for login redirect
+    try {
+      sessionStorage.setItem('serago_pending_target_job_id', jobId)
+      localStorage.setItem('serago_pending_target_job_id', jobId)
+      if (urlTitle) {
+        sessionStorage.setItem('serago_pending_target_job_title', urlTitle)
+        localStorage.setItem('serago_pending_target_job_title', urlTitle)
       }
-      navigate('/login', { replace: true })
-      return
-    }
+      if (urlSectorId) {
+        sessionStorage.setItem('serago_pending_target_job_sector_id', urlSectorId)
+        localStorage.setItem('serago_pending_target_job_sector_id', urlSectorId)
+      }
+      if (urlSectorName) {
+        sessionStorage.setItem('serago_pending_target_job_sector_name', urlSectorName)
+        localStorage.setItem('serago_pending_target_job_sector_name', urlSectorName)
+      }
+    } catch {}
 
     if (auth.status === 'authenticated' && isFromTelegram) {
-      try {
-        sessionStorage.setItem('serago_pending_target_job_id', jobId)
-        localStorage.setItem('serago_pending_target_job_id', jobId)
-        if (urlTitle) {
-          sessionStorage.setItem('serago_pending_target_job_title', urlTitle)
-          localStorage.setItem('serago_pending_target_job_title', urlTitle)
-        }
-        if (urlSectorId) {
-          sessionStorage.setItem('serago_pending_target_job_sector_id', urlSectorId)
-          localStorage.setItem('serago_pending_target_job_sector_id', urlSectorId)
-        }
-        if (urlSectorName) {
-          sessionStorage.setItem('serago_pending_target_job_sector_name', urlSectorName)
-          localStorage.setItem('serago_pending_target_job_sector_name', urlSectorName)
-        }
-      } catch {}
-
-      if (!urlTitle || (!urlSectorId && !urlSectorName)) {
-        fetchJob(jobId)
-          .then((j) => {
-            if (j?.title) {
-              sessionStorage.setItem('serago_pending_target_job_title', j.title)
-              localStorage.setItem('serago_pending_target_job_title', j.title)
-            }
-            if (j?.sectorId) {
-              sessionStorage.setItem('serago_pending_target_job_sector_id', j.sectorId)
-              localStorage.setItem('serago_pending_target_job_sector_id', j.sectorId)
-            }
-            if (j?.sectorName) {
-              sessionStorage.setItem('serago_pending_target_job_sector_name', j.sectorName)
-              localStorage.setItem('serago_pending_target_job_sector_name', j.sectorName)
-            }
-            navigate('/dashboard/talent', { replace: true })
-          })
-          .catch(() => {
-            navigate('/dashboard/talent', { replace: true })
-          })
-      } else {
-        navigate('/dashboard/talent', { replace: true })
-      }
+      navigate('/dashboard/talent', { replace: true })
     }
   }, [jobId, auth.status, isFromTelegram, urlTitle, urlSectorId, urlSectorName, isPreview, navigate])
 
@@ -484,16 +423,12 @@ export default function JobDetailPage() {
     auth.status === 'authenticated',
   )
 
-  // The detail query is cache-first (revalidateOnMount: false) — it only
-  // fetches when the jobs list has primed the cache via hover-prefetch.
-  // Arriving directly (admin preview from the jobs table, hard refresh,
-  // shared link) means nothing is cached, so trigger the first fetch
-  // manually or the page renders blank.
+  // Cache-first recovery on cold mount or direct shared link visit
   useEffect(() => {
-    if (auth.status === 'authenticated' && !job && !isLoading && !error) {
+    if (!job && !isLoading && !error && jobId) {
       refreshJob()
     }
-  }, [auth.status, job, isLoading, error, refreshJob])
+  }, [job, isLoading, error, refreshJob, jobId])
 
   const { savedIds, refresh: refreshSaved } = useSavedJobsQuery(!isPreview)
   const { showToast } = useToast()
@@ -614,7 +549,10 @@ export default function JobDetailPage() {
       showToast('Similar jobs API is currently in development. Displaying preview vacancy.', 'info')
       return
     }
-    navigate(`/dashboard/talent/jobs/${id}`)
+    const targetPath = isPreview
+      ? `/dashboard/admin/jobs/${id}/preview`
+      : `/dashboard/talent/jobs/${id}`
+    navigate(targetPath)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -794,29 +732,29 @@ export default function JobDetailPage() {
       </Helmet>
 
       <DashboardShell role={isPreview ? 'Admin' : 'Talent'} authUser={auth.user}>
-      {isPreview ? (
-        <div className="flex items-center gap-3">
+        {isPreview ? (
+          <div className="flex items-center gap-3">
+            <Link
+              to="/dashboard/admin/jobs"
+              className="inline-flex items-center gap-1.5 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
+            >
+              <span className="material-symbols-outlined text-lg">arrow_back</span>
+              Back to jobs
+            </Link>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-container/60 px-3 py-1 font-label-sm text-label-sm font-medium text-primary">
+              <span className="material-symbols-outlined text-base">preview</span>
+              Previewing as talent
+            </span>
+          </div>
+        ) : (
           <Link
-            to="/dashboard/admin/jobs"
+            to="/dashboard/talent"
             className="inline-flex items-center gap-1.5 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
           >
             <span className="material-symbols-outlined text-lg">arrow_back</span>
-            Back to jobs
+            Back to all jobs
           </Link>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-container/60 px-3 py-1 font-label-sm text-label-sm font-medium text-primary">
-            <span className="material-symbols-outlined text-base">preview</span>
-            Previewing as talent
-          </span>
-        </div>
-      ) : (
-        <Link
-          to="/dashboard/talent"
-          className="inline-flex items-center gap-1.5 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
-        >
-          <span className="material-symbols-outlined text-lg">arrow_back</span>
-          Back to all jobs
-        </Link>
-      )}
+        )}
 
       {isLoading && (
         <div className="mt-10 flex items-center justify-center">
@@ -883,12 +821,16 @@ export default function JobDetailPage() {
                               {job.company || 'Company Undisclosed'}
                             </h2>
                             {job.location && (
-                              <div className="mt-1 flex items-center gap-1.5 font-body-md text-body-md text-on-surface-variant">
+                              <Link
+                                to={`/jobs?location=${encodeURIComponent(job.location)}`}
+                                className="mt-1 inline-flex items-center gap-1.5 font-body-md text-body-md text-on-surface-variant hover:text-primary hover:underline transition-colors cursor-pointer"
+                                title={`Browse all jobs in ${job.location}`}
+                              >
                                 <span className="material-symbols-outlined text-[18px] text-on-surface-variant">
                                   location_on
                                 </span>
                                 <span className="truncate">{job.location}</span>
-                              </div>
+                              </Link>
                             )}
                           </div>
                         </div>
@@ -898,21 +840,29 @@ export default function JobDetailPage() {
                           {job.title}
                         </h1>
 
-                        {/* Meta Chips */}
+                        {/* Meta Chips with Clickable Taxonomy */}
                         <div className="flex flex-wrap items-center gap-2 pt-1">
-                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container px-3 py-1 font-label-sm text-label-sm text-on-surface">
+                          <Link
+                            to={`/jobs?type=${encodeURIComponent(job.jobType)}`}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container px-3 py-1 font-label-sm text-label-sm text-on-surface hover:bg-primary/10 hover:text-primary transition-all cursor-pointer"
+                            title={`Browse all ${jobTypeLabel(job)} jobs`}
+                          >
                             <span className="material-symbols-outlined text-[16px] text-on-surface-variant">
                               schedule
                             </span>
                             {jobTypeLabel(job)}
-                          </span>
+                          </Link>
 
-                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container px-3 py-1 font-label-sm text-label-sm text-on-surface">
+                          <Link
+                            to={`/jobs?workMode=${encodeURIComponent(job.workMode)}`}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container px-3 py-1 font-label-sm text-label-sm text-on-surface hover:bg-primary/10 hover:text-primary transition-all cursor-pointer"
+                            title={`Browse all ${workModeLabel(job.workMode)} jobs`}
+                          >
                             <span className="material-symbols-outlined text-[16px] text-on-surface-variant">
                               home_work
                             </span>
                             {workModeLabel(job.workMode)}
-                          </span>
+                          </Link>
 
                           {closesLabel(job.deadline) && (
                             <span
@@ -1046,18 +996,22 @@ export default function JobDetailPage() {
                       </div>
 
                       {/* Col 3: Sector */}
-                      <div className="flex flex-col gap-1 p-2 md:pl-6">
+                      <Link
+                        to={job.sectorId ? `/jobs?sectorId=${encodeURIComponent(job.sectorId)}` : `/jobs?sector=${encodeURIComponent(job.sectorName || 'General')}`}
+                        className="group/fact flex flex-col gap-1 p-2 md:pl-6 rounded-xl transition-colors hover:bg-surface-container-low/60 cursor-pointer"
+                        title={`Browse all jobs in ${job.sectorName || 'this sector'}`}
+                      >
                         <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant">
                           <span className="material-symbols-outlined text-[18px] text-primary">hub</span>
                           <span>Sector</span>
                         </div>
-                        <div className="font-headline-md text-body-lg font-bold text-on-surface truncate" title={job.sectorName || 'General'}>
+                        <div className="font-headline-md text-body-lg font-bold text-on-surface truncate group-hover/fact:text-primary group-hover/fact:underline transition-colors" title={job.sectorName || 'General'}>
                           {job.sectorName || 'General'}
                         </div>
                         <div className="font-label-sm text-label-sm text-on-surface-variant/70 truncate">
                           {job.subSectorName || 'Industry Category'}
                         </div>
-                      </div>
+                      </Link>
 
                       {/* Col 4: Work Mode */}
                       <div className="flex flex-col gap-1 p-2 md:pl-6">
@@ -1065,12 +1019,20 @@ export default function JobDetailPage() {
                           <span className="material-symbols-outlined text-[18px] text-primary">apartment</span>
                           <span>Work Mode</span>
                         </div>
-                        <div className="font-headline-md text-body-lg font-bold text-on-surface">
+                        <Link
+                          to={`/jobs?workMode=${encodeURIComponent(job.workMode)}`}
+                          className="font-headline-md text-body-lg font-bold text-on-surface hover:text-primary hover:underline transition-colors cursor-pointer"
+                          title={`Browse ${workModeLabel(job.workMode)} jobs`}
+                        >
                           {workModeLabel(job.workMode)}
-                        </div>
-                        <div className="font-label-sm text-label-sm text-on-surface-variant/70 truncate">
+                        </Link>
+                        <Link
+                          to={`/jobs?location=${encodeURIComponent(job.location || 'Ethiopia')}`}
+                          className="font-label-sm text-label-sm text-on-surface-variant/70 truncate hover:text-primary hover:underline transition-colors cursor-pointer"
+                          title={`Browse jobs in ${job.location || 'Ethiopia'}`}
+                        >
                           {job.location || 'Ethiopia'}
-                        </div>
+                        </Link>
                       </div>
 
                       {/* Col 5: Deadline */}
@@ -1088,6 +1050,7 @@ export default function JobDetailPage() {
                       </div>
                     </div>
                   </div>
+
 
                   {/* 3. Universal Description Content Card */}
                   <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm sm:p-8">
@@ -1135,7 +1098,7 @@ export default function JobDetailPage() {
                 </div>
 
                 {/* ================= RIGHT RAIL (Similar Jobs: wider & bigger) ================= */}
-                <aside ref={similarJobsRef} className="w-full shrink-0 flex flex-col gap-4 lg:w-[380px] xl:w-[420px] 2xl:w-[450px] lg:sticky lg:top-20">
+                <aside id="similar-jobs" ref={similarJobsRef} className="w-full shrink-0 flex flex-col gap-4 lg:w-[380px] xl:w-[420px] 2xl:w-[450px] lg:sticky lg:top-20">
                   <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-5 sm:p-6 shadow-sm">
                     <div className="flex items-center pb-4">
                       <h2 className="font-headline-md text-headline-md font-bold text-on-surface">Similar Jobs</h2>
@@ -1200,27 +1163,42 @@ export default function JobDetailPage() {
                               </div>
                             </div>
 
-                            {/* Row 2: Location & Job Type Chips */}
+                            {/* Row 2: Location & Job Type Chips with Clickable Taxonomy */}
                             <div className="flex flex-wrap items-center gap-2 pt-0.5">
                               {/* Location */}
-                              <span className="inline-flex items-center gap-1 text-xs text-on-surface-variant font-medium">
+                              <Link
+                                to={`/jobs?location=${encodeURIComponent(item.location)}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 text-xs text-on-surface-variant font-medium hover:text-primary hover:underline transition-colors cursor-pointer"
+                                title={`Browse jobs in ${item.location}`}
+                              >
                                 <span className="material-symbols-outlined text-[15px] text-on-surface-variant/80">location_on</span>
                                 <span className="truncate max-w-[150px]">{item.location}</span>
-                              </span>
+                              </Link>
 
                               <span className="text-surface-variant">·</span>
 
                               {/* Job Type */}
-                              <span className="inline-flex items-center gap-1 rounded-md bg-surface-container px-2 py-0.5 text-[11px] font-label-sm font-medium text-on-surface">
+                              <Link
+                                to={`/jobs?type=${encodeURIComponent(item.jobType)}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 rounded-md bg-surface-container px-2 py-0.5 text-[11px] font-label-sm font-medium text-on-surface hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer"
+                                title={`Browse ${item.jobType} jobs`}
+                              >
                                 <span className="material-symbols-outlined text-[13px] text-on-surface-variant">schedule</span>
                                 {item.jobType || 'Full-time'}
-                              </span>
+                              </Link>
 
                               {/* Work Mode */}
                               {item.workMode && (
-                                <span className="rounded-md bg-primary-container/40 px-2 py-0.5 text-[11px] font-label-sm font-medium text-primary">
+                                <Link
+                                  to={`/jobs?workMode=${encodeURIComponent(item.workMode)}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="rounded-md bg-primary-container/40 px-2 py-0.5 text-[11px] font-label-sm font-medium text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+                                  title={`Browse ${workModeLabel(item.workMode)} jobs`}
+                                >
                                   {workModeLabel(item.workMode)}
-                                </span>
+                                </Link>
                               )}
                             </div>
 
@@ -1310,7 +1288,7 @@ export default function JobDetailPage() {
                           handleApplyClick('mobile_bar_serago_modal')
                           setShowApplyForm(true)
                         }}
-                        className="flex items-center gap-1.5 rounded-lg bg-accent px-6 py-2.5 font-label-md text-label-md font-bold text-on-accent shadow-sm active:scale-95 transition-all"
+                        className="flex items-center gap-1.5 rounded-lg bg-accent px-6 py-2.5 font-label-md text-label-md font-bold text-on-accent shadow-sm active:scale-95 transition-all cursor-pointer"
                       >
                         <span>Apply Now</span>
                         <span className="material-symbols-outlined text-[18px]">north_east</span>
