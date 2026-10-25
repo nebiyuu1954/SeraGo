@@ -93,6 +93,10 @@ public sealed class TelegramJobService
         {
             await NotifyTalentsAsync(job, ct);
         }
+
+        // ── Search Engine IndexNow ping ──
+        TryEnqueue(() => BackgroundJob.Enqueue<SitemapNotifierService>(
+            s => s.NotifySearchEnginesAsync(new List<string> { $"{_options.JobLinkBase}/{jobId}" })));
     }
 
     /// <summary>
@@ -179,6 +183,11 @@ public sealed class TelegramJobService
             TryEnqueue(() => BackgroundJob.Enqueue<TelegramJobService>(
                 s => s.DispatchSyncedTalentDmsAsync(syncJobIds)));
         }
+
+        // ── Search Engine IndexNow ping for batch sync ──
+        var jobUrls = jobIds.Select(id => $"{_options.JobLinkBase}/{id}").ToList();
+        TryEnqueue(() => BackgroundJob.Enqueue<SitemapNotifierService>(
+            s => s.NotifySearchEnginesAsync(jobUrls)));
 
         return Task.CompletedTask;
     }
@@ -866,6 +875,15 @@ public sealed class TelegramJobService
         return null;
     }
 
+    private string BuildJobLink(Job job)
+    {
+        var sectorParam = job.SectorId != null ? $"&sectorId={job.SectorId}" : "";
+        var sectorNameParam = !string.IsNullOrWhiteSpace(job.SectorName) ? $"&sector={Uri.EscapeDataString(job.SectorName)}" : "";
+        
+        // Keep original functional parameters, append UTM parameters for GA4/Analytics
+        return $"{_options.JobLinkBase}/{job.Id}?from=telegram&title={Uri.EscapeDataString(job.Title)}{sectorParam}{sectorNameParam}&utm_source=telegram&utm_medium=channel&utm_campaign=auto_post";
+    }
+
     public static string BuildJobLink(Job job, string? baseLink = null)
     {
         var titleParam = !string.IsNullOrWhiteSpace(job.Title)
@@ -885,7 +903,7 @@ public sealed class TelegramJobService
             ? baseLink.TrimEnd('/')
             : "https://serago.pro.et/dashboard/talent/jobs";
 
-        return $"{baseUri}/{job.Id}?from=telegram{titleParam}{sectorIdParam}{sectorParam}";
+        return $"{baseUri}/{job.Id}?from=telegram{titleParam}{sectorIdParam}{sectorParam}&utm_source=telegram&utm_medium=bot_dm&utm_campaign=job_alert";
     }
 
     public static string BuildJobCardText(Job job, string link, int maxSnippetLength = 220, int maxTitleLength = 0, int maxCompanyLength = 0)

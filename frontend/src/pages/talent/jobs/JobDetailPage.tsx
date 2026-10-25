@@ -4,7 +4,6 @@ import { Helmet } from 'react-helmet-async'
 import ReactGA from 'react-ga4'
 import {
   applyToJob,
-  fetchJob,
   getApiErrorMessage,
   getStoredAuthTokens,
   updateProfile,
@@ -600,7 +599,9 @@ export default function JobDetailPage() {
     ? `${job.title} at ${job.company || 'SeraGo'} - SeraGo`
     : 'Job Details · SeraGo'
 
-  const metaDescription = job?.description
+  const metaDescription = job?.aiSummary
+    ? job.aiSummary
+    : job?.description
     ? job.description
         .replace(/<[^>]*>?/gm, '')
         .replace(/\s+/g, ' ')
