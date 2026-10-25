@@ -72,9 +72,15 @@ ${sectorListText}
 
 ### CLASSIFICATION RULES:
 1. For each job, evaluate its title, company, and description, and pick the SINGLE best canonical sector from the official list above.
-2. You MUST use the exact "sectorId" and "sectorName" provided in the list above. Do NOT invent new sectors.
-3. If a job is ambiguous or general, pick the closest matching sector (e.g. "Business & Administration" or "Skilled & General Labor").
-4. Output MUST be ONLY a valid JSON array of objects. Do not write any explanations, markdown commentary, or introductory text outside the JSON array.
+2. Disambiguation Guidelines:
+   - "Accountant" / "Cashier" / "Auditor" / Amharic ("አካውንታንት", "ሲኒየር አካውንታንት", "የሂሳብ ባለሙያ", "ካሸር", "ገንዘብ ያዥ") -> MUST ALWAYS be "Accounting & Finance", even if employed by a school, college, training institute, factory, or hospital.
+   - Telecom & Software Platforms ("OCS Billing Engineer", "Charging System", "RBT Operation", "VAS Specialist", "Core Network") -> MUST be "Technology & IT", NEVER "Engineering & Construction".
+   - "SDR" / "Sales Development Representative" / "BPO cold calling" / "Telemarketer" -> MUST be "Sales & Marketing", NOT "Technology & IT".
+   - "Civil Engineer" / "Site Supervisor" / "Draftsman" / "Structural Engineer" -> MUST be "Engineering & Construction".
+   - Bank Branch Managers / Credit Officers / Loan Officers -> MUST be "Banking & Insurance", NOT "Business & Administration".
+3. You MUST use the exact "sectorId" and "sectorName" provided in the list above. Do NOT invent new sectors.
+4. If a job is ambiguous or general, pick the closest matching sector (e.g. "Business & Administration" or "Skilled & General Labor").
+5. Output MUST be ONLY a valid JSON array of objects. Do not write any explanations, markdown commentary, or introductory text outside the JSON array.
 
 ### REQUIRED JSON SCHEMA:
 [

@@ -78,11 +78,14 @@ ${canonicalSectors}
 2. Key classification disambiguation rules:
    - "SDR" / "Sales Development Representative" / "BPO cold calling" / "Telemarketer" / "Account Executive" -> MUST be "Sales & Marketing", NOT "Technology & IT" (even if the company is an IT company).
    - "Crane Rigger" / "Equipment Operator" / "Welder" / "Mason" / "Carpenter" / "General Labor" -> MUST be "Skilled & General Labor" or "Engineering & Construction", NOT "Technology & IT".
-   - "Accountant" / "Cashier" / "Auditor" / "Finance Officer" -> MUST be "Accounting & Finance".
-   - "Graphic Designer" / "UI/UX Designer" / "Video Editor" -> MUST be "Design & Creative".
-   - "Civil Engineer" / "Site Supervisor" / "Draftsman" -> MUST be "Engineering & Construction".
-   - "Software Engineer" / "Backend Developer" / "Data Analyst" / "System Admin" -> MUST be "Technology & IT".
-   - "Doctor" / "Nurse" / "Pharmacist" / "Health Officer" -> MUST be "Healthcare & Pharmaceuticals".
+   - "Accountant" / "Cashier" / "Auditor" / "Finance Officer" / Amharic ("አካውንታንት", "ሲኒየር አካውንታንት", "ሲኒዬር አካውንታንት", "የሂሳብ ባለሙያ", "ካሸር", "ገንዘብ ያዥ") -> MUST ALWAYS be "Accounting & Finance", even if employed by a school, training institute, factory, or hospital!
+   - "Graphic Designer" / "UI/UX Designer" / "Motion Graphics" -> MUST be "Design & Creative".
+   - "Video Editor" / "Social Media Manager" / "Content Writer" / "Journalist" -> MUST be "Media & Communication".
+   - "Civil Engineer" / "Site Supervisor" / "Draftsman" / "Structural Engineer" -> MUST be "Engineering & Construction".
+   - "Software Engineer" / "Backend Developer" / "Data Analyst" / "System Admin" / Telecom & Software Platforms ("OCS Billing Engineer", "Charging System", "RBT Operation", "VAS Specialist", "Core Network Product Engineer") -> MUST be "Technology & IT", NEVER "Engineering & Construction".
+   - "Doctor" / "Nurse" / "Pharmacist" / "Health Officer" / "Medical Internist" -> MUST be "Healthcare".
+   - Bank Branch Managers / Credit Officers / Loan Officers -> MUST be "Banking & Insurance", NOT "Business & Administration".
+   - NGO Livelihoods / MEAL / Economic Strengthening -> MUST be "Social Science & Community", NOT "Accounting & Finance".
 
 ### AUDIT TASK:
 1. Identify any jobs that appear MISCLASSIFIED or questionable.

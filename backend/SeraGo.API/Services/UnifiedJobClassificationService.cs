@@ -210,6 +210,7 @@ public sealed class UnifiedJobClassificationService
 
         4. TECHNOLOGY & IT vs INDUSTRY EMPLOYERS (Role vs Industry):
            - "Software Engineer", "Backend Developer", "Full Stack", "Cloud Engineer", "DevOps", "Database Admin", "Network Administrator", "IT Support Officer", "Hardware Technician", "IS Trainee" -> MUST be "technology-it".
+           - TELECOM & SOFTWARE PLATFORMS: "OCS Billing Engineer" / "Charging System Engineer" / "CDR Analyst", "RBT Operation Engineer" (Ringback Tone), "VAS Specialist", "Core Network Product Engineer", "IP Service Engineer", "Microwave Engineer", "Cloud Core Engineer", "NGBSS Test Engineer", "Mobile Money Maintenance Engineer", "Network Planning & Optimization" -> MUST be "technology-it", NEVER "engineering-construction"!
            - CRITICAL: "Core Banking System Admin" / "Banking IT Officer" / "Hospital IT Administrator" -> MUST be "technology-it", even if employed by a bank or hospital! Technical IT roles always take precedence over the employer's industry.
 
         5. ENGINEERING & CONSTRUCTION vs ACCOUNTING & AUDIT (Construction lifecycle disambiguation):
@@ -249,8 +250,13 @@ public sealed class UnifiedJobClassificationService
            - Video Editor, Videographer, Social Media Manager, Content Writer, Journalist, Communications Manager, Public Relations -> "media-communication".
            - Graphic Designer, UI/UX Designer, Motion Graphics Artist, Creative Director -> "design-creative".
 
-        13. If none fit, set sectorSlug to null.
-        14. Return ONLY a valid JSON object matching this schema:
+        13. ACCOUNTING & FINANCE (Role vs Employer Industry Trap):
+           - "Accountant", "Senior Accountant", "Junior Accountant", "Cost Accountant", "Project Accountant", "Finance Officer", "Finance Manager", "Auditor", "Internal Auditor", "Cashier", "Disbursement Officer", "Tax Officer" -> MUST ALWAYS be "accounting-finance".
+           - AMHARIC ACCOUNTING TITLES: "አካውንታንት", "ሲኒየር አካውንታንት", "ሲኒዬር አካውንታንት", "ጁኒየር አካውንታንት", "የሂሳብ ባለሙያ", "ሂሳብ ሹም", "ዋና ሂሳብ ሹም", "ገንዘብ ያዥ", "ካሸር", "ፋይናንስ ኦፊሰር" -> MUST ALWAYS be "accounting-finance".
+           - CRITICAL TRAP: When an accountant or cashier works at a School, College, University, Training Institute, Factory, Hotel, Hospital, or NGO, their role is financial accounting, NOT teaching, healthcare, or hospitality! They MUST be classified as "accounting-finance".
+
+        14. If none fit, set sectorSlug to null.
+        15. Return ONLY a valid JSON object matching this schema:
         {
           "results": [
             {

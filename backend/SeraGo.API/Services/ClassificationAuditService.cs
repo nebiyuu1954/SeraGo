@@ -291,7 +291,7 @@ public sealed class ClassificationAuditService
         2. Pay special attention to common confusion points:
            - "SDR (Sales Development Representative)" / "BPO cold calling" / "Sales rep" / "Sales Consultant" -> MUST be "sales-marketing", NOT "technology-it".
            - Bank branch operations & branch managers ("Branch Business Manager", "Branch Manager") and credit/loan analysts ("Credit Officer", "Senior Credit Officer") -> MUST be "banking-insurance", NOT "business-administration" or "technology-it".
-           - Technical IT roles ("Core Banking System Admin", "Database Admin", "Cloud Engineer", "IT Officer") -> MUST be "technology-it", even if employed by a bank or hospital.
+           - Technical IT roles ("Core Banking System Admin", "Database Admin", "Cloud Engineer", "IT Officer", "OCS Billing Engineer", "RBT Operation", "VAS Specialist", "Telecom Network") -> MUST be "technology-it", even if employed by a bank, hospital, or telecom operator. Never confuse software/billing/telecom engineering with civil/construction engineering.
            - Construction firm functional heads ("Monitoring and Reporting", "Project Closing", "Bid Management", "Project Performance Audit") requiring Civil/Structural Engineering degrees -> MUST be "engineering-construction", NOT "accounting-finance".
            - Humanitarian livelihoods ("Economic Strengthening Specialist", "Livelihoods", "GCR Refugee Advisor", "MEAL / M&E") in NGOs -> MUST be "social-science-community", NOT "accounting-finance" (ignore raw scraper tag "Economics").
            - Health program roles ("NCD Project Coordinator", "RMNCH", "HIV Service Officer") and medical clinicians ("Doctor", "Internist", "Anesthetist", "Nurse", "Pharmacist") -> MUST be "healthcare".
@@ -299,7 +299,7 @@ public sealed class ClassificationAuditService
            - Sourcing & purchasing ("Purchaser", "Senior Procurement", "Buyer", "Storekeeper") -> MUST be "procurement-supply-chain".
            - Manual operations ("Battery Swapper", "Tailor", "Ceramic Tiler", "Woodworker") -> MUST be "skilled-general-labor".
            - Clerical ("TVET Secretary", "Executive Secretary") -> MUST be "business-administration", NOT "education-training".
-           - "Accountant" / "Cashier" / "Auditor" -> MUST be "accounting-finance".
+           - "Accountant" / "Cashier" / "Auditor" / Amharic ("አካውንታንት", "ሲኒየር አካውንታንት", "የሂሳብ ባለሙያ", "ካሸር") -> MUST ALWAYS be "accounting-finance", even if employed by a school, training institute, factory, or hospital.
            - "Graphic Designer" / "UI/UX Designer" -> MUST be "design-creative".
            - "Video Editor" / "Social Media Manager" / "Content Writer" -> MUST be "media-communication".
         3. If the current sector is genuinely accurate, set verdict to "AGREE".
