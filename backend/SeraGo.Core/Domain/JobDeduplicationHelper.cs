@@ -50,14 +50,23 @@ public static class JobDeduplicationHelper
     }
 
     /// <summary>
-    /// Determines whether two job listings represent the same vacancy advertised on different platforms.
+    /// Generates a normalized canonical key for fast dictionary lookup: "company|title".
     /// </summary>
-    public static bool AreDuplicateJobs(Job a, Job b)
+    public static string GenerateCanonicalKey(string? company, string? title)
     {
-        if (a.Id == b.Id) return true;
+        var comp = NormalizeCompany(company);
+        var t = NormalizeTitle(title);
+        if (string.IsNullOrEmpty(comp) || string.IsNullOrEmpty(t)) return string.Empty;
+        return $"{comp}|{t}";
+    }
 
-        var compA = NormalizeCompany(a.Company);
-        var compB = NormalizeCompany(b.Company);
+    /// <summary>
+    /// Determines whether two raw company and title pairs represent the same vacancy.
+    /// </summary>
+    public static bool AreDuplicate(string? rawCompA, string? rawTitleA, string? rawCompB, string? rawTitleB)
+    {
+        var compA = NormalizeCompany(rawCompA);
+        var compB = NormalizeCompany(rawCompB);
         if (string.IsNullOrEmpty(compA) || string.IsNullOrEmpty(compB)) return false;
 
         // Company match: exact normalized match OR one contains the other (min 5 chars)
@@ -65,8 +74,8 @@ public static class JobDeduplicationHelper
             (compA.Length >= 5 && compB.Length >= 5 && (compA.Contains(compB) || compB.Contains(compA)));
         if (!companyMatches) return false;
 
-        var titleA = NormalizeTitle(a.Title);
-        var titleB = NormalizeTitle(b.Title);
+        var titleA = NormalizeTitle(rawTitleA);
+        var titleB = NormalizeTitle(rawTitleB);
         if (string.IsNullOrEmpty(titleA) || string.IsNullOrEmpty(titleB)) return false;
 
         // Title match: exact normalized match OR one contains the other (min 4 chars)
@@ -74,5 +83,14 @@ public static class JobDeduplicationHelper
             (titleA.Length >= 4 && titleB.Length >= 4 && (titleA.Contains(titleB) || titleB.Contains(titleA)));
 
         return titleMatches;
+    }
+
+    /// <summary>
+    /// Determines whether two job listings represent the same vacancy advertised on different platforms.
+    /// </summary>
+    public static bool AreDuplicateJobs(Job a, Job b)
+    {
+        if (a.Id == b.Id) return true;
+        return AreDuplicate(a.Company, a.Title, b.Company, b.Title);
     }
 }

@@ -115,9 +115,22 @@ public sealed class ScrapedJobSyncService
             .Where(j => j.SourceName != null && j.ExternalId != null)
             .ToListAsync(ct);
         var jobsByKey = new Dictionary<(string SourceName, string ExternalId), Job>(existingJobs.Count);
+        var recentJobsByCanonicalKey = new Dictionary<string, Job>(StringComparer.OrdinalIgnoreCase);
+        var canonicalWindowCutoff = DateTimeOffset.UtcNow.AddDays(-14);
+
         foreach (var existing in existingJobs)
         {
             jobsByKey[(existing.SourceName!, existing.ExternalId!)] = existing;
+
+            var jobDate = existing.PublishedAt ?? existing.CreatedAt;
+            if (existing.IsActive && jobDate >= canonicalWindowCutoff)
+            {
+                var cKey = JobDeduplicationHelper.GenerateCanonicalKey(existing.Company, existing.Title);
+                if (!string.IsNullOrEmpty(cKey) && !recentJobsByCanonicalKey.ContainsKey(cKey))
+                {
+                    recentJobsByCanonicalKey[cKey] = existing;
+                }
+            }
         }
 
         // Jobs that were actually inserted or updated in this sync run. Only
@@ -368,6 +381,80 @@ public sealed class ScrapedJobSyncService
             }
             else
             {
+                // Cross-source deduplication interceptor: check if an active posting
+                // for this company and title already exists within the last 14 days.
+                var canonicalKey = JobDeduplicationHelper.GenerateCanonicalKey(company, title);
+                Job? crossSourceDuplicate = null;
+                if (!string.IsNullOrEmpty(canonicalKey) && recentJobsByCanonicalKey.TryGetValue(canonicalKey, out var matchedJob))
+                {
+                    crossSourceDuplicate = matchedJob;
+                }
+                else if (!string.IsNullOrEmpty(company) && !string.IsNullOrEmpty(title))
+                {
+                    // Fuzzy fallback for minor corporate suffix or title noise variations
+                    crossSourceDuplicate = recentJobsByCanonicalKey.Values.FirstOrDefault(r =>
+                        JobDeduplicationHelper.AreDuplicate(r.Company, r.Title, company, title));
+                }
+
+                if (crossSourceDuplicate is not null)
+                {
+                    // Map this (source, external_id) to the existing canonical job so subsequent references recognize it
+                    jobsByKey[(sourceName, externalId)] = crossSourceDuplicate;
+                    if (isBootstrap)
+                    {
+                        seenKeys.Add($"{sourceName}|{externalId}");
+                    }
+
+                    var incomingAuthority = GetSourceAuthority(sourceName);
+                    var existingAuthority = GetSourceAuthority(crossSourceDuplicate.SourceName);
+
+                    if (incomingAuthority > existingAuthority)
+                    {
+                        // Higher-authority primary board arrived later (e.g. EthioJobs after GeezJobs):
+                        // Upgrade the master job with official description and application URLs in place.
+                        _logger.LogInformation(
+                            "Upgrading job '{Title}' at '{Company}' from {OldSource} to higher-authority {NewSource}",
+                            title, company, crossSourceDuplicate.SourceName, sourceName);
+
+                        crossSourceDuplicate.Title = title;
+                        if (!string.IsNullOrWhiteSpace(description)) crossSourceDuplicate.Description = description;
+                        if (!string.IsNullOrWhiteSpace(url)) crossSourceDuplicate.Url = url;
+                        if (!string.IsNullOrWhiteSpace(bestSalary)) crossSourceDuplicate.Salary = bestSalary;
+                        if (publishedAt is not null) crossSourceDuplicate.PublishedAt = publishedAt;
+                        if (deadline is not null) crossSourceDuplicate.Deadline = deadline;
+                        if (sector is not null)
+                        {
+                            crossSourceDuplicate.SectorId = sector.Id;
+                            crossSourceDuplicate.SectorName = sector.Name;
+                        }
+                        if (!string.IsNullOrWhiteSpace(bestLogo)) crossSourceDuplicate.CompanyLogoUrl = bestLogo;
+                        if (!string.IsNullOrWhiteSpace(bestExperience)) crossSourceDuplicate.ExperienceLevel = bestExperience;
+                        if (workMode != WorkMode.Onsite) crossSourceDuplicate.WorkMode = workMode;
+                        if (!string.IsNullOrWhiteSpace(skills)) crossSourceDuplicate.Skills = skills;
+                        if (!string.IsNullOrWhiteSpace(appMethod)) crossSourceDuplicate.ApplicationMethod = appMethod;
+                        if (!string.IsNullOrWhiteSpace(appEmail)) crossSourceDuplicate.ApplicationEmail = appEmail;
+                        if (!string.IsNullOrWhiteSpace(appUrl)) crossSourceDuplicate.ApplicationUrl = appUrl;
+                        crossSourceDuplicate.SourceName = sourceName;
+                        crossSourceDuplicate.ExternalId = externalId;
+                        crossSourceDuplicate.SourceUrl = string.IsNullOrWhiteSpace(url) ? crossSourceDuplicate.SourceUrl : url;
+                        crossSourceDuplicate.UpdatedAt = DateTimeOffset.UtcNow;
+                        updated++;
+                    }
+                    else
+                    {
+                        // Secondary aggregator repost (e.g. GeezJobs/Reporter re-advertising EthioJobs/HaHu listing):
+                        // Do NOT insert a second job row, do NOT send to AI classification, do NOT broadcast to Telegram.
+                        _logger.LogInformation(
+                            "Skipping duplicate listing '{Title}' at '{Company}' from {Source} (already imported from {OriginalSource})",
+                            title, company, sourceName, crossSourceDuplicate.SourceName);
+
+                        crossSourceDuplicate.UpdatedAt = DateTimeOffset.UtcNow;
+                        unchanged++;
+                    }
+
+                    continue;
+                }
+
                 var newJob = new Job
                 {
                     Id = Guid.NewGuid(),
@@ -423,6 +510,10 @@ public sealed class ScrapedJobSyncService
                 };
                 db.Jobs.Add(newJob);
                 jobsByKey[(sourceName, externalId)] = newJob;
+                if (!string.IsNullOrEmpty(canonicalKey))
+                {
+                    recentJobsByCanonicalKey[canonicalKey] = newJob;
+                }
                 inserted++;
                 touchedIds.Add(newJob.Id);
                 insertedIds.Add(newJob.Id);
@@ -619,6 +710,20 @@ public sealed class ScrapedJobSyncService
         "hahujobs" => "HaHuJobs",
         "reporterjobs" => "Ethiopian Reporter Jobs",
         _ => slug,
+    };
+
+    /// <summary>
+    /// Source authority weighting: primary direct employer job boards take precedence
+    /// over secondary aggregators/scrapers.
+    /// </summary>
+    private static int GetSourceAuthority(string? sourceName) => sourceName switch
+    {
+        "EthioJobs" => 10,
+        "Afriwork" => 9,
+        "HaHuJobs" or "HaHu Jobs" => 8,
+        "Ethiopian Reporter Jobs" => 3,
+        "GeezJobs" => 2,
+        _ => 1,
     };
 
     /// <summary>Tolerant job-type mapping with fallback extraction from title, description, and source employment text.</summary>
