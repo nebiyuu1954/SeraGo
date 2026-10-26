@@ -1,5 +1,5 @@
 import { useState, useId, useEffect } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   useJobsQuery,
   useSectorsQuery,
@@ -10,6 +10,7 @@ import JobCard from '../../../components/jobs/JobCard.tsx'
 import type { JobResponse } from '../../../types'
 
 export default function PublicJobsPage() {
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [searchInput, setSearchInput] = useState(searchParams.get('q') || '')
   const [sectorId, setSectorId] = useState(searchParams.get('sectorId') || '')
@@ -101,30 +102,6 @@ export default function PublicJobsPage() {
             <p className="max-w-2xl font-body-lg text-body-lg text-secondary">
               Browse current vacancies aggregated and verified across Ethiopia&apos;s leading job boards. Search by role, filter by sector, and find your next career step.
             </p>
-          </div>
-
-          {/* AI Teaser Banner */}
-          <div className="mt-8 flex flex-col items-start justify-between gap-4 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-surface-container-low to-accent/10 p-5 shadow-sm sm:flex-row sm:items-center sm:p-6">
-            <div className="flex items-start gap-3.5">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary shadow-sm">
-                <span className="material-symbols-outlined text-[22px]">psychology</span>
-              </div>
-              <div>
-                <h4 className="font-headline-md text-headline-md text-on-surface">
-                  Want automatic AI compatibility scoring?
-                </h4>
-                <p className="font-body-sm text-body-sm text-secondary">
-                  Create a free profile with your CV to see instant match percentages and skill gaps on every job.
-                </p>
-              </div>
-            </div>
-            <Link
-              to="/signup"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 font-label-md text-label-md font-semibold text-on-primary transition-all hover:bg-primary/90 hover:shadow"
-            >
-              <span>Unlock AI Matches</span>
-              <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
-            </Link>
           </div>
         </div>
       </div>
@@ -353,8 +330,7 @@ export default function PublicJobsPage() {
                   setModalMode('apply')
                 }}
                 onPreview={(j) => {
-                  setModalJob(j)
-                  setModalMode('preview')
+                  navigate(`/dashboard/talent/jobs/${j.id}`)
                 }}
                 onToggleSave={() => {
                   setModalJob(job)

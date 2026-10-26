@@ -1139,7 +1139,7 @@ public static class JobEndpoints
                 .Select(j => ToResponse(j, user?.Id))
                 .ToList();
 
-            return Results.Ok(ordered);
+            return Results.Ok(user is null ? ordered.Take(1) : ordered);
         }
 
         // CASE 2: Delta Update
@@ -1186,7 +1186,8 @@ public static class JobEndpoints
             cache.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
 
-            return Results.Ok(topScored.Select(x => ToResponse(x.Job, user?.Id)));
+            var deltaResults = topScored.Select(x => ToResponse(x.Job, user?.Id));
+            return Results.Ok(user is null ? deltaResults.Take(1) : deltaResults);
         }
 
         // CASE 3: Cold Start or Cache Backfill (when stored jobs expired)
@@ -1265,7 +1266,8 @@ public static class JobEndpoints
 
         await db.SaveChangesAsync(ct);
 
-        return Results.Ok(deduplicatedTop.Select(x => ToResponse(x.Job, user?.Id)));
+        var coldResults = deduplicatedTop.Select(x => ToResponse(x.Job, user?.Id));
+        return Results.Ok(user is null ? coldResults.Take(1) : coldResults);
     }
 
     /// <summary>POST /api/jobs — create a job (recruiter or admin). Draft by default.</summary>

@@ -32,6 +32,20 @@ export default function DashboardRedirect() {
       navigate('/login', { replace: true })
       return
     }
+
+    const pendingJobId =
+      sessionStorage.getItem('serago_pending_target_job_id') ||
+      localStorage.getItem('serago_pending_target_job_id')
+
+    if (target === 'talent' && pendingJobId) {
+      try {
+        sessionStorage.removeItem('serago_pending_target_job_id')
+        localStorage.removeItem('serago_pending_target_job_id')
+      } catch {}
+      navigate(`/dashboard/talent/jobs/${pendingJobId}`, { replace: true })
+      return
+    }
+
     navigate(`/dashboard/${target}`, { replace: true })
   }, [auth, navigate])
 

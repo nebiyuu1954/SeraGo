@@ -58,6 +58,12 @@ export default function LoginPage() {
         })
         storeAuthTokens(tokens)
         trackEvent('login', { method: 'email' })
+        const searchParams = new URLSearchParams(location.search)
+        const redirectParam = searchParams.get('redirect')
+        if (redirectParam && redirectParam.startsWith('/')) {
+          navigate(redirectParam)
+          return
+        }
         // /dashboard resolves the user's role and lands them on their page.
         navigate('/dashboard')
       } catch (err) {

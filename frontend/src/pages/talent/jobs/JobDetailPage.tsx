@@ -15,9 +15,10 @@ import {
   useProfileQuery,
   useSavedJobsQuery,
 } from '../../../hooks/query.ts'
-import { useRequireRoleAny } from '../../../hooks'
+import { useAuthUser } from '../../../hooks'
 import type { JobResponse, JobType } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
+import GuestJobAuthModal from '../../../components/jobs/GuestJobAuthModal.tsx'
 import { useToast } from '../../../components/dashboard/Toast.tsx'
 import { JOB_TYPE_LABELS } from '../../../components/dashboard/jobOptions.ts'
 import { formatDate, postedLabel } from '../../../lib/date.ts'
@@ -383,7 +384,14 @@ export default function JobDetailPage() {
   const navigate = useNavigate()
   const isPreview = location.pathname.startsWith('/dashboard/admin/')
     || (location.state as { fromAdmin?: boolean })?.fromAdmin === true
-  const auth = useRequireRoleAny(['Talent', 'Admin'])
+  const auth = useAuthUser()
+
+  const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [authModalMode, setAuthModalMode] = useState<'apply' | 'preview'>('preview')
+  const handlePromptLogin = (mode: 'apply' | 'preview' = 'preview') => {
+    setAuthModalMode(mode)
+    setAuthModalOpen(true)
+  }
 
   const searchParams = new URLSearchParams(location.search)
   const isFromTelegram = searchParams.get('from') === 'telegram'
@@ -419,7 +427,7 @@ export default function JobDetailPage() {
 
   const { job, isLoading, error, refresh: refreshJob } = useJobDetailQuery(
     jobId,
-    auth.status === 'authenticated',
+    !!jobId,
   )
 
   // Cache-first recovery on cold mount or direct shared link visit
@@ -429,7 +437,7 @@ export default function JobDetailPage() {
     }
   }, [job, isLoading, error, refreshJob, jobId])
 
-  const { savedIds, refresh: refreshSaved } = useSavedJobsQuery(!isPreview)
+  const { savedIds, refresh: refreshSaved } = useSavedJobsQuery(auth.status === 'authenticated' && !isPreview)
   const { showToast } = useToast()
 
   // Application tracking — only for Serago jobs.
@@ -622,7 +630,10 @@ export default function JobDetailPage() {
   const handleToggleSave = async () => {
     if (!job) return
     const tokens = getStoredAuthTokens()
-    if (!tokens) return
+    if (!tokens || auth.status !== 'authenticated') {
+      handlePromptLogin('apply')
+      return
+    }
     const wasSaved = savedIds.has(job.id)
     try {
       if (wasSaved) await unsaveJob(job.id, tokens.accessToken)
@@ -699,7 +710,7 @@ export default function JobDetailPage() {
     }
   }
 
-  if (auth.status !== 'authenticated') {
+  if (isLoading && !job) {
     return (
       <div className="flex min-h-[50svh] items-center justify-center">
         <span
@@ -732,7 +743,7 @@ export default function JobDetailPage() {
         <meta name="twitter:image" content={ogImage} />
       </Helmet>
 
-      <DashboardShell role={isPreview ? 'Admin' : 'Talent'} authUser={auth.user}>
+      <DashboardShell role={isPreview ? 'Admin' : 'Talent'} authUser={auth.status === 'authenticated' ? auth.user : null}>
         {isPreview ? (
           <div className="flex items-center gap-3">
             <Link
@@ -749,7 +760,7 @@ export default function JobDetailPage() {
           </div>
         ) : (
           <Link
-            to="/dashboard/talent"
+            to={auth.status === 'authenticated' ? '/dashboard/talent' : '/jobs'}
             className="inline-flex items-center gap-1.5 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
           >
             <span className="material-symbols-outlined text-lg">arrow_back</span>
@@ -906,6 +917,10 @@ export default function JobDetailPage() {
                             <button
                               type="button"
                               onClick={() => {
+                                if (auth.status !== 'authenticated') {
+                                  handlePromptLogin('apply')
+                                  return
+                                }
                                 handleApplyClick('header_serago_modal')
                                 setShowApplyForm(true)
                               }}
@@ -1126,6 +1141,136 @@ export default function JobDetailPage() {
                             </div>
                           </div>
                         ))
+                      ) : auth.status !== 'authenticated' ? (
+                        <>
+                          {/* 1 Real Similar Job (if returned by API) */}
+                          {displayedSimilarJobs.slice(0, 1).map((item) => {
+                            const itemSourceLogo = sourceLogo(item.sourceName)
+                            const isCurrent = item.id === job.id
+
+                            return (
+                              <div
+                                key={item.id}
+                                onClick={() => handleSelectSimilarJob(item.id)}
+                                className={cn(
+                                  'group relative rounded-xl border p-4 sm:p-4.5 transition-all cursor-pointer flex flex-col gap-3',
+                                  isCurrent
+                                    ? 'border-primary bg-primary-container/10 shadow-xs'
+                                    : 'border-surface-variant bg-surface-container-lowest hover:border-primary/50 hover:bg-surface-container-low/40 hover:shadow-xs',
+                                )}
+                              >
+                                <div className="flex items-start gap-3 min-w-0">
+                                  {item.companyLogoUrl ? (
+                                    <div className="h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-surface-variant bg-surface-container-lowest p-1 shadow-2xs flex items-center justify-center">
+                                      <img src={item.companyLogoUrl} alt="" className="max-h-full max-w-full object-contain" />
+                                    </div>
+                                  ) : (
+                                    <div className="h-11 w-11 shrink-0 rounded-xl bg-primary-container/50 text-primary font-bold font-headline-md text-sm flex items-center justify-center shadow-2xs">
+                                      {item.initials || initialsOf(item.company || 'SG')}
+                                    </div>
+                                  )}
+
+                                  <div className="min-w-0 flex-1">
+                                    <h3 className="font-headline-md text-[15px] sm:text-[16px] font-bold text-on-surface group-hover:text-primary transition-colors line-clamp-2 leading-snug">
+                                      {item.title}
+                                    </h3>
+                                    <p className="mt-0.5 font-body-md text-sm font-medium text-on-surface-variant truncate">
+                                      {item.company}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                                  <span className="inline-flex items-center gap-1 text-xs text-on-surface-variant font-medium">
+                                    <span className="material-symbols-outlined text-[15px] text-on-surface-variant/80">location_on</span>
+                                    <span className="truncate max-w-[150px]">{item.location}</span>
+                                  </span>
+                                  <span className="text-surface-variant">·</span>
+                                  <span className="inline-flex items-center gap-1 rounded-md bg-surface-container px-2 py-0.5 text-[11px] font-label-sm font-medium text-on-surface">
+                                    <span className="material-symbols-outlined text-[13px] text-on-surface-variant">schedule</span>
+                                    {item.jobType || 'Full-time'}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center justify-between pt-2.5 border-t border-surface-variant/50">
+                                  <span className="font-headline-md text-sm font-bold text-on-surface tracking-tight">
+                                    {item.salary || 'Competitive'}
+                                  </span>
+                                  <div className="flex items-center">
+                                    {itemSourceLogo ? (
+                                      <img src={itemSourceLogo} alt="" className="h-5 sm:h-5.5 w-auto max-w-[65px] object-contain" />
+                                    ) : (
+                                      <span className="rounded-full bg-surface-container-low border border-surface-variant px-2.5 py-0.5 text-[11px] font-label-sm font-medium text-on-surface-variant">
+                                        {item.sourceName || 'SeraGo'}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+
+                          {/* 5 Dummy Blurred Skeleton Teaser Cards */}
+                          {[
+                            { title: 'Senior Software Engineer / Lead', company: 'Global Tech Enterprise', salary: 'ETB 65,000 – 95,000' },
+                            { title: 'Product & Operations Manager', company: 'Fintech Solutions Ltd', salary: 'ETB 50,000 – 75,000' },
+                            { title: 'Data & Systems Analyst', company: 'International NGO Partner', salary: 'ETB 45,000 – 70,000' },
+                            { title: 'Strategic Business Associate', company: 'Leading Telecom Firm', salary: 'Competitive' },
+                            { title: 'Infrastructure & Cloud Specialist', company: 'Pan-African Innovations', salary: 'ETB 55,000 – 85,000' },
+                          ].map((teaser, idx) => (
+                            <div
+                              key={`teaser-card-${idx}`}
+                              onClick={() => handlePromptLogin('preview')}
+                              className="group relative overflow-hidden rounded-xl border border-surface-variant bg-surface-container-low/50 p-4 sm:p-4.5 transition-all cursor-pointer select-none hover:border-primary/40 hover:shadow-xs"
+                              title="Sign in to unlock full job details"
+                            >
+                              <div className="filter blur-[4.5px] opacity-60 pointer-events-none space-y-3">
+                                <div className="flex items-start gap-3">
+                                  <div className="h-11 w-11 shrink-0 rounded-xl bg-surface-variant/70 flex items-center justify-center">
+                                    <span className="material-symbols-outlined text-outline text-[20px]">corporate_fare</span>
+                                  </div>
+                                  <div className="flex-1 space-y-1.5">
+                                    <p className="font-headline-md text-[15px] font-bold text-on-surface line-clamp-1">
+                                      {teaser.title}
+                                    </p>
+                                    <p className="font-body-md text-sm text-on-surface-variant">
+                                      {teaser.company}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  <span className="h-5 w-24 rounded-md bg-surface-variant/60" />
+                                  <span className="h-5 w-16 rounded-md bg-surface-variant/50" />
+                                </div>
+
+                                <div className="flex items-center justify-between pt-2 border-t border-surface-variant/40">
+                                  <span className="font-headline-md text-sm font-bold text-on-surface">
+                                    {teaser.salary}
+                                  </span>
+                                  <span className="h-4 w-14 rounded bg-surface-variant/50" />
+                                </div>
+                              </div>
+
+                              <div className="absolute inset-0 flex items-center justify-center bg-surface-container-lowest/30 backdrop-blur-[1px]">
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-lowest/95 px-3 py-1 font-label-sm text-label-sm font-semibold text-primary shadow-xs border border-surface-variant transition-transform group-hover:scale-105">
+                                  <span className="material-symbols-outlined text-[15px]">lock</span>
+                                  Sign in to unlock
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+
+                          {/* Action Button: Log in to see all matching jobs */}
+                          <button
+                            type="button"
+                            onClick={() => handlePromptLogin('preview')}
+                            className="w-full mt-1.5 py-3.5 px-4 rounded-xl border border-primary/30 bg-primary/10 hover:bg-primary/20 font-label-md text-sm font-semibold text-primary transition-all flex items-center justify-center gap-2 shadow-2xs active:scale-[0.99] cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">lock_open</span>
+                            <span>Log in to see all matching jobs</span>
+                          </button>
+                        </>
                       ) : (
                         displayedSimilarJobs.map((item) => {
                         const itemSourceLogo = sourceLogo(item.sourceName)
@@ -1286,6 +1431,10 @@ export default function JobDetailPage() {
                       <button
                         type="button"
                         onClick={() => {
+                          if (auth.status !== 'authenticated') {
+                            handlePromptLogin('apply')
+                            return
+                          }
                           handleApplyClick('mobile_bar_serago_modal')
                           setShowApplyForm(true)
                         }}
@@ -1631,6 +1780,12 @@ export default function JobDetailPage() {
           )}
         </>
       )}
+      <GuestJobAuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        job={job}
+        mode={authModalMode}
+      />
       </DashboardShell>
     </>
   )

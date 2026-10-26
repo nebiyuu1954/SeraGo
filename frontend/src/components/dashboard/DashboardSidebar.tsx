@@ -13,6 +13,7 @@ interface DashboardSidebarProps {
   onSignOut: () => void
   /** Optional badge overrides keyed by nav item label (e.g. { Jobs: 5 }). */
   badges?: Record<string, number>
+  isGuest?: boolean
 }
 
 /**
@@ -33,6 +34,7 @@ export default function DashboardSidebar({
   userAvatarUrl,
   onSignOut,
   badges,
+  isGuest,
 }: DashboardSidebarProps) {
   const { sidebarOpen, pinned, togglePinned, expand, collapse, drawerOpen, setDrawerOpen } =
     useSidebar()
@@ -59,6 +61,7 @@ export default function DashboardSidebar({
           pinned={pinned}
           onTogglePin={togglePinned}
           badges={badges}
+          isGuest={isGuest}
         />
       </aside>
 
@@ -79,6 +82,7 @@ export default function DashboardSidebar({
             onSignOut={onSignOut}
             collapsed={false}
             badges={badges}
+            isGuest={isGuest}
           />
           </aside>
         </>
@@ -97,6 +101,7 @@ function SidebarBody({
   pinned,
   onTogglePin,
   badges,
+  isGuest,
 }: {
   role: RequiredRole
   userName: string
@@ -107,6 +112,7 @@ function SidebarBody({
   pinned?: boolean
   onTogglePin?: () => void
   badges?: Record<string, number>
+  isGuest?: boolean
 }) {
   const location = useLocation()
   // Longest prefix match wins — nested pages highlight their own item, not
@@ -213,15 +219,26 @@ function SidebarBody({
                 {initialsOf(userName)}
               </span>
             )}
-            <button
-              type="button"
-              onClick={onSignOut}
-              title="Sign out"
-              aria-label="Sign out"
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
-            >
-              <span className="material-symbols-outlined">logout</span>
-            </button>
+            {isGuest ? (
+              <Link
+                to="/login"
+                title="Sign in"
+                aria-label="Sign in"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-primary transition-colors hover:bg-primary/10"
+              >
+                <span className="material-symbols-outlined">login</span>
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={onSignOut}
+                title="Sign out"
+                aria-label="Sign out"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
+              >
+                <span className="material-symbols-outlined">logout</span>
+              </button>
+            )}
           </div>
         ) : (
           <div className="flex items-center gap-3 rounded-lg px-2 py-2">
@@ -242,15 +259,27 @@ function SidebarBody({
                 </p>
               )}
             </div>
-            <button
-              type="button"
-              onClick={onSignOut}
-              title="Sign out"
-              aria-label="Sign out"
-              className="ml-auto flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
-            >
-              <span className="material-symbols-outlined">logout</span>
-            </button>
+            {isGuest ? (
+              <Link
+                to="/login"
+                title="Sign in"
+                aria-label="Sign in"
+                className="ml-auto inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 font-label-sm text-label-sm font-semibold text-primary transition-colors hover:bg-primary/10"
+              >
+                <span>Sign in</span>
+                <span className="material-symbols-outlined text-[16px]">login</span>
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={onSignOut}
+                title="Sign out"
+                aria-label="Sign out"
+                className="ml-auto flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
+              >
+                <span className="material-symbols-outlined">logout</span>
+              </button>
+            )}
           </div>
         )}
       </div>

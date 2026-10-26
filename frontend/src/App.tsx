@@ -58,6 +58,8 @@ function App() {
             <Route index element={<ArchitecturePage />} />
             <Route path=":systemId" element={<ArchitectureSystemPage />} />
           </Route>
+          {/* Public & Talent Job Detail alias route */}
+          <Route path="jobs/:jobId" element={<JobDetailPage />} />
           {/* Signed-in role dashboards — resolve the user's role from whoami */}
           <Route path="dashboard" element={<DashboardRedirect />} />
           <Route path="dashboard/talent" element={<TalentJobsPage />} />

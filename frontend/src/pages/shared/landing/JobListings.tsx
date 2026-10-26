@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { cn } from '../../../lib/cn.ts'
 import { useSectorsQuery, useJobsQuery } from '../../../hooks/query.ts'
 import GuestJobAuthModal from '../../../components/jobs/GuestJobAuthModal.tsx'
@@ -7,6 +7,7 @@ import JobCard from '../../../components/jobs/JobCard.tsx'
 import type { JobResponse } from '../../../types'
 
 export default function JobListings() {
+  const navigate = useNavigate()
   const [selectedSectorId, setSelectedSectorId] = useState<string | null>(null)
   const [modalJob, setModalJob] = useState<JobResponse | null>(null)
   const [modalMode, setModalMode] = useState<'apply' | 'preview'>('preview')
@@ -169,8 +170,7 @@ export default function JobListings() {
                       setModalMode('apply')
                     }}
                     onPreview={(j) => {
-                      setModalJob(j)
-                      setModalMode('preview')
+                      navigate(`/dashboard/talent/jobs/${j.id}`)
                     }}
                     onToggleSave={() => {
                       setModalJob(job)

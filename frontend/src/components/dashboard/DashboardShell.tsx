@@ -8,7 +8,7 @@ import DashboardSidebar from './DashboardSidebar.tsx'
 
 interface DashboardShellProps {
   role: RequiredRole
-  authUser: WhoAmIResponse
+  authUser?: WhoAmIResponse | null
   children: ReactNode
 }
 
@@ -54,11 +54,12 @@ export default function DashboardShell({
     }
   }, [role])
 
+  const isGuest = !authUser
   const name =
     (profile && [profile.firstName, profile.lastName].filter(Boolean).join(' ')) ||
-    authUser.username ||
-    authUser.email ||
-    'User'
+    authUser?.username ||
+    authUser?.email ||
+    'Guest'
 
   return (
     <div className="ui-scale-fill-below-nav flex items-stretch">
@@ -68,6 +69,7 @@ export default function DashboardShell({
         userAvatarUrl={profile?.avatarUrl}
         onSignOut={signOut}
         badges={adminBadges}
+        isGuest={isGuest}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
