@@ -518,6 +518,27 @@ export interface JobListData {
   pagination: PaginationResponse
 }
 
+export interface HeroRoleSuggestion {
+  title: string
+  location: string
+  openingsCount: number
+  matchPercentage: number
+  icon: string
+}
+
+export interface InferredSectorDto {
+  id: string
+  name: string
+  slug: string
+}
+
+export interface HeroSuggestionsResponse {
+  query: string
+  inferredSector?: InferredSectorDto | null
+  totalLivePositions: number
+  suggestions: HeroRoleSuggestion[]
+}
+
 /** The `data` payload of POST /api/jobs/for-you/match ("Run AI matching"). */
 export interface ForYouMatchResult {
   /** Jobs whose score was freshly computed this run. */

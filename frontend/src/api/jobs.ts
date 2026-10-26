@@ -2,6 +2,7 @@ import { request } from './client.ts'
 import { API_ENDPOINTS } from './endpoints.ts'
 import type {
   ForYouMatchResult,
+  HeroSuggestionsResponse,
   JobListData,
   JobListParams,
   JobResponse,
@@ -314,3 +315,18 @@ export function fetchScraperWeekDetail(
     headers: auth(accessToken),
   })
 }
+
+/** GET /api/jobs/hero-suggestions — intelligent role predictions with match % and live opening counts. */
+export function fetchHeroSuggestions(
+  query: string,
+  limit = 5,
+  signal?: AbortSignal,
+): Promise<HeroSuggestionsResponse> {
+  const params = new URLSearchParams()
+  if (query) params.set('q', query)
+  params.set('limit', String(limit))
+  return request<HeroSuggestionsResponse>(`${API_ENDPOINTS.jobs.heroSuggestions}?${params.toString()}`, {
+    signal,
+  })
+}
+

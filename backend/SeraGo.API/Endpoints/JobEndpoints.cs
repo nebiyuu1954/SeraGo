@@ -62,6 +62,7 @@ public static class JobEndpoints
         group.MapGet("/", ListJobsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
         group.MapGet("/locations", ListLocationsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
         group.MapGet("/job-types", ListJobTypesAsync).RequireRateLimiting("jobs_read").WithOpenApi();
+        group.MapGet("/hero-suggestions", GetHeroSuggestionsAsync).AllowAnonymous().RequireRateLimiting("jobs_read").WithOpenApi();
         group.MapGet("/{id:guid}", GetJobAsync).AllowAnonymous().RequireRateLimiting("jobs_read").WithOpenApi();
         group.MapGet("/{id:guid}/similar", GetSimilarJobsAsync).AllowAnonymous().RequireRateLimiting("jobs_read").WithOpenApi();
 
@@ -900,6 +901,21 @@ public static class JobEndpoints
             .ToListAsync(ct);
 
         return Results.Ok(counts);
+    }
+
+    /// <summary>
+    /// GET /api/jobs/hero-suggestions — intelligent role suggestion & predictive search launcher.
+    /// Infers sector, finds top matching role titles, and computes 0-100% match score with live opening counts.
+    /// </summary>
+    [AllowAnonymous]
+    private static async Task<IResult> GetHeroSuggestionsAsync(
+        [FromQuery] string? q,
+        [FromQuery] int? limit,
+        IHeroSuggestionService heroSuggestions,
+        CancellationToken ct)
+    {
+        var result = await heroSuggestions.GetSuggestionsAsync(q, limit ?? 5, ct);
+        return Results.Ok(result);
     }
 
     /// <summary>Placeholders that aren't real locations — never offered in the dropdown.</summary>

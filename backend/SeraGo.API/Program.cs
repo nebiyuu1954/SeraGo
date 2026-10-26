@@ -227,6 +227,7 @@ builder.Services.AddSingleton<JobLifecycleCleanupService>(); // weekly deadline+
 builder.Services.AddHostedService<SyncScheduler>();
 
 builder.Services.AddScoped<ISectorNormalizer, SectorNormalizer>(); // sector standardization
+builder.Services.AddScoped<IHeroSuggestionService, HeroSuggestionService>(); // hero role prediction & matching
 builder.Services.AddSingleton<OpenRouterClient>();                 // OpenRouter client (Tier 1: NVIDIA Nemotron 3 Ultra 550B with dual-key failover)
 builder.Services.AddSingleton<GroqClient>();                       // Groq AI client (Tier 2: Meta Llama 3.3 70B classifier fallback)
 builder.Services.AddSingleton<GeminiClient>();                     // Google Gemini client (Tier 3: Gemini 2.0 Flash classifier fallback)

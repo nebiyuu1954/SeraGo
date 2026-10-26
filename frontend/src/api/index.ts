@@ -25,6 +25,7 @@ export {
   fetchSimilarJobs,
   fetchJobLocations,
   fetchJobTypes,
+  fetchHeroSuggestions,
   fetchJobs,
   rejectJob,
   restoreJob,
