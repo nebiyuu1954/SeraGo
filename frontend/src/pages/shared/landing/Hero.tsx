@@ -4,69 +4,57 @@ import { fetchHeroSuggestions } from '../../../api/jobs.ts'
 import { useAuthUser } from '../../../hooks/useAuthUser.ts'
 import type { HeroRoleSuggestion } from '../../../types'
 
-const CURATED_DEFAULT_SUGGESTIONS: HeroRoleSuggestion[] = [
-  {
-    title: 'Senior Software Developer',
-    location: 'Addis Ababa',
-    openingsCount: 42,
-    matchPercentage: 98,
-    icon: 'code',
-  },
-  {
-    title: 'Fintech Lead Engineer',
-    location: 'Bole Medhanialem',
-    openingsCount: 18,
-    matchPercentage: 95,
-    icon: 'account_balance',
-  },
-  {
-    title: 'Data Analyst & BI Specialist',
-    location: 'Hybrid',
-    openingsCount: 24,
-    matchPercentage: 91,
-    icon: 'query_stats',
-  },
-  {
-    title: 'Product & Growth Marketing Manager',
-    location: 'Remote / Onsite',
-    openingsCount: 12,
-    matchPercentage: 87,
-    icon: 'trending_up',
-  },
-  {
-    title: 'Full Stack Web Developer',
-    location: 'Addis Ababa',
-    openingsCount: 31,
-    matchPercentage: 85,
-    icon: 'code',
-  },
+const PLACEHOLDER_ROLES = [
+  'Software Developer',
+  'Senior Accountant',
+  'Civil Engineer',
+  'Data Analyst',
+  'Marketing Specialist',
+  'Graphic Designer',
 ]
 
 export default function Hero() {
   const navigate = useNavigate()
   const auth = useAuthUser()
 
-  const [searchInput, setSearchInput] = useState('Software Developer')
-  const [debouncedInput, setDebouncedInput] = useState('Software Developer')
-  const [suggestions, setSuggestions] = useState<HeroRoleSuggestion[]>(CURATED_DEFAULT_SUGGESTIONS)
+  const [searchInput, setSearchInput] = useState('')
+  const [debouncedInput, setDebouncedInput] = useState('')
+  const [placeholderIndex, setPlaceholderIndex] = useState(0)
+  const [suggestions, setSuggestions] = useState<HeroRoleSuggestion[]>([])
   const [totalPositions, setTotalPositions] = useState<number>(3420)
   const [isLoading, setIsLoading] = useState(false)
-  const [isOpen, setIsOpen] = useState(true)
+  const [isOpen, setIsOpen] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState<number>(-1)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Debounce user keystrokes (300ms)
+  // Rotate placeholder text every 2.8s when input is empty
+  useEffect(() => {
+    if (searchInput.trim().length > 0) return
+    const interval = setInterval(() => {
+      setPlaceholderIndex((prev) => (prev + 1) % PLACEHOLDER_ROLES.length)
+    }, 2800)
+    return () => clearInterval(interval)
+  }, [searchInput])
+
+  // Debounce user keystrokes (250ms)
   useEffect(() => {
     const handler = setTimeout(() => {
-      setDebouncedInput(searchInput)
-    }, 300)
+      setDebouncedInput(searchInput.trim())
+    }, 250)
     return () => clearTimeout(handler)
   }, [searchInput])
 
-  // Fetch suggestions from backend API
+  // Fetch suggestions when user types
   useEffect(() => {
+    if (!debouncedInput) {
+      setSuggestions([])
+      setIsOpen(false)
+      setIsLoading(false)
+      return
+    }
+
     const controller = new AbortController()
     setIsLoading(true)
 
@@ -74,8 +62,10 @@ export default function Hero() {
       .then((res) => {
         if (res?.suggestions && res.suggestions.length > 0) {
           setSuggestions(res.suggestions)
+          setIsOpen(true)
         } else {
-          setSuggestions(CURATED_DEFAULT_SUGGESTIONS)
+          setSuggestions([])
+          setIsOpen(false)
         }
         if (res?.totalLivePositions) {
           setTotalPositions(res.totalLivePositions)
@@ -84,8 +74,7 @@ export default function Hero() {
       })
       .catch((err: unknown) => {
         if ((err as Error)?.name !== 'AbortError') {
-          // Keep current/curated suggestions on transient network errors
-          setSuggestions(CURATED_DEFAULT_SUGGESTIONS)
+          setSuggestions([])
         }
       })
       .finally(() => {
@@ -95,7 +84,7 @@ export default function Hero() {
     return () => controller.abort()
   }, [debouncedInput])
 
-  // Handle outside click to close dropdown
+  // Outside click closes dropdown
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -131,7 +120,9 @@ export default function Hero() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!isOpen) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        setIsOpen(true)
+        if (suggestions.length > 0) {
+          setIsOpen(true)
+        }
         return
       }
     }
@@ -155,32 +146,26 @@ export default function Hero() {
     }
   }
 
+  const currentPlaceholder = `Search role (e.g. "${PLACEHOLDER_ROLES[placeholderIndex]}")...`
   const totalPositionsFormatted = totalPositions.toLocaleString()
 
   return (
-    <section className="relative w-full overflow-hidden bg-[#F8F9FA] py-14 sm:py-20 lg:py-24">
+    <section className="relative w-full overflow-hidden bg-surface py-16 sm:py-20 lg:py-24">
       {/* Subtle ambient glow in center */}
-      <div className="pointer-events-none absolute top-1/2 left-1/2 h-[480px] w-[760px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-tr from-blue-100/40 via-sky-50/50 to-orange-100/30 blur-3xl" />
+      <div className="pointer-events-none absolute top-1/2 left-1/2 h-[480px] w-[760px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-tr from-blue-100/30 via-sky-50/40 to-orange-100/20 blur-3xl" />
 
       <div className="relative z-10 mx-auto flex max-w-5xl flex-col items-center px-6 text-center lg:px-8">
-        {/* Top Subtle Pill Badge */}
-        <div className="mb-8 inline-flex cursor-default items-center gap-2 rounded-full border border-slate-200/80 bg-white px-3.5 py-1.5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-transform hover:scale-[1.01]">
-          <span className="text-sm font-bold leading-none text-amber-500">⚡</span>
-          <span className="text-[13px] font-medium tracking-tight text-slate-700">
-            AI Job Search Across Ethiopia <span className="mx-1 text-slate-300">•</span> Aggregating 5 Portals
-          </span>
-        </div>
-
         {/* Main Bold Headline */}
         <h1 className="mb-5 max-w-4xl text-[44px] font-extrabold tracking-tight text-[#1A2B3C] sm:text-[56px] sm:leading-[64px] lg:text-[64px] lg:leading-[72px]">
           Find your dream job. Instantly on{' '}
-          <span className="bg-gradient-to-r from-[#1A73E8] to-[#FF6600] bg-clip-text text-transparent">
-            SeraGo
+          <span className="inline-block whitespace-nowrap">
+            <span className="text-[#1A73E8]">Sera</span>
+            <span className="text-[#FF6600]">Go</span>
           </span>
         </h1>
 
         {/* Subheadline */}
-        <p className="mb-12 max-w-2xl text-[18px] font-normal leading-relaxed text-[#5F6368] sm:text-[20px]">
+        <p className="mb-10 max-w-2xl text-[18px] font-normal leading-relaxed text-[#5F6368] sm:text-[20px]">
           Search thousands of jobs across Ethiopia, or let our AI match you perfectly.
         </p>
 
@@ -202,11 +187,19 @@ export default function Hero() {
                 value={searchInput}
                 onChange={(e) => {
                   setSearchInput(e.target.value)
-                  setIsOpen(true)
+                  if (e.target.value.trim().length > 0) {
+                    setIsOpen(true)
+                  } else {
+                    setIsOpen(false)
+                  }
                 }}
-                onFocus={() => setIsOpen(true)}
+                onFocus={() => {
+                  if (searchInput.trim().length > 0 && suggestions.length > 0) {
+                    setIsOpen(true)
+                  }
+                }}
                 onKeyDown={handleKeyDown}
-                placeholder="Search your role or job title..."
+                placeholder={currentPlaceholder}
                 className="w-full border-0 bg-transparent p-0 text-base font-medium leading-normal text-[#1A2B3C] placeholder-slate-400 focus:outline-none focus:ring-0 sm:text-lg"
               />
               {isLoading && (
@@ -216,15 +209,15 @@ export default function Hero() {
 
             <button
               type="submit"
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-[#1A73E8] px-6 py-3.5 text-[15px] font-semibold text-white shadow-md shadow-blue-500/25 transition-all hover:bg-[#155fc0] hover:shadow-lg hover:shadow-blue-500/35 sm:px-8 sm:py-4"
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-[#1A73E8] px-6 py-3.5 text-[15px] font-semibold text-white shadow-md shadow-blue-500/25 transition-all hover:bg-[#155fc0] hover:shadow-lg hover:shadow-blue-500/35 cursor-pointer sm:px-8 sm:py-4"
             >
               <span>Search</span>
               <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
             </button>
           </form>
 
-          {/* Floating Predictive Dropdown Card with subtle glowing gradient border accent */}
-          {isOpen && suggestions.length > 0 && (
+          {/* Floating Predictive Dropdown Card (only rendered when user has typed something) */}
+          {isOpen && searchInput.trim().length > 0 && suggestions.length > 0 && (
             <div className="mt-3 w-full rounded-2xl bg-gradient-to-b from-blue-200/70 via-slate-200/50 to-orange-100/50 p-[1px] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.12),0_8px_24px_rgba(0,0,0,0.04)] animate-in fade-in-50 duration-200">
               <div className="w-full divide-y divide-slate-100 overflow-hidden rounded-[15px] bg-white text-left">
                 {suggestions.map((item, index) => {
@@ -234,35 +227,22 @@ export default function Hero() {
                       key={`${item.title}-${index}`}
                       type="button"
                       onClick={() => handleSelectRole(item.title)}
-                      className={`group flex w-full items-center justify-between p-4 text-left transition-colors cursor-pointer sm:px-6 ${
+                      className={`group flex w-full items-center justify-between p-4 sm:px-6 text-left transition-colors cursor-pointer ${
                         isSelected ? 'bg-blue-50/70' : 'hover:bg-slate-50/80'
                       }`}
                     >
-                      <div className="flex min-w-0 items-center gap-3.5">
-                        <div
-                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors ${
-                            isSelected
-                              ? 'bg-[#1A73E8] text-white'
-                              : 'bg-blue-50 text-[#1A73E8] group-hover:bg-[#1A73E8] group-hover:text-white'
-                          }`}
-                        >
-                          <span className="material-symbols-outlined text-[20px]">
-                            {item.icon || 'code'}
+                      <div className="min-w-0 pr-4">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-[15px] font-semibold text-[#1A2B3C] transition-colors group-hover:text-[#1A73E8] sm:text-base">
+                            {item.title}
                           </span>
                         </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="truncate text-[15px] font-semibold text-[#1A2B3C] transition-colors group-hover:text-[#1A73E8] sm:text-base">
-                              {item.title}
-                            </span>
-                          </div>
-                          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500 sm:text-sm">
-                            <span>{item.location}</span>
-                            <span>•</span>
-                            <span className="font-medium text-slate-700">
-                              {item.openingsCount} openings
-                            </span>
-                          </div>
+                        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500 sm:text-sm">
+                          <span>{item.location}</span>
+                          <span>•</span>
+                          <span className="font-medium text-slate-700">
+                            {item.openingsCount} openings
+                          </span>
                         </div>
                       </div>
 
