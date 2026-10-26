@@ -1503,7 +1503,7 @@ public sealed class TelegramBotService
         {
             new[] { InlineKeyboardButton.WithUrl("🔗 Connect SeraGo Account", connectUrl) },
             new[] { InlineKeyboardButton.WithUrl("📢 Join Official Channel", _options.ActiveInviteUrl) },
-            new[] { InlineKeyboardButton.WithUrl("🔍 Browse Latest Jobs", "https://serago.pro.et/dashboard/talent/jobs") }
+            new[] { InlineKeyboardButton.WithUrl("🔍 Browse Latest Jobs", "https://serago.pro.et/jobs?utm_source=telegram&utm_medium=bot_dm&utm_campaign=browse_jobs") }
         });
 
         var message =

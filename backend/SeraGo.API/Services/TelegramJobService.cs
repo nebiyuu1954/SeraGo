@@ -877,33 +877,16 @@ public sealed class TelegramJobService
 
     private string BuildJobLink(Job job)
     {
-        var sectorParam = job.SectorId != null ? $"&sectorId={job.SectorId}" : "";
-        var sectorNameParam = !string.IsNullOrWhiteSpace(job.SectorName) ? $"&sector={Uri.EscapeDataString(job.SectorName)}" : "";
-        
-        // Keep original functional parameters, append UTM parameters for GA4/Analytics
-        return $"{_options.JobLinkBase}/{job.Id}?from=telegram&title={Uri.EscapeDataString(job.Title)}{sectorParam}{sectorNameParam}&utm_source=telegram&utm_medium=channel&utm_campaign=auto_post";
+        return $"{_options.JobLinkBase}/{job.Id}?utm_source=telegram&utm_medium=channel&utm_campaign=job_alert";
     }
 
     public static string BuildJobLink(Job job, string? baseLink = null)
     {
-        var titleParam = !string.IsNullOrWhiteSpace(job.Title)
-            ? $"&title={Uri.EscapeDataString(job.Title.Trim())}"
-            : string.Empty;
-
-        var sectorIdParam = job.SectorId.HasValue
-            ? $"&sectorId={job.SectorId.Value}"
-            : string.Empty;
-
-        var sectorName = ResolveSectorName(job);
-        var sectorParam = !string.IsNullOrWhiteSpace(sectorName)
-            ? $"&sector={Uri.EscapeDataString(sectorName.Trim())}"
-            : string.Empty;
-
         var baseUri = !string.IsNullOrWhiteSpace(baseLink)
             ? baseLink.TrimEnd('/')
-            : "https://serago.pro.et/dashboard/talent/jobs";
+            : "https://serago.pro.et/jobs";
 
-        return $"{baseUri}/{job.Id}?from=telegram{titleParam}{sectorIdParam}{sectorParam}&utm_source=telegram&utm_medium=bot_dm&utm_campaign=job_alert";
+        return $"{baseUri}/{job.Id}?utm_source=telegram&utm_medium=bot_dm&utm_campaign=job_alert";
     }
 
     public static string BuildJobCardText(Job job, string link, int maxSnippetLength = 220, int maxTitleLength = 0, int maxCompanyLength = 0)

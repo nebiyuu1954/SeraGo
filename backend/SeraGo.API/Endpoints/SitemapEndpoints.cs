@@ -67,7 +67,7 @@ public static class SitemapEndpoints
             foreach (var job in jobs)
             {
                 urlElements.Add(new XElement(ns + "url",
-                    new XElement(ns + "loc", $"{baseUrl}/dashboard/talent/jobs/{job.Id}"),
+                    new XElement(ns + "loc", $"{baseUrl}/jobs/{job.Id}"),
                     new XElement(ns + "lastmod", job.LastMod.ToString("yyyy-MM-ddTHH:mm:sszzz")),
                     new XElement(ns + "changefreq", "daily"),
                     new XElement(ns + "priority", "0.8")));

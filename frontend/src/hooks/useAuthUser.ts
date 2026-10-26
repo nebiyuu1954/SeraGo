@@ -57,7 +57,7 @@ export function useAuthUser(): AuthUserState {
 function preserveTargetJobIfPresent() {
   try {
     const pathname = window.location.pathname
-    const match = pathname.match(/\/dashboard\/talent\/jobs\/([^/?#]+)/)
+    const match = pathname.match(/(?:\/dashboard\/talent\/jobs|\/jobs)\/([^/?#]+)/)
     if (match && match[1]) {
       sessionStorage.setItem('serago_pending_target_job_id', match[1])
       localStorage.setItem('serago_pending_target_job_id', match[1])

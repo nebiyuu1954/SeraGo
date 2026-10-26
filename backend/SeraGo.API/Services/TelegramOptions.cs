@@ -141,7 +141,7 @@ public sealed class TelegramOptions
         AiScoreThreshold = ParseDouble(Env("TELEGRAM_AI_SCORE_THRESHOLD"), 60);
         JobDmMaxRecipients = ParseInt(Env("TELEGRAM_JOB_DM_MAX_RECIPIENTS"), 200);
         ChannelMaxPerRun = ParseInt(Env("TELEGRAM_CHANNEL_MAX_PER_RUN"), 40);
-        JobLinkBase = (Env("TELEGRAM_JOB_LINK_BASE") ?? "https://serago.pro.et/dashboard/talent/jobs").TrimEnd('/');
+        JobLinkBase = (Env("TELEGRAM_JOB_LINK_BASE") ?? "https://serago.pro.et/jobs").TrimEnd('/');
 
         ChannelPacingWindowSeconds = ParseInt(Env("TELEGRAM_CHANNEL_PACING_WINDOW_SECONDS"), 900);
         ChannelMinDelaySeconds = ParseDouble(Env("TELEGRAM_CHANNEL_MIN_DELAY_SECONDS"), 4.0);

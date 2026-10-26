@@ -173,20 +173,11 @@ public sealed class NotificationOrchestrator
             {
                 var data = notification.Data ?? "{}";
                 var dataObj = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(data) ?? new();
-                var titleParam = dataObj.TryGetValue("title", out var titleEl) && titleEl.ValueKind == JsonValueKind.String
-                    ? $"&title={Uri.EscapeDataString(titleEl.GetString()!)}"
-                    : "";
-                var sectorIdParam = dataObj.TryGetValue("sector_id", out var secIdEl) && secIdEl.ValueKind == JsonValueKind.String
-                    ? $"&sectorId={secIdEl.GetString()}"
-                    : "";
-                var sectorParam = dataObj.TryGetValue("sector", out var secEl) && secEl.ValueKind == JsonValueKind.String
-                    ? $"&sector={Uri.EscapeDataString(secEl.GetString()!)}"
-                    : "";
                 var jobUrl = dataObj.TryGetValue("job_id", out var jobId)
                     && jobId.ValueKind == JsonValueKind.String
                     && Guid.TryParse(jobId.GetString(), out _)
-                        ? $"https://serago.pro.et/dashboard/talent/jobs/{jobId.GetString()}?from=telegram{titleParam}{sectorIdParam}{sectorParam}"
-                        : "https://serago.pro.et/dashboard/jobs";
+                        ? $"https://serago.pro.et/jobs/{jobId.GetString()}?utm_source=telegram&utm_medium=bot_dm&utm_campaign=job_alert"
+                        : "https://serago.pro.et/jobs";
 
                 replyMarkup = new InlineKeyboardMarkup(new[]
                 {

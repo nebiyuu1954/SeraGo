@@ -455,36 +455,9 @@ export default function JobDetailPage() {
   }
 
   const searchParams = new URLSearchParams(location.search)
-  const isFromTelegram = searchParams.get('from') === 'telegram'
   const urlTitle = searchParams.get('title')
   const urlSectorId = searchParams.get('sectorId')
   const urlSectorName = searchParams.get('sector')
-
-  useEffect(() => {
-    if (!jobId || isPreview) return
-
-    // Save job context to local/session storage for login redirect
-    try {
-      sessionStorage.setItem('serago_pending_target_job_id', jobId)
-      localStorage.setItem('serago_pending_target_job_id', jobId)
-      if (urlTitle) {
-        sessionStorage.setItem('serago_pending_target_job_title', urlTitle)
-        localStorage.setItem('serago_pending_target_job_title', urlTitle)
-      }
-      if (urlSectorId) {
-        sessionStorage.setItem('serago_pending_target_job_sector_id', urlSectorId)
-        localStorage.setItem('serago_pending_target_job_sector_id', urlSectorId)
-      }
-      if (urlSectorName) {
-        sessionStorage.setItem('serago_pending_target_job_sector_name', urlSectorName)
-        localStorage.setItem('serago_pending_target_job_sector_name', urlSectorName)
-      }
-    } catch {}
-
-    if (auth.status === 'authenticated' && isFromTelegram) {
-      navigate('/dashboard/talent', { replace: true })
-    }
-  }, [jobId, auth.status, isFromTelegram, urlTitle, urlSectorId, urlSectorName, isPreview, navigate])
 
   const { job, isLoading, error, refresh: refreshJob } = useJobDetailQuery(
     jobId,
@@ -497,6 +470,31 @@ export default function JobDetailPage() {
       refreshJob()
     }
   }, [job, isLoading, error, refreshJob, jobId])
+
+  useEffect(() => {
+    if (!jobId || isPreview) return
+
+    // Save job context to local/session storage for login redirect or feed routing
+    try {
+      sessionStorage.setItem('serago_pending_target_job_id', jobId)
+      localStorage.setItem('serago_pending_target_job_id', jobId)
+      const targetTitle = urlTitle || job?.title
+      if (targetTitle) {
+        sessionStorage.setItem('serago_pending_target_job_title', targetTitle)
+        localStorage.setItem('serago_pending_target_job_title', targetTitle)
+      }
+      const targetSectorId = urlSectorId || (job?.sectorId ? String(job.sectorId) : null)
+      if (targetSectorId) {
+        sessionStorage.setItem('serago_pending_target_job_sector_id', targetSectorId)
+        localStorage.setItem('serago_pending_target_job_sector_id', targetSectorId)
+      }
+      const targetSectorName = urlSectorName || job?.sectorName
+      if (targetSectorName) {
+        sessionStorage.setItem('serago_pending_target_job_sector_name', targetSectorName)
+        localStorage.setItem('serago_pending_target_job_sector_name', targetSectorName)
+      }
+    } catch {}
+  }, [jobId, urlTitle, urlSectorId, urlSectorName, job, isPreview])
 
   const { savedIds, refresh: refreshSaved } = useSavedJobsQuery(auth.status === 'authenticated' && !isPreview)
   const { showToast } = useToast()
@@ -682,7 +680,7 @@ export default function JobDetailPage() {
 
   const canonicalUrl =
     typeof window !== 'undefined'
-      ? `${window.location.origin}${isPublicView ? `/jobs/${job?.id ?? ''}` : `/dashboard/talent/jobs/${job?.id ?? ''}`}`
+      ? `${window.location.origin}/jobs/${job?.id ?? ''}`
       : `https://serago.pro.et/jobs/${job?.id ?? ''}`
   const ogImage =
     job?.companyLogoUrl ||
