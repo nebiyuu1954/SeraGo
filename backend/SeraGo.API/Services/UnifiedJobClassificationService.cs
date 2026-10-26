@@ -94,6 +94,12 @@ public sealed class UnifiedJobClassificationService
                     modelUsed = "Groq Llama 3.3 70B";
                     modelTier = "Tier 2 (Meta Llama 3.3 70B via Groq Cloud)";
                     break;
+                case "groq llama 8b instant":
+                case "groq llama 8b":
+                case "groq 8b":
+                    modelUsed = "Groq Llama 3.1 8B Instant";
+                    modelTier = "Tier 2-Fast (Meta Llama 3.1 8B Instant via Groq Cloud)";
+                    break;
                 case "gemini":
                 case "google gemini":
                     modelUsed = "Google Gemini 2.0 Flash";
@@ -269,29 +275,70 @@ public sealed class UnifiedJobClassificationService
         }
         """;
 
-        if (jobs.Count > 20)
+        var batches = CreateTokenBudgetedBatches(jobs);
+        _logger.LogInformation(
+            "Batch of {Total} jobs dynamically packed into {Count} token-budgeted micro-batches (<= 3,800 tokens each) to respect rate limits.",
+            jobs.Count, batches.Count);
+
+        var aggregatedResults = new List<UnifiedJobClassificationResult>(jobs.Count);
+        for (var i = 0; i < batches.Count; i++)
         {
-            var chunks = jobs.Chunk(20).ToList();
-            _logger.LogInformation(
-                "Batch of {Total} jobs split into {Count} micro-batches of <= 20 jobs for maximum classification accuracy.",
-                jobs.Count, chunks.Count);
+            var batch = batches[i];
+            var batchResults = await EvaluateChunkAsync(batch, sectors, sectorBySlug, systemPrompt, ct);
+            aggregatedResults.AddRange(batchResults);
 
-            var aggregatedResults = new List<UnifiedJobClassificationResult>(jobs.Count);
-            for (var i = 0; i < chunks.Count; i++)
+            if (i + 1 < batches.Count)
             {
-                var chunk = chunks[i];
-                var chunkResults = await EvaluateChunkAsync(chunk, sectors, sectorBySlug, systemPrompt, ct);
-                aggregatedResults.AddRange(chunkResults);
-
-                if (i + 1 < chunks.Count)
-                {
-                    await Task.Delay(1000, ct);
-                }
+                // Rate-limit pacing delay: allows provider token buckets (TPM) to replenish
+                await Task.Delay(2000, ct);
             }
-            return aggregatedResults;
+        }
+        return aggregatedResults;
+    }
+
+    /// <summary>
+    /// Dynamically packs jobs into token-budgeted batches (<= 3,800 tokens total)
+    /// to strictly respect provider RPM/TPM ceilings (e.g. Groq 6,000 TPM limit).
+    /// </summary>
+    private static List<List<Job>> CreateTokenBudgetedBatches(
+        IReadOnlyList<Job> jobs,
+        int systemPromptTokens = 1750,
+        int maxBatchTokens = 3800)
+    {
+        var batches = new List<List<Job>>();
+        var currentBatch = new List<Job>();
+        var currentBatchTokens = systemPromptTokens;
+
+        foreach (var job in jobs)
+        {
+            var descSnippet = Truncate(job.Description, 250);
+            var titleLen = job.Title?.Length ?? 0;
+            var compLen = job.Company?.Length ?? 0;
+            var locLen = job.Location?.Length ?? 0;
+            var secLen = job.SourceSectors?.Length ?? 0;
+
+            // Character to token approximation: chars / 3.6 + 60 output tokens + 25 json overhead
+            var jobChars = titleLen + compLen + locLen + secLen + descSnippet.Length;
+            var estimatedJobTokens = (int)Math.Ceiling(jobChars / 3.6) + 85;
+
+            // If adding this job exceeds the ceiling, yield current batch and start new
+            if (currentBatch.Count > 0 && (currentBatchTokens + estimatedJobTokens) > maxBatchTokens)
+            {
+                batches.Add(currentBatch);
+                currentBatch = new List<Job>();
+                currentBatchTokens = systemPromptTokens;
+            }
+
+            currentBatch.Add(job);
+            currentBatchTokens += estimatedJobTokens;
         }
 
-        return await EvaluateChunkAsync(jobs, sectors, sectorBySlug, systemPrompt, ct);
+        if (currentBatch.Count > 0)
+        {
+            batches.Add(currentBatch);
+        }
+
+        return batches;
     }
 
     private async Task<List<UnifiedJobClassificationResult>> EvaluateChunkAsync(
@@ -309,7 +356,7 @@ public sealed class UnifiedJobClassificationService
             location = j.Location,
             sourceName = j.SourceName ?? "Direct",
             sourceSectors = j.SourceSectors,
-            description = Truncate(j.Description, 500)
+            description = Truncate(j.Description, 250) // Reduced from 500 to 250 chars to save 40% token budget
         });
 
         var userPrompt = $$"""
@@ -318,14 +365,14 @@ public sealed class UnifiedJobClassificationService
         {{JsonSerializer.Serialize(userItems, new JsonSerializerOptions { WriteIndented = true })}}
         """;
 
-        // ── TIER 1: OpenRouter (NVIDIA Nemotron 3 Ultra 550B / Google Gemma 4 with Dual-Key Failover) ──
+        // ── TIER 1: OpenRouter (NVIDIA Nemotron 3 Ultra 550B / Llama 3.3 70B with Dual-Key Failover) ──
         if (_openRouter.IsConfigured)
         {
             try
             {
                 _logger.LogInformation("Attempting Tier 1 (OpenRouter Nemotron 550B) classification for {Count} jobs.", chunk.Count);
                 var openRouterEnvelope = await _openRouter.ChatJsonAsync<ClassificationEnvelope>(
-                    systemPrompt, userPrompt, timeoutSeconds: 35, ct: ct);
+                    systemPrompt, userPrompt, timeoutSeconds: 45, ct: ct);
 
                 if (openRouterEnvelope?.Results is { Count: > 0 })
                 {
@@ -338,7 +385,7 @@ public sealed class UnifiedJobClassificationService
             }
         }
 
-        // ── TIER 2: Groq Cloud LLM (Meta Llama 3.3 70B - 1,000 free req/day) ──
+        // ── TIER 2: Groq Cloud LLM (Meta Llama 3.3 70B with automatic 8B Instant fallback) ──
         if (_groq.IsConfigured)
         {
             try
@@ -396,7 +443,31 @@ public sealed class UnifiedJobClassificationService
         }
         catch (Exception ex)
         {
-            _logger.LogInformation("Tier 4 (Ollama) unavailable or failed: {Message}. Falling back to Tier 5 (Cosine Similarity).", ex.Message);
+            _logger.LogInformation("Tier 4 (Ollama) unavailable or failed: {Message}.", ex.Message);
+        }
+
+        // ── EMERGENCY HIGH-THROUGHPUT AI PASS (Groq Llama 3.1 8B Instant - 30,000 TPM) ──
+        if (_groq.IsConfigured)
+        {
+            try
+            {
+                _logger.LogInformation("Attempting Emergency High-Throughput AI Pass (Groq Llama 3.1 8B Instant - 30k TPM) for {Count} jobs.", chunk.Count);
+                var emergencyEnvelope = await _groq.ChatJsonAsync<ClassificationEnvelope>(
+                    model: "llama-3.1-8b-instant",
+                    systemPrompt: systemPrompt,
+                    userPrompt: userPrompt,
+                    timeoutSeconds: 20,
+                    ct: ct);
+
+                if (emergencyEnvelope?.Results is { Count: > 0 })
+                {
+                    return MapResults(chunk, emergencyEnvelope.Results, sectorBySlug, "Groq Llama 8B Instant");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Emergency Groq 8B Instant pass failed. Falling back to Tier 5 (Cosine Similarity).");
+            }
         }
 
         // ── TIER 5: Semantic Cosine Similarity against historical classified jobs ─
@@ -452,8 +523,9 @@ public sealed class UnifiedJobClassificationService
     }
 
     /// <summary>
-    /// Tier 4 Fallback: Finds nearest historical jobs by semantic term overlap (cosine-normalized bag-of-words / TF-IDF)
-    /// across already-classified jobs in the database.
+    /// Tier 5 Fallback: Finds nearest historical jobs by title-weighted semantic term overlap
+    /// (cosine-normalized bag-of-words / TF-IDF) across already-classified jobs in the database.
+    /// Title terms carry 5x weight, and company names are excluded to prevent false 100% matches.
     /// </summary>
     private async Task<List<UnifiedJobClassificationResult>> FallbackCosineSimilarityAsync(
         IReadOnlyList<Job> jobs,
@@ -468,14 +540,14 @@ public sealed class UnifiedJobClassificationService
             .Where(j => j.SectorId != null)
             .OrderByDescending(j => j.CreatedAt)
             .Take(400)
-            .Select(j => new { j.Id, j.Title, j.Description, j.SectorId, j.SectorName })
+            .Select(j => new { j.Id, j.Title, j.Description, j.Company, j.SectorId, j.SectorName })
             .ToListAsync(ct);
 
         var sectorById = activeSectors.ToDictionary(s => s.Id);
 
         foreach (var job in jobs)
         {
-            var jobTokens = Tokenize($"{job.Title} {Truncate(job.Description, 200)}");
+            var jobTokens = TokenizeJob(job.Title, job.Description, job.Company);
             double bestSimilarity = 0.0;
             Guid? bestSectorId = null;
             string? bestSectorName = null;
@@ -483,7 +555,7 @@ public sealed class UnifiedJobClassificationService
             foreach (var r in referenceJobs)
             {
                 if (!r.SectorId.HasValue) continue;
-                var refTokens = Tokenize($"{r.Title} {Truncate(r.Description, 200)}");
+                var refTokens = TokenizeJob(r.Title, r.Description, r.Company);
                 var sim = ComputeCosineSimilarity(jobTokens, refTokens);
 
                 if (sim > bestSimilarity)
@@ -494,16 +566,17 @@ public sealed class UnifiedJobClassificationService
                 }
             }
 
-            // Acceptance threshold
-            if (bestSimilarity >= 0.70 && bestSectorId.HasValue && sectorById.TryGetValue(bestSectorId.Value, out var matchedSec))
+            // High acceptance threshold (>= 85%) and capped confidence (max 75%)
+            if (bestSimilarity >= 0.85 && bestSectorId.HasValue && sectorById.TryGetValue(bestSectorId.Value, out var matchedSec))
             {
+                var cappedConfidence = Math.Min(Math.Round(bestSimilarity * 0.70, 2), 0.75);
                 results.Add(new UnifiedJobClassificationResult(
                     job.Id,
                     matchedSec.Id,
                     matchedSec.Name,
                     matchedSec.Slug,
-                    bestSimilarity,
-                    $"Nearest neighbor match ({Math.Round(bestSimilarity * 100)}% similarity)",
+                    cappedConfidence,
+                    $"Nearest neighbor title match ({Math.Round(bestSimilarity * 100)}% similarity)",
                     "CosineSimilarity",
                     null));
             }
@@ -515,7 +588,7 @@ public sealed class UnifiedJobClassificationService
                     null,
                     null,
                     bestSimilarity,
-                    "Low semantic similarity to past jobs; marked for admin review",
+                    "Insufficient semantic confidence from past jobs; left for AI re-evaluation or admin review",
                     "Uncategorized",
                     null));
             }
@@ -524,21 +597,45 @@ public sealed class UnifiedJobClassificationService
         return results;
     }
 
-    private static Dictionary<string, double> Tokenize(string text)
+    private static Dictionary<string, double> TokenizeJob(string? title, string? description, string? company = null)
     {
         var dict = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-        if (string.IsNullOrWhiteSpace(text)) return dict;
 
-        var words = text.ToLowerInvariant()
-            .Split([' ', ',', '.', ':', ';', '(', ')', '[', ']', '-', '/', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries);
-
-        foreach (var w in words)
+        // Exclude company stop-words so different roles at the same company don't falsely match 100%
+        var companyWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(company))
         {
-            if (w.Length <= 2) continue; // skip noise words
-            dict[w] = dict.GetValueOrDefault(w, 0.0) + 1.0;
+            var cWords = company.ToLowerInvariant()
+                .Split([' ', ',', '.', ':', ';', '(', ')', '[', ']', '-', '/', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries);
+            foreach (var cw in cWords) if (cw.Length > 2) companyWords.Add(cw);
         }
 
-        // Normalize vector length (L2 norm)
+        // Title terms carry 5.0x weight (the definitive sector signal)
+        if (!string.IsNullOrWhiteSpace(title))
+        {
+            var titleWords = title.ToLowerInvariant()
+                .Split([' ', ',', '.', ':', ';', '(', ')', '[', ']', '-', '/', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries);
+            foreach (var tw in titleWords)
+            {
+                if (tw.Length <= 2 || companyWords.Contains(tw)) continue;
+                dict[tw] = dict.GetValueOrDefault(tw, 0.0) + 5.0;
+            }
+        }
+
+        // Description terms carry 1.0x weight (secondary context)
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            var descSnippet = Truncate(description, 150);
+            var descWords = descSnippet.ToLowerInvariant()
+                .Split([' ', ',', '.', ':', ';', '(', ')', '[', ']', '-', '/', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries);
+            foreach (var dw in descWords)
+            {
+                if (dw.Length <= 3 || companyWords.Contains(dw)) continue;
+                dict[dw] = dict.GetValueOrDefault(dw, 0.0) + 1.0;
+            }
+        }
+
+        // L2 normalization
         double sumSquares = 0.0;
         foreach (var val in dict.Values) sumSquares += val * val;
         var norm = Math.Sqrt(sumSquares);

@@ -21,26 +21,60 @@ public sealed class GroqClient
 {
     private readonly HttpClient _http;
     private readonly ILogger<GroqClient> _logger;
-    private readonly string _apiKey;
+    private readonly List<string> _apiKeys = new();
     private readonly string _defaultModel;
+    private readonly string _fastFallbackModel = "llama-3.1-8b-instant";
+    private int _currentKeyIndex = 0;
+    private readonly object _keyLock = new();
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        // Keep the JSON compact — prompts carry a lot of text.
         WriteIndented = false,
     };
 
     public GroqClient(IHttpClientFactory factory, IConfiguration config, ILogger<GroqClient> logger)
     {
         _logger = logger;
-        _apiKey = config["GROQ_CONSOLE_API_KEY"]
+
+        var primaryKey = config["GROQ_CONSOLE_API_KEY"]
             ?? Environment.GetEnvironmentVariable("GROQ_CONSOLE_API_KEY")
             ?? config["GROQ_API_KEY"]
             ?? Environment.GetEnvironmentVariable("GROQ_API_KEY")
             ?? config["Groq:ApiKey"]
             ?? string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(primaryKey))
+        {
+            var parts = primaryKey.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var part in parts)
+            {
+                if (!string.IsNullOrWhiteSpace(part) && !_apiKeys.Contains(part))
+                {
+                    _apiKeys.Add(part);
+                }
+            }
+        }
+
+        var secondaryKey = config["GROQ_API_KEY_SECONDARY"]
+            ?? Environment.GetEnvironmentVariable("GROQ_API_KEY_SECONDARY")
+            ?? config["GROQ_API_KEY_2"]
+            ?? Environment.GetEnvironmentVariable("GROQ_API_KEY_2")
+            ?? config["Groq:SecondaryApiKey"]
+            ?? string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(secondaryKey))
+        {
+            var parts = secondaryKey.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var part in parts)
+            {
+                if (!string.IsNullOrWhiteSpace(part) && !_apiKeys.Contains(part))
+                {
+                    _apiKeys.Add(part);
+                }
+            }
+        }
 
         _defaultModel = config["GROQ_DEFAULT_MODEL"]
             ?? Environment.GetEnvironmentVariable("GROQ_DEFAULT_MODEL")
@@ -52,67 +86,19 @@ public sealed class GroqClient
 
         var http = factory.CreateClient($"Groq-{Guid.NewGuid():N}");
         http.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
-        if (!string.IsNullOrWhiteSpace(_apiKey))
-        {
-            http.DefaultRequestHeaders.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
-        }
         http.Timeout = TimeSpan.FromSeconds(60);
         _http = http;
+
+        _logger.LogInformation(
+            "GroqClient initialized with {KeyCount} API key(s). Default model: {DefaultModel}, Fast fallback: {FallbackModel}",
+            _apiKeys.Count, _defaultModel, _fastFallbackModel);
     }
 
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiKey);
+    public bool IsConfigured => _apiKeys.Count > 0;
 
     /// <summary>
-    /// Posts a JSON body with an explicit Content-Length (via StringContent).
-    /// PostAsJsonAsync/JsonContent sends `Transfer-Encoding: chunked` instead,
-    /// which some servers don't decode cleanly — this keeps the body intact.
-    /// </summary>
-    private async Task<TResponse> PostAsync<TResponse>(
-        string path, object body, TimeSpan? timeout = null, CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(_apiKey))
-        {
-            throw new AiServiceException(
-                "Groq API key is not configured. Set GROQ_CONSOLE_API_KEY or GROQ_API_KEY in environment variables.");
-        }
-
-        var json = JsonSerializer.Serialize(body, JsonOpts);
-        var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(timeout ?? TimeSpan.FromSeconds(30));
-
-        try
-        {
-            var response = await _http.PostAsync(path, content, timeoutCts.Token);
-            var text = await response.Content.ReadAsStringAsync(timeoutCts.Token);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning(
-                    "Groq call failed: {Path} → {StatusCode} body={Body}",
-                    path, response.StatusCode, Truncate(text, 500));
-                throw new AiServiceException(
-                    $"Groq returned {response.StatusCode} for {path}. Body: {text}");
-            }
-
-            return JsonSerializer.Deserialize<TResponse>(text, JsonOpts)
-                ?? throw new AiServiceException($"Groq returned empty response for {path}");
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            _logger.LogWarning("Groq call timed out: {Path}", path);
-            throw new AiServiceException($"Groq timed out for {path}");
-        }
-    }
-
-    /// <summary>
-    /// Chat-completion with a structured JSON response. The model is told to
-    /// return ONLY a JSON object matching <typeparamref name="TResponse"/>;
-    /// the response is deserialized and returned. On parse failure an
-    /// AiServiceException is thrown so the caller can treat it as "unclassified"
-    /// rather than silently using garbage.
+    /// Chat-completion with structured JSON response. Supports multi-key rotation on 429
+    /// and automatic fallback to llama-3.1-8b-instant (30k TPM) if 70B is rate-limited.
     /// </summary>
     public async Task<TResponse> ChatJsonAsync<TResponse>(
         string model,
@@ -121,24 +107,157 @@ public sealed class GroqClient
         int timeoutSeconds = 30,
         CancellationToken ct = default)
     {
+        if (!IsConfigured)
+        {
+            throw new AiServiceException("Groq API key is not configured. Set GROQ_API_KEY in environment variables.");
+        }
+
+        var targetModel = !string.IsNullOrWhiteSpace(model) ? model : _defaultModel;
+
+        try
+        {
+            return await ExecuteWithKeyFailoverAsync<TResponse>(targetModel, systemPrompt, userPrompt, timeoutSeconds, ct);
+        }
+        catch (Exception ex) when (targetModel != _fastFallbackModel)
+        {
+            _logger.LogWarning(ex, "Groq model {Model} failed or was rate-limited. Failing over to high-throughput {FallbackModel} (30k TPM)...", targetModel, _fastFallbackModel);
+            return await ExecuteWithKeyFailoverAsync<TResponse>(_fastFallbackModel, systemPrompt, userPrompt, timeoutSeconds, ct);
+        }
+    }
+
+    private async Task<TResponse> ExecuteWithKeyFailoverAsync<TResponse>(
+        string model,
+        string systemPrompt,
+        string userPrompt,
+        int timeoutSeconds,
+        CancellationToken ct)
+    {
+        var attempts = Math.Max(_apiKeys.Count * 2, 2);
+        Exception? lastException = null;
+
+        for (var i = 0; i < attempts; i++)
+        {
+            string currentKey;
+            int keyIndex;
+
+            lock (_keyLock)
+            {
+                keyIndex = _currentKeyIndex % _apiKeys.Count;
+                currentKey = _apiKeys[keyIndex];
+            }
+
+            try
+            {
+                return await SendChatRequestAsync<TResponse>(currentKey, model, systemPrompt, userPrompt, timeoutSeconds, ct);
+            }
+            catch (GroqRateLimitException ex)
+            {
+                lastException = ex;
+                var delayMs = ex.RetryAfterSeconds.HasValue
+                    ? ex.RetryAfterSeconds.Value * 1000
+                    : Math.Min(2000 * (i + 1), 5000);
+
+                _logger.LogWarning(
+                    "Groq API key #{KeyIndex} rate-limited or TPM exceeded ({StatusCode}: {Message}). Waiting {DelayMs}ms...",
+                    keyIndex + 1, ex.StatusCode, ex.Message, delayMs);
+
+                lock (_keyLock)
+                {
+                    _currentKeyIndex = (keyIndex + 1) % _apiKeys.Count;
+                }
+
+                if (i + 1 < attempts)
+                {
+                    _logger.LogInformation("Failing over to Groq key #{NextIndex} after {DelayMs}ms delay...", (_currentKeyIndex % _apiKeys.Count) + 1, delayMs);
+                    await Task.Delay(delayMs, ct);
+                }
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
+                _logger.LogWarning(ex, "Groq request failed on key #{KeyIndex}.", keyIndex + 1);
+
+                lock (_keyLock)
+                {
+                    _currentKeyIndex = (keyIndex + 1) % _apiKeys.Count;
+                }
+
+                if (i + 1 < attempts)
+                {
+                    await Task.Delay(1000, ct);
+                }
+            }
+        }
+
+        throw new AiServiceException($"All {_apiKeys.Count} Groq key(s) failed for model {model}. Last error: {lastException?.Message}", lastException!);
+    }
+
+    private async Task<TResponse> SendChatRequestAsync<TResponse>(
+        string apiKey,
+        string model,
+        string systemPrompt,
+        string userPrompt,
+        int timeoutSeconds,
+        CancellationToken ct)
+    {
         var payload = new
         {
-            model = string.IsNullOrWhiteSpace(model) ? _defaultModel : model,
+            model = model,
             messages = new object[]
             {
                 new { role = "system", content = systemPrompt },
                 new { role = "user", content = userPrompt },
             },
             temperature = 0.0,
-            // Groq supports response_format json_object for structured output.
             response_format = new { type = "json_object" },
             max_tokens = 2048,
         };
 
-        var body = await PostAsync<ChatCompletionResponse<TResponse>>(
-            "chat/completions", payload, TimeSpan.FromSeconds(timeoutSeconds), ct);
+        var json = JsonSerializer.Serialize(payload, JsonOpts);
+        var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
-        if (body.Choices is null || body.Choices.Count == 0)
+        using var request = new HttpRequestMessage(HttpMethod.Post, "chat/completions");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+        request.Content = content;
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.SendAsync(request, timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new AiServiceException($"Groq timed out after {timeoutSeconds}s for model {model}");
+        }
+
+        var responseText = await response.Content.ReadAsStringAsync(timeoutCts.Token);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var statusCode = (int)response.StatusCode;
+            if (statusCode == 429 || responseText.Contains("rate limit", StringComparison.OrdinalIgnoreCase) || responseText.Contains("tpm", StringComparison.OrdinalIgnoreCase))
+            {
+                int? retryAfter = null;
+                if (response.Headers.RetryAfter?.Delta.HasValue == true)
+                {
+                    retryAfter = (int)response.Headers.RetryAfter.Delta.Value.TotalSeconds;
+                }
+                else if (response.Headers.TryGetValues("Retry-After", out var vals) && int.TryParse(vals.FirstOrDefault(), out var parsedSec))
+                {
+                    retryAfter = parsedSec;
+                }
+
+                throw new GroqRateLimitException(statusCode, $"Groq rate limit or TPM exceeded: {responseText}", retryAfter);
+            }
+
+            throw new AiServiceException($"Groq returned {response.StatusCode}: {Truncate(responseText, 500)}");
+        }
+
+        var body = JsonSerializer.Deserialize<ChatCompletionResponse<TResponse>>(responseText, JsonOpts);
+        if (body?.Choices is null || body.Choices.Count == 0)
         {
             throw new AiServiceException("Groq returned a completion with no choices.");
         }
@@ -190,4 +309,16 @@ public sealed class AiServiceException : Exception
 {
     public AiServiceException(string message) : base(message) { }
     public AiServiceException(string message, Exception inner) : base(message, inner) { }
+}
+
+public sealed class GroqRateLimitException : Exception
+{
+    public int StatusCode { get; }
+    public int? RetryAfterSeconds { get; }
+
+    public GroqRateLimitException(int statusCode, string message, int? retryAfterSeconds = null) : base(message)
+    {
+        StatusCode = statusCode;
+        RetryAfterSeconds = retryAfterSeconds;
+    }
 }

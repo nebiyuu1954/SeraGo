@@ -1041,6 +1041,9 @@ function formatMethodLabel(method: string): string {
   if (m.includes('openrouter') || m.includes('nemotron')) {
     return 'NVIDIA Nemotron 3 Ultra (Tier 1 OpenRouter)'
   }
+  if (m.includes('8b')) {
+    return 'Meta Llama 3.1 8B Instant (Tier 2-Fast Groq Cloud)'
+  }
   if (m.includes('groq') || m.includes('llama')) {
     return 'Meta Llama 3.3 70B (Tier 2 Groq Cloud)'
   }

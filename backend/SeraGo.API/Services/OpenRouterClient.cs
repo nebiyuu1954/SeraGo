@@ -132,7 +132,7 @@ public sealed class OpenRouterClient
         int timeoutSeconds,
         CancellationToken ct)
     {
-        var attempts = _apiKeys.Count;
+        var attempts = Math.Max(_apiKeys.Count * 2, 2);
         Exception? lastException = null;
 
         for (var i = 0; i < attempts; i++)
@@ -153,9 +153,13 @@ public sealed class OpenRouterClient
             catch (OpenRouterRateLimitException ex)
             {
                 lastException = ex;
+                var delayMs = ex.RetryAfterSeconds.HasValue
+                    ? ex.RetryAfterSeconds.Value * 1000
+                    : Math.Min(2500 * (i + 1), 6000);
+
                 _logger.LogWarning(
-                    "OpenRouter API key #{KeyIndex} rate-limited or daily quota exceeded ({StatusCode}: {Message}).",
-                    keyIndex + 1, ex.StatusCode, ex.Message);
+                    "OpenRouter API key #{KeyIndex} rate-limited or daily quota exceeded ({StatusCode}: {Message}). Waiting {DelayMs}ms before retry...",
+                    keyIndex + 1, ex.StatusCode, ex.Message, delayMs);
 
                 lock (_keyLock)
                 {
@@ -165,7 +169,8 @@ public sealed class OpenRouterClient
 
                 if (i + 1 < attempts)
                 {
-                    _logger.LogInformation("Failing over to secondary OpenRouter key #{NextIndex}...", (_currentKeyIndex % _apiKeys.Count) + 1);
+                    _logger.LogInformation("Failing over to secondary OpenRouter key #{NextIndex} after {DelayMs}ms delay...", (_currentKeyIndex % _apiKeys.Count) + 1, delayMs);
+                    await Task.Delay(delayMs, ct);
                 }
             }
             catch (Exception ex)
@@ -177,10 +182,15 @@ public sealed class OpenRouterClient
                 {
                     _currentKeyIndex = (keyIndex + 1) % _apiKeys.Count;
                 }
+
+                if (i + 1 < attempts)
+                {
+                    await Task.Delay(1000, ct);
+                }
             }
         }
 
-        throw new AiServiceException($"All {_apiKeys.Count} OpenRouter key(s) failed. Last error: {lastException?.Message}", lastException!);
+        throw new AiServiceException($"All {_apiKeys.Count} OpenRouter key(s) failed after {attempts} attempts. Last error: {lastException?.Message}", lastException!);
     }
 
     private async Task<TResponse> SendChatRequestAsync<TResponse>(
@@ -231,7 +241,17 @@ public sealed class OpenRouterClient
             var statusCode = (int)response.StatusCode;
             if (statusCode == 429 || statusCode == 402 || responseText.Contains("rate limit", StringComparison.OrdinalIgnoreCase) || responseText.Contains("quota", StringComparison.OrdinalIgnoreCase))
             {
-                throw new OpenRouterRateLimitException(statusCode, $"OpenRouter rate limit or quota exceeded: {responseText}");
+                int? retryAfter = null;
+                if (response.Headers.RetryAfter?.Delta.HasValue == true)
+                {
+                    retryAfter = (int)response.Headers.RetryAfter.Delta.Value.TotalSeconds;
+                }
+                else if (response.Headers.TryGetValues("Retry-After", out var vals) && int.TryParse(vals.FirstOrDefault(), out var parsedSec))
+                {
+                    retryAfter = parsedSec;
+                }
+
+                throw new OpenRouterRateLimitException(statusCode, $"OpenRouter rate limit or quota exceeded: {responseText}", retryAfter);
             }
 
             throw new AiServiceException($"OpenRouter returned {response.StatusCode}: {Truncate(responseText, 500)}");
@@ -308,8 +328,11 @@ public sealed class OpenRouterClient
 public sealed class OpenRouterRateLimitException : Exception
 {
     public int StatusCode { get; }
-    public OpenRouterRateLimitException(int statusCode, string message) : base(message)
+    public int? RetryAfterSeconds { get; }
+
+    public OpenRouterRateLimitException(int statusCode, string message, int? retryAfterSeconds = null) : base(message)
     {
         StatusCode = statusCode;
+        RetryAfterSeconds = retryAfterSeconds;
     }
 }
