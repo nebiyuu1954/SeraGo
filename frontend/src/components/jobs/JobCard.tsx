@@ -75,10 +75,9 @@ export default function JobCard({
 }: JobCardProps) {
   const location = useLocation()
   const isDashboard = location.pathname.startsWith('/dashboard')
-  // On public pages (/jobs and homepage) where --ui-scale: 0.72 is NOT active,
-  // compact mode applies the exact rendered font/padding sizes (16px title, 13px body,
-  // 12px meta, p-4) so the cards look identical in visual density to the dashboard.
-  const isCompact = compact ?? !isDashboard
+  // Use standard authenticated layout tokens by default across mobile and desktop.
+  // Compact is only enabled if explicitly passed.
+  const isCompact = compact ?? false
 
   const brandLogo = sourceLogo(job.sourceName)
   // Build structured salary display: prefer min/max range, fall back to free text.

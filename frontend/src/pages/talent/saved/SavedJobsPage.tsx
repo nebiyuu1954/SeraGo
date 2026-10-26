@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   getApiErrorMessage,
   getStoredAuthTokens,
+  saveJob,
   unsaveJob,
 } from '../../../api'
 import { useSavedJobsQuery } from '../../../hooks/query.ts'
@@ -93,6 +94,31 @@ export default function SavedJobsPage() {
   useEffect(() => {
     setPage(1)
   }, [searchInput, sort, pageSize])
+
+  // Automatically save pending job if user arrived after login redirect
+  useEffect(() => {
+    const pendingSaveId =
+      sessionStorage.getItem('serago_pending_save_job_id') ||
+      localStorage.getItem('serago_pending_save_job_id')
+    if (!pendingSaveId) return
+
+    try {
+      sessionStorage.removeItem('serago_pending_save_job_id')
+      localStorage.removeItem('serago_pending_save_job_id')
+    } catch {}
+
+    const tokens = getStoredAuthTokens()
+    if (!tokens) return
+
+    saveJob(pendingSaveId, tokens.accessToken)
+      .then(() => {
+        showToast('Job saved for later')
+        refreshSaved()
+      })
+      .catch(() => {
+        showToast('Could not save job', 'error')
+      })
+  }, [refreshSaved, showToast])
 
   const handleUnsave = useCallback(
     async (item: SavedJobItem) => {

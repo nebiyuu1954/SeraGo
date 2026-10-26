@@ -69,8 +69,8 @@ export default function Footer() {
   return (
     <footer className="border-t border-outline-variant bg-surface-container-lowest">
       <Container className="py-14">
-        <div className="grid gap-10 md:grid-cols-[1.5fr_repeat(3,1fr)]">
-          <div>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-[1.5fr_repeat(3,1fr)] md:gap-10">
+          <div className="col-span-2 md:col-span-1">
             <Link
               to={role ? roleHome(role) : '/'}
               className="font-headline-md text-headline-md font-bold tracking-tight text-primary"
@@ -83,7 +83,7 @@ export default function Footer() {
             </p>
           </div>
           {columns.map((col) => (
-            <div key={col.title}>
+            <div key={col.title} className="col-span-1">
               <h3 className="font-label-md text-label-md font-medium text-on-surface">
                 {col.title}
               </h3>

@@ -1,13 +1,20 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { cn } from '../../../lib/cn.ts'
-import { useSectorsQuery, useJobsQuery } from '../../../hooks/query.ts'
+import { useSectorsQuery, useJobsQuery, useSavedJobsQuery } from '../../../hooks/query.ts'
+import { useAuthUser } from '../../../hooks'
+import { saveJob, unsaveJob, getStoredAuthTokens } from '../../../api'
+import { useToast } from '../../../components/dashboard/Toast.tsx'
 import GuestJobAuthModal from '../../../components/jobs/GuestJobAuthModal.tsx'
 import JobCard from '../../../components/jobs/JobCard.tsx'
 import type { JobResponse } from '../../../types'
 
 export default function JobListings() {
   const navigate = useNavigate()
+  const auth = useAuthUser()
+  const { savedIds, refresh: refreshSaved } = useSavedJobsQuery(auth.status === 'authenticated')
+  const { showToast } = useToast()
+
   const [selectedSectorId, setSelectedSectorId] = useState<string | null>(null)
   const [modalJob, setModalJob] = useState<JobResponse | null>(null)
   const [modalMode, setModalMode] = useState<'apply' | 'preview'>('preview')
@@ -28,6 +35,28 @@ export default function JobListings() {
     (a, b) => (b.jobCount ?? 0) - (a.jobCount ?? 0) || a.name.localeCompare(b.name),
   )
 
+  const handleToggleSave = async (job: JobResponse) => {
+    if (auth.status === 'authenticated') {
+      const tokens = getStoredAuthTokens()
+      if (!tokens) return
+      const wasSaved = savedIds.has(job.id)
+      try {
+        if (wasSaved) await unsaveJob(job.id, tokens.accessToken)
+        else await saveJob(job.id, tokens.accessToken)
+        showToast(wasSaved ? 'Removed from saved jobs' : 'Job saved for later')
+        refreshSaved()
+      } catch {
+        showToast('Could not update saved jobs', 'error')
+      }
+    } else {
+      try {
+        sessionStorage.setItem('serago_pending_save_job_id', job.id)
+        localStorage.setItem('serago_pending_save_job_id', job.id)
+      } catch {}
+      navigate('/login?redirect=%2Fdashboard%2Ftalent%2Fsaved')
+    }
+  }
+
 
   return (
     <section className="bg-surface">
@@ -43,8 +72,33 @@ export default function JobListings() {
         </div>
 
         <div className="flex flex-col gap-gutter md:flex-row">
-          {/* Left: Sectors sidebar (30%) */}
-          <aside className="w-full shrink-0 md:w-[30%]">
+          {/* Mobile: Sectors dropdown */}
+          <div className="w-full md:hidden mb-4">
+            <label htmlFor="landing-mobile-sector-select" className="mb-2 block font-label-md text-label-md font-semibold text-primary">
+              Filter by Sector
+            </label>
+            <div className="relative">
+              <select
+                id="landing-mobile-sector-select"
+                value={selectedSectorId ?? ''}
+                onChange={(e) => setSelectedSectorId(e.target.value ? e.target.value : null)}
+                className="w-full appearance-none rounded-xl border border-surface-variant bg-surface-container-lowest px-4 py-3 pr-10 font-body-md text-body-md text-on-surface shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+              >
+                <option value="">All Sectors ({totalJobsCount})</option>
+                {sortedSectors.map((sector) => (
+                  <option key={sector.id} value={sector.id}>
+                    {sector.name} ({sector.jobCount ?? 0})
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-on-surface-variant">
+                arrow_drop_down
+              </span>
+            </div>
+          </div>
+
+          {/* Desktop Left: Sectors sidebar (30%) */}
+          <aside className="hidden w-full shrink-0 md:block md:w-[30%]">
             <h3 className="mb-6 border-b border-surface-variant pb-2 font-headline-md text-headline-md text-primary">
               Sectors
             </h3>
@@ -165,17 +219,13 @@ export default function JobListings() {
                   <JobCard
                     key={job.id}
                     job={job}
+                    saved={savedIds.has(job.id)}
+                    detailPath={`/jobs/${job.id}`}
                     onApply={(j) => {
                       setModalJob(j)
                       setModalMode('apply')
                     }}
-                    onPreview={(j) => {
-                      navigate(`/jobs/${j.id}`)
-                    }}
-                    onToggleSave={() => {
-                      setModalJob(job)
-                      setModalMode('apply')
-                    }}
+                    onToggleSave={() => handleToggleSave(job)}
                   />
                 ))}
               </div>

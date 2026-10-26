@@ -486,6 +486,26 @@ export default function JobsPage() {
     forYouSectors,
   ])
 
+  // Handle background auto-save of pending saved job after registration
+  useEffect(() => {
+    if (auth.status !== 'authenticated') return
+    const pendingSaveId =
+      sessionStorage.getItem('serago_pending_save_job_id') ||
+      localStorage.getItem('serago_pending_save_job_id')
+    if (!pendingSaveId) return
+
+    try {
+      sessionStorage.removeItem('serago_pending_save_job_id')
+      localStorage.removeItem('serago_pending_save_job_id')
+    } catch {}
+
+    toggleSaved(pendingSaveId).then((result) => {
+      if (result === 'saved') {
+        showToast('Job saved to your bookmarks')
+      }
+    })
+  }, [auth.status, showToast, toggleSaved])
+
   const clearFilters = () => {
     setCurrentFilters((prev) => ({
       ...prev,

@@ -209,7 +209,7 @@ export default function ForEmployers() {
           }
         >
           {/* Text content — rendered right of the feed on desktop, first on mobile */}
-          <div className="employers-text z-10 flex flex-col gap-8 py-24 md:py-32">
+          <div className="employers-text z-10 flex flex-col gap-8 py-12 md:py-24 lg:py-32">
             <div className="inline-flex w-fit items-center gap-2 rounded-full bg-surface-container-low px-4 py-2">
               <span className="h-2 w-2 rounded-full bg-accent" />
               <span className="font-label-md text-label-md text-on-surface">
@@ -241,9 +241,9 @@ export default function ForEmployers() {
             </div>
           </div>
 
-          {/* Left: 3-row sideways marquee — rows 1 & 3 slide left, row 2 right */}
+          {/* Left: 3-row sideways marquee — rows 1 & 3 slide left, row 2 right (hidden on mobile/tablet) */}
           <div
-            className={`employers-feed relative mx-auto overflow-hidden rounded-xl${FEED_WIDTH_PX === 0 ? ' employers-feed-bleed' : ''}`}
+            className={`employers-feed relative mx-auto overflow-hidden rounded-xl${FEED_WIDTH_PX === 0 ? ' employers-feed-bleed' : ''} hidden lg:block`}
             style={
               {
                 ...(FEED_WIDTH_PX > 0

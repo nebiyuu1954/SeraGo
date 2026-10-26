@@ -4,13 +4,21 @@ import {
   useJobsQuery,
   useSectorsQuery,
   useJobLocationsQuery,
+  useSavedJobsQuery,
 } from '../../../hooks/query.ts'
+import { useAuthUser } from '../../../hooks'
+import { saveJob, unsaveJob, getStoredAuthTokens } from '../../../api'
+import { useToast } from '../../../components/dashboard/Toast.tsx'
 import GuestJobAuthModal from '../../../components/jobs/GuestJobAuthModal.tsx'
 import JobCard from '../../../components/jobs/JobCard.tsx'
 import type { JobResponse } from '../../../types'
 
 export default function PublicJobsPage() {
   const navigate = useNavigate()
+  const auth = useAuthUser()
+  const { savedIds, refresh: refreshSaved } = useSavedJobsQuery(auth.status === 'authenticated')
+  const { showToast } = useToast()
+
   const [searchParams] = useSearchParams()
   const [searchInput, setSearchInput] = useState(searchParams.get('q') || '')
   const [sectorId, setSectorId] = useState(searchParams.get('sectorId') || '')
@@ -19,6 +27,28 @@ export default function PublicJobsPage() {
   const [sort, setSort] = useState(searchParams.get('sort') || 'newest')
   const [page, setPage] = useState(1)
   const pageSize = 10
+
+  const handleToggleSave = async (job: JobResponse) => {
+    if (auth.status === 'authenticated') {
+      const tokens = getStoredAuthTokens()
+      if (!tokens) return
+      const wasSaved = savedIds.has(job.id)
+      try {
+        if (wasSaved) await unsaveJob(job.id, tokens.accessToken)
+        else await saveJob(job.id, tokens.accessToken)
+        showToast(wasSaved ? 'Removed from saved jobs' : 'Job saved for later')
+        refreshSaved()
+      } catch {
+        showToast('Could not update saved jobs', 'error')
+      }
+    } else {
+      try {
+        sessionStorage.setItem('serago_pending_save_job_id', job.id)
+        localStorage.setItem('serago_pending_save_job_id', job.id)
+      } catch {}
+      navigate('/login?redirect=%2Fdashboard%2Ftalent%2Fsaved')
+    }
+  }
 
   const searchInputId = useId()
   const sectorSelectId = useId()
@@ -325,17 +355,13 @@ export default function PublicJobsPage() {
               <JobCard
                 key={job.id}
                 job={job}
+                saved={savedIds.has(job.id)}
+                detailPath={`/jobs/${job.id}`}
                 onApply={(j) => {
                   setModalJob(j)
                   setModalMode('apply')
                 }}
-                onPreview={(j) => {
-                  navigate(`/jobs/${j.id}`)
-                }}
-                onToggleSave={() => {
-                  setModalJob(job)
-                  setModalMode('apply')
-                }}
+                onToggleSave={() => handleToggleSave(job)}
               />
             ))}
           </div>

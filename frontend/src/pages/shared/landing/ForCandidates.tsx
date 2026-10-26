@@ -183,7 +183,7 @@ export default function ForCandidates() {
           }
         >
           {/* Text content */}
-          <div className="candidates-left z-10 flex flex-col gap-8 py-24 md:py-32">
+          <div className="candidates-left z-10 flex flex-col gap-8 py-12 md:py-24 lg:py-32">
             <div className="inline-flex w-fit items-center gap-2 rounded-full bg-surface-container-low px-4 py-2">
               <span className="h-2 w-2 rounded-full bg-primary" />
               <span className="font-label-md text-label-md text-on-surface">
@@ -215,9 +215,9 @@ export default function ForCandidates() {
             </div>
           </div>
 
-          {/* Right: 2×2 infinite feed — left column scrolls UP, right DOWN */}
+          {/* Right: 2×2 infinite feed — left column scrolls UP, right DOWN (hidden on mobile/tablet) */}
           <div
-            className="candidates-right relative mx-auto overflow-hidden rounded-xl"
+            className="candidates-right relative mx-auto overflow-hidden rounded-xl hidden lg:block"
             style={
               {
                 width:
