@@ -3,7 +3,6 @@ import { fetchProfile, fetchAdminStatsOverview, getStoredAuthTokens } from '../.
 import { useSignOut } from '../../hooks'
 import type { RequiredRole } from '../../hooks'
 import type { ProfileResponse, WhoAmIResponse } from '../../types'
-import { useSidebar } from '../../context'
 import DashboardSidebar from './DashboardSidebar.tsx'
 
 interface DashboardShellProps {
@@ -22,7 +21,6 @@ export default function DashboardShell({
   authUser,
   children,
 }: DashboardShellProps) {
-  const { setDrawerOpen } = useSidebar()
   const [profile, setProfile] = useState<ProfileResponse | null>(null)
   const [adminBadges, setAdminBadges] = useState<Record<string, number>>({})
   const signOut = useSignOut()
@@ -73,23 +71,6 @@ export default function DashboardShell({
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Header — visible on all screen sizes */}
-        <div className="flex h-16 shrink-0 items-center border-b border-surface-variant px-margin-mobile md:hidden">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setDrawerOpen(true)}
-              aria-label="Open menu"
-              className="text-on-surface-variant transition-colors hover:text-on-surface"
-            >
-              <span className="material-symbols-outlined">menu</span>
-            </button>
-            <span className="font-headline-md text-headline-md font-bold tracking-tight text-primary">
-              SeraGo
-            </span>
-          </div>
-        </div>
-
         <main className="flex-1 px-margin-mobile py-6 md:px-8 lg:px-10">
           {children}
         </main>

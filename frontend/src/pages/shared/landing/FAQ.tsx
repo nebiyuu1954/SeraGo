@@ -21,33 +21,23 @@ const faqItems: FaqItem[] = [
   {
     question: 'What is SeraGo?',
     answer:
-      'SeraGo brings jobs from multiple job websites into one place and uses AI to match you with roles that actually fit your profile — no more hopping between sites.',
+      'SeraGo brings jobs from multiple job websites into one place and uses AI to match you with roles that actually fit your profile — no more hopping between sites and searching for hours.',
   },
   {
     question: 'Is SeraGo free for job seekers?',
     answer:
-      'Yes. Finding and applying to jobs on SeraGo is completely free — we are built to make your job hunt faster, not charge you for it.',
+      'Yes. Finding jobs on SeraGo is completely free — we are built to make your job hunt faster, not charge you for it.',
   },
   {
     question: 'How does the AI matching work?',
     answer:
-      'SeraGo aggregates listings from across the web, then ranks them against your profile and preferences so you see the roles most likely to be a good fit first.',
+      'SeraGo gathers job postings from across the web, then ranks them against your profile and preferences so you see the roles most likely to be a good fit first so you can go an apply.',
   },
   {
-    question: 'Where do the job listings come from?',
+    question: 'Where do the job postings come from?',
     answer:
-      'We pull listings from multiple job websites and combine them with roles posted directly on SeraGo, so you can search everything from one place.',
-  },
-  {
-    question: 'How fast can I apply?',
-    answer:
-      'With aggregated listings, you can apply instantly from SeraGo — fewer extra steps and less effort than applying site by site.',
-  },
-  {
-    question: 'Do I need an account to save or apply to jobs?',
-    answer:
-      'You need a free account to save jobs, apply, and track your applications. Creating one takes a minute and keeps everything in one place.',
-  },
+      'We pull job postings from multiple job websites and combine them with roles posted directly on SeraGo, so you can search everything from one place.',
+  }
 ]
 
 export default function FAQ() {

@@ -1,8 +1,13 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { Button } from '../ui/Button.tsx'
 import { getStoredAuthTokens } from '../../api'
-import { useAuthUser, useSignOut, useNotifications } from '../../hooks'
+import {
+  useAuthUser,
+  useSignOut,
+  useNotifications,
+  useProfileQuery,
+} from '../../hooks'
 import type { RequiredRole } from '../../hooks'
 import { useSidebar } from '../../context'
 import { pickRole, roleHome } from '../dashboard/roleNav.ts'
@@ -21,6 +26,7 @@ const publicNavLinks = [{ label: 'Jobs', to: '/jobs' }]
 export default function Navbar() {
   const auth = useAuthUser()
   const signOut = useSignOut()
+  const { profile } = useProfileQuery(auth.status === 'authenticated')
 
   // No stored tokens → public header, no async work.
   if (!getStoredAuthTokens()) return <PublicNavbar />
@@ -33,11 +39,18 @@ export default function Navbar() {
   const role = pickRole(auth.user.roles)
   if (!role) return <PublicNavbar />
 
+  const displayName =
+    (profile && [profile.firstName, profile.lastName].filter(Boolean).join(' ')) ||
+    auth.user.username ||
+    auth.user.email ||
+    'Account'
+
   return (
     <RoleNavbar
       role={role}
-      name={auth.user.username ?? auth.user.email ?? 'Account'}
+      name={displayName}
       email={auth.user.email}
+      avatarUrl={profile?.avatarUrl}
       onSignOut={signOut}
     />
   )
@@ -181,55 +194,78 @@ function RoleNavbar({
   role,
   name,
   email,
+  avatarUrl,
   onSignOut,
 }: {
   role: RequiredRole
   name: string
   email: string | null
+  avatarUrl?: string | null
   onSignOut: () => void
 }) {
-  const [open, setOpen] = useState(false)
   const [avatarOpen, setAvatarOpen] = useState(false)
   const { drawerOpen, setDrawerOpen } = useSidebar()
   const { unreadCount, isConnected, markAsRead, markAllAsRead } = useNotifications()
+  const location = useLocation()
+  const isDashboard = location.pathname.startsWith('/dashboard')
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-surface-variant bg-surface-container-lowest">
-      {/* Slim bar — logo flush left, avatar (desktop) + menu toggle flush right.
-          No nav links: the dashboard sidebar owns all navigation. */}
-      <div className="flex h-16 w-full items-center justify-between gap-4 px-4 md:px-8">
-        <Link
-          to={roleHome(role)}
-          className="shrink-0 font-headline-md text-headline-md font-bold tracking-tight text-primary"
-          aria-label={`SeraGo — ${role} dashboard`}
-        >
-          SeraGo
-        </Link>
+      {/* Slim bar — logo flush left, notification bell + avatar dropdown flush right */}
+      <div className="flex h-16 w-full items-center justify-between gap-3 px-4 md:px-8">
+        <div className="flex items-center gap-2">
+          {isDashboard && (
+            <button
+              type="button"
+              className="flex items-center justify-center rounded-lg p-1.5 text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-on-surface md:hidden"
+              onClick={() => setDrawerOpen(!drawerOpen)}
+              aria-label="Toggle navigation menu"
+            >
+              <span className="material-symbols-outlined text-2xl">
+                {drawerOpen ? 'close' : 'menu'}
+              </span>
+            </button>
+          )}
+          <Link
+            to={roleHome(role)}
+            className="shrink-0 font-headline-md text-headline-md font-bold tracking-tight text-primary"
+            aria-label={`SeraGo — ${role} dashboard`}
+          >
+            SeraGo
+          </Link>
+        </div>
 
-        {/* Right group — bell + avatar (desktop) + mobile menu toggle */}
-        <div className="flex shrink-0 items-center gap-3">
-          {/* Notification bell (desktop) */}
-          <div className="hidden md:block">
-            <NotificationBell
-              unreadCount={unreadCount}
-              isConnected={isConnected}
-              onMarkAsRead={markAsRead}
-              onMarkAllAsRead={markAllAsRead}
-            />
-          </div>
+        {/* Right group — notification bell + profile avatar with dropdown */}
+        <div className="flex shrink-0 items-center gap-2 md:gap-3">
+          {/* Notification bell — always visible on both mobile and desktop */}
+          <NotificationBell
+            unreadCount={unreadCount}
+            isConnected={isConnected}
+            onMarkAsRead={markAsRead}
+            onMarkAllAsRead={markAllAsRead}
+          />
 
-          {/* Avatar menu (desktop) */}
-          <div className="relative hidden md:block">
+          {/* Profile Picture with Dropdown Button */}
+          <div className="relative">
             <button
               type="button"
               onClick={() => setAvatarOpen((o) => !o)}
-              className="flex items-center gap-2 rounded-full border border-surface-variant bg-surface-container-low py-1.5 pl-1.5 pr-3 transition-colors hover:bg-surface-container"
+              className="flex items-center gap-1.5 rounded-full border border-surface-variant bg-surface-container-low py-1 pl-1 pr-2 transition-colors hover:bg-surface-container md:py-1.5 md:pl-1.5 md:pr-3"
               aria-haspopup="menu"
               aria-expanded={avatarOpen}
+              aria-label="User account menu"
             >
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary font-label-md text-label-md font-bold text-on-primary">
-                {initialsOf(name)}
-              </span>
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={name}
+                  className="h-7 w-7 rounded-full object-cover shrink-0 md:h-8 md:w-8"
+                />
+              ) : (
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary font-label-md text-label-sm font-bold text-on-primary md:h-8 md:w-8 md:text-label-md">
+                  {initialsOf(name)}
+                </span>
+              )}
               <span className="hidden max-w-36 truncate font-label-md text-label-md font-medium text-on-surface lg:block">
                 {name}
               </span>
@@ -241,96 +277,90 @@ function RoleNavbar({
             {avatarOpen && (
               <>
                 <div
-                  className="fixed inset-0 z-10"
+                  className="fixed inset-0 z-40"
                   onClick={() => setAvatarOpen(false)}
                 />
                 <div
                   role="menu"
-                  className="absolute right-0 z-20 mt-2 w-64 overflow-hidden rounded-xl border border-surface-variant bg-surface-container-lowest shadow-lg"
+                  className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-xl border border-surface-variant bg-surface-container-lowest shadow-lg"
                 >
                   <div className="border-b border-surface-variant px-4 py-3">
-                    <p className="truncate font-label-md text-label-md font-medium text-on-surface">
-                      {name}
-                    </p>
-                    {email && (
-                      <p className="mt-0.5 truncate font-label-sm text-label-sm text-on-surface-variant">
-                        {email}
-                      </p>
-                    )}
-                    <span className="mt-2 inline-block rounded-full bg-primary-container px-2.5 py-0.5 font-label-sm text-label-sm font-medium text-primary">
+                    <div className="flex items-center gap-2.5 mb-2">
+                      {avatarUrl ? (
+                        <img
+                          src={avatarUrl}
+                          alt={name}
+                          className="h-9 w-9 rounded-full object-cover shrink-0"
+                        />
+                      ) : (
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary font-label-md text-label-md font-bold text-on-primary">
+                          {initialsOf(name)}
+                        </span>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-label-md text-label-md font-semibold text-on-surface">
+                          {name}
+                        </p>
+                        {email && (
+                          <p
+                            className="truncate font-label-sm text-label-sm text-on-surface-variant"
+                            title={email}
+                          >
+                            {email}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <span className="inline-block rounded-full bg-primary-container px-2.5 py-0.5 font-label-sm text-label-sm font-medium text-primary">
                       {role}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={onSignOut}
-                    className="flex w-full items-center gap-2.5 px-4 py-3 font-label-md text-label-md text-on-surface transition-colors hover:bg-error-container/50 hover:text-error"
-                  >
-                    <span className="material-symbols-outlined text-lg">
-                      logout
-                    </span>
-                    Sign out
-                  </button>
+
+                  <div className="py-1">
+                    <Link
+                      to={roleHome(role)}
+                      onClick={() => setAvatarOpen(false)}
+                      className="flex w-full items-center gap-2.5 px-4 py-2.5 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low"
+                    >
+                      <span className="material-symbols-outlined text-lg text-on-surface-variant">
+                        dashboard
+                      </span>
+                      Dashboard
+                    </Link>
+                    <Link
+                      to={role === 'Admin' ? '/dashboard/admin/settings' : '/dashboard/talent/settings'}
+                      onClick={() => setAvatarOpen(false)}
+                      className="flex w-full items-center gap-2.5 px-4 py-2.5 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low"
+                    >
+                      <span className="material-symbols-outlined text-lg text-on-surface-variant">
+                        settings
+                      </span>
+                      Settings
+                    </Link>
+                  </div>
+
+                  <div className="border-t border-surface-variant py-1">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setAvatarOpen(false)
+                        onSignOut()
+                      }}
+                      className="flex w-full items-center gap-2.5 px-4 py-2.5 font-label-md text-label-md text-on-surface transition-colors hover:bg-error-container/50 hover:text-error"
+                    >
+                      <span className="material-symbols-outlined text-lg">
+                        logout
+                      </span>
+                      Sign out
+                    </button>
+                  </div>
                 </div>
               </>
             )}
           </div>
-
-          {/* Mobile menu toggle — closes the sidebar drawer when it's open */}
-          <button
-            type="button"
-            className="text-on-surface-variant md:hidden"
-            onClick={() => {
-              if (drawerOpen) setDrawerOpen(false)
-              else setOpen((o) => !o)
-            }}
-            aria-expanded={open}
-            aria-label="Toggle navigation menu"
-          >
-            <span className="material-symbols-outlined">
-              {drawerOpen ? 'close' : open ? 'close' : 'menu'}
-            </span>
-          </button>
         </div>
       </div>
-
-      {/* Mobile drawer — account info + sign out only (no nav links) */}
-      {open && !drawerOpen && (
-        <div className="border-t border-surface-variant px-margin-mobile pb-4 pt-4 md:hidden">
-          <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary font-label-md text-label-md font-bold text-on-primary">
-              {initialsOf(name)}
-            </span>
-            <div className="min-w-0">
-              <p className="truncate font-label-md text-label-md font-medium text-on-surface">
-                {name}
-              </p>
-              {email && (
-                <p className="truncate font-label-sm text-label-sm text-on-surface-variant">
-                  {email}
-                </p>
-              )}
-            </div>
-            <div className="ml-auto flex items-center gap-1">
-              <NotificationBell
-                unreadCount={unreadCount}
-                isConnected={isConnected}
-                onMarkAsRead={markAsRead}
-                onMarkAllAsRead={markAllAsRead}
-              />
-              <button
-                type="button"
-                onClick={onSignOut}
-                className="flex items-center gap-1.5 rounded-lg px-3 py-2 font-label-md text-label-md text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
-              >
-                <span className="material-symbols-outlined text-lg">logout</span>
-                Sign out
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </header>
   )
 }

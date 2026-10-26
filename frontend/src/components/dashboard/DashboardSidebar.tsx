@@ -115,6 +115,7 @@ function SidebarBody({
   isGuest?: boolean
 }) {
   const location = useLocation()
+  const { setDrawerOpen } = useSidebar()
   // Longest prefix match wins — nested pages highlight their own item, not
   // the role home. E.g. on the profile page only Profile is lit.
   const activeTo = activeNavTo(ROLE_NAV[role], location.pathname)
@@ -189,6 +190,7 @@ function SidebarBody({
             <Link
               key={item.label}
               to={item.to}
+              onClick={() => setDrawerOpen(false)}
               aria-current={isActive ? 'page' : undefined}
               title={collapsed ? item.label : undefined}
               className={itemClasses(isActive)}
