@@ -62,7 +62,7 @@ public static class JobEndpoints
         group.MapGet("/", ListJobsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
         group.MapGet("/locations", ListLocationsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
         group.MapGet("/job-types", ListJobTypesAsync).RequireRateLimiting("jobs_read").WithOpenApi();
-        group.MapGet("/{id:guid}", GetJobAsync).RequireRateLimiting("jobs_read").WithOpenApi();
+        group.MapGet("/{id:guid}", GetJobAsync).AllowAnonymous().RequireRateLimiting("jobs_read").WithOpenApi();
         group.MapGet("/{id:guid}/similar", GetSimilarJobsAsync).AllowAnonymous().RequireRateLimiting("jobs_read").WithOpenApi();
 
         group.MapPost("/", CreateJobAsync).RequireRateLimiting("jobs_write").WithOpenApi();

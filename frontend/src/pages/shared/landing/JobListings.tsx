@@ -170,7 +170,7 @@ export default function JobListings() {
                       setModalMode('apply')
                     }}
                     onPreview={(j) => {
-                      navigate(`/dashboard/talent/jobs/${j.id}`)
+                      navigate(`/jobs/${j.id}`)
                     }}
                     onToggleSave={() => {
                       setModalJob(job)

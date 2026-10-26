@@ -16,7 +16,7 @@ import {
   useSavedJobsQuery,
 } from '../../../hooks/query.ts'
 import { useAuthUser } from '../../../hooks'
-import type { JobResponse, JobType } from '../../../types'
+import type { JobResponse, JobType, WhoAmIResponse } from '../../../types'
 import DashboardShell from '../../../components/dashboard/DashboardShell.tsx'
 import GuestJobAuthModal from '../../../components/jobs/GuestJobAuthModal.tsx'
 import { useToast } from '../../../components/dashboard/Toast.tsx'
@@ -372,6 +372,66 @@ function PreviewToggle({
   )
 }
 
+function JobDetailShell({
+  isPublicView,
+  isPreview,
+  authUser,
+  children,
+}: {
+  isPublicView: boolean
+  isPreview: boolean
+  authUser: WhoAmIResponse | null
+  children: React.ReactNode
+}) {
+  if (isPublicView) {
+    return (
+      <div className="mx-auto w-full max-w-container-max px-margin-mobile py-8 md:px-margin-desktop md:py-10">
+        <div className="mb-6">
+          <Link
+            to="/jobs"
+            className="inline-flex items-center gap-1.5 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
+          >
+            <span className="material-symbols-outlined text-lg">arrow_back</span>
+            Back to all jobs
+          </Link>
+        </div>
+        {children}
+      </div>
+    )
+  }
+
+  return (
+    <DashboardShell role={isPreview ? 'Admin' : 'Talent'} authUser={authUser}>
+      <div className="mb-6">
+        {isPreview ? (
+          <div className="flex items-center gap-3">
+            <Link
+              to="/dashboard/admin/jobs"
+              className="inline-flex items-center gap-1.5 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
+            >
+              <span className="material-symbols-outlined text-lg">arrow_back</span>
+              Back to jobs
+            </Link>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-container/60 px-3 py-1 font-label-sm text-label-sm font-medium text-primary">
+              <span className="material-symbols-outlined text-base">preview</span>
+              Previewing as talent
+            </span>
+          </div>
+        ) : (
+          <Link
+            to="/dashboard/talent"
+            className="inline-flex items-center gap-1.5 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
+          >
+            <span className="material-symbols-outlined text-lg">arrow_back</span>
+            Back to all jobs
+          </Link>
+        )}
+      </div>
+      {children}
+    </DashboardShell>
+  )
+}
+
 /**
  * Talent's full view of a single job posting (opened from a job card).
  * Uses SWR to cache the job by id — navigating away and back is instant.
@@ -385,6 +445,7 @@ export default function JobDetailPage() {
   const isPreview = location.pathname.startsWith('/dashboard/admin/')
     || (location.state as { fromAdmin?: boolean })?.fromAdmin === true
   const auth = useAuthUser()
+  const isPublicView = auth.status !== 'authenticated' && !isPreview
 
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [authModalMode, setAuthModalMode] = useState<'apply' | 'preview'>('preview')
@@ -558,6 +619,8 @@ export default function JobDetailPage() {
     }
     const targetPath = isPreview
       ? `/dashboard/admin/jobs/${id}/preview`
+      : isPublicView
+      ? `/jobs/${id}`
       : `/dashboard/talent/jobs/${id}`
     navigate(targetPath)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -619,8 +682,8 @@ export default function JobDetailPage() {
 
   const canonicalUrl =
     typeof window !== 'undefined'
-      ? `${window.location.origin}/dashboard/talent/jobs/${job?.id ?? ''}`
-      : `https://serago.pro.et/dashboard/talent/jobs/${job?.id ?? ''}`
+      ? `${window.location.origin}${isPublicView ? `/jobs/${job?.id ?? ''}` : `/dashboard/talent/jobs/${job?.id ?? ''}`}`
+      : `https://serago.pro.et/jobs/${job?.id ?? ''}`
   const ogImage =
     job?.companyLogoUrl ||
     (typeof window !== 'undefined'
@@ -743,30 +806,11 @@ export default function JobDetailPage() {
         <meta name="twitter:image" content={ogImage} />
       </Helmet>
 
-      <DashboardShell role={isPreview ? 'Admin' : 'Talent'} authUser={auth.status === 'authenticated' ? auth.user : null}>
-        {isPreview ? (
-          <div className="flex items-center gap-3">
-            <Link
-              to="/dashboard/admin/jobs"
-              className="inline-flex items-center gap-1.5 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
-            >
-              <span className="material-symbols-outlined text-lg">arrow_back</span>
-              Back to jobs
-            </Link>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-container/60 px-3 py-1 font-label-sm text-label-sm font-medium text-primary">
-              <span className="material-symbols-outlined text-base">preview</span>
-              Previewing as talent
-            </span>
-          </div>
-        ) : (
-          <Link
-            to={auth.status === 'authenticated' ? '/dashboard/talent' : '/jobs'}
-            className="inline-flex items-center gap-1.5 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
-          >
-            <span className="material-symbols-outlined text-lg">arrow_back</span>
-            Back to all jobs
-          </Link>
-        )}
+      <JobDetailShell
+        isPublicView={isPublicView}
+        isPreview={isPreview}
+        authUser={auth.status === 'authenticated' ? auth.user : null}
+      >
 
       {isLoading && (
         <div className="mt-10 flex items-center justify-center">
@@ -1780,13 +1824,13 @@ export default function JobDetailPage() {
           )}
         </>
       )}
+      </JobDetailShell>
       <GuestJobAuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         job={job}
         mode={authModalMode}
       />
-      </DashboardShell>
     </>
   )
 }

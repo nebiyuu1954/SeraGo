@@ -344,7 +344,7 @@ export default function JobCard({
             </button>
           ) : (
             <Link
-              to={detailPath ?? `/dashboard/talent/jobs/${job.id}`}
+              to={detailPath ?? (isDashboard ? `/dashboard/talent/jobs/${job.id}` : `/jobs/${job.id}`)}
               className={`flex-1 rounded border border-surface-variant text-center font-semibold text-primary transition-colors hover:bg-surface-container-low ${
                 isCompact ? 'px-3 py-2 text-[13px]' : 'px-4 py-2.5 font-label-md text-label-md'
               }`}

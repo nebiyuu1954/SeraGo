@@ -13,18 +13,15 @@ import type { JobResponse } from '../types'
  */
 export function useJobDetailQuery(jobId: string | undefined, enabled = true) {
   const tokens = getStoredAuthTokens()
-  const key = enabled && tokens && jobId
+  const key = enabled && jobId
     ? queryKeys.job(jobId)
     : null
 
   const { data, error, isLoading, mutate } = useSWR<JobResponse>(
     key,
-    () => fetchJob(jobId!, tokens!.accessToken),
+    () => fetchJob(jobId!, tokens?.accessToken),
     {
-      // Serve from cache instantly — zero network requests unless
-      // the user explicitly retries or the prefetch on hover fires.
-      // Job details rarely change, so don't refetch on mount or focus.
-      revalidateOnMount: false,
+      // Serve from cache if available; fetch immediately on mount if not.
       revalidateOnFocus: false,
       refreshInterval: 0,
       shouldRetryOnError: false,
@@ -47,9 +44,8 @@ export function useJobDetailQuery(jobId: string | undefined, enabled = true) {
  */
 export function prefetchJob(jobId: string) {
   const tokens = getStoredAuthTokens()
-  if (!tokens) return
   const key = queryKeys.job(jobId)
   // Global mutate — fetches and stores in cache, but doesn't revalidate
   // if data already exists (SWR dedupes identical in-flight requests).
-  mutate(key, fetchJob(jobId, tokens.accessToken), { revalidate: false })
+  mutate(key, fetchJob(jobId, tokens?.accessToken), { revalidate: false })
 }
