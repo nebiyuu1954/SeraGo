@@ -1179,16 +1179,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                 {COPY[role].blurb}
               </p>
             </div>
-            {isTalent && (
-              <button
-                type="button"
-                onClick={() => navigate('/dashboard/talent/profile/preview')}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-outline-variant bg-surface-container-lowest font-label-md text-label-md font-medium text-on-surface hover:bg-surface-container-low transition-colors shadow-sm self-start sm:self-auto"
-              >
-                <span className="material-symbols-outlined text-[18px]">visibility</span>
-                <span>Preview profile</span>
-              </button>
-            )}
           </div>
 
           {/* Horizontal Pill Tab Bar */}

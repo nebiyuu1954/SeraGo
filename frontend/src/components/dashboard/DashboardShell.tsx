@@ -71,7 +71,7 @@ export default function DashboardShell({
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <main className="flex-1 px-margin-mobile py-6 md:px-8 lg:px-10">
+        <main className="flex-1 px-4 sm:px-6 md:px-8 lg:px-10 py-6">
           {children}
         </main>
       </div>

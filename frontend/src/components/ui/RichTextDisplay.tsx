@@ -20,7 +20,7 @@ export default function RichTextDisplay({ html, className }: RichTextDisplayProp
   if (!isHtml) {
     // Plain text fallback — preserve newlines
     return (
-      <p className={cn('whitespace-pre-line font-body-md text-body-md leading-relaxed text-on-surface', className)}>
+      <p className={cn('whitespace-pre-line font-body-md text-body-md leading-relaxed text-on-surface break-words [overflow-wrap:anywhere]', className)}>
         {html}
       </p>
     )
@@ -30,7 +30,7 @@ export default function RichTextDisplay({ html, className }: RichTextDisplayProp
     <div
       className={cn(
         // Base text
-        'font-body-md text-body-md leading-relaxed text-on-surface',
+        'font-body-md text-body-md leading-relaxed text-on-surface break-words [overflow-wrap:anywhere]',
         // Headings
         '[&>h1]:font-headline-xl [&>h1]:text-headline-xl [&>h1]:text-on-surface [&>h1]:mt-6 [&>h1]:mb-3',
         '[&>h2]:font-headline-lg [&>h2]:text-headline-lg [&>h2]:text-on-surface [&>h2]:mt-5 [&>h2]:mb-2',

@@ -420,6 +420,18 @@ function JobDetailShell({
         ) : (
           <Link
             to="/dashboard/talent"
+            onClick={() => {
+              try {
+                sessionStorage.removeItem('serago_pending_target_job_id')
+                sessionStorage.removeItem('serago_pending_target_job_title')
+                sessionStorage.removeItem('serago_pending_target_job_sector_id')
+                sessionStorage.removeItem('serago_pending_target_job_sector_name')
+                localStorage.removeItem('serago_pending_target_job_id')
+                localStorage.removeItem('serago_pending_target_job_title')
+                localStorage.removeItem('serago_pending_target_job_sector_id')
+                localStorage.removeItem('serago_pending_target_job_sector_name')
+              } catch {}
+            }}
             className="inline-flex items-center gap-1.5 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
           >
             <span className="material-symbols-outlined text-lg">arrow_back</span>
@@ -474,6 +486,22 @@ export default function JobDetailPage() {
   useEffect(() => {
     if (!jobId || isPreview) return
 
+    // If the user is already authenticated, they are directly viewing the job.
+    // Never persist pending target job search keys (which are only for unauthenticated login redirects).
+    if (auth.status === 'authenticated') {
+      try {
+        sessionStorage.removeItem('serago_pending_target_job_id')
+        sessionStorage.removeItem('serago_pending_target_job_title')
+        sessionStorage.removeItem('serago_pending_target_job_sector_id')
+        sessionStorage.removeItem('serago_pending_target_job_sector_name')
+        localStorage.removeItem('serago_pending_target_job_id')
+        localStorage.removeItem('serago_pending_target_job_title')
+        localStorage.removeItem('serago_pending_target_job_sector_id')
+        localStorage.removeItem('serago_pending_target_job_sector_name')
+      } catch {}
+      return
+    }
+
     // Save job context to local/session storage for login redirect or feed routing
     try {
       sessionStorage.setItem('serago_pending_target_job_id', jobId)
@@ -494,7 +522,7 @@ export default function JobDetailPage() {
         localStorage.setItem('serago_pending_target_job_sector_name', targetSectorName)
       }
     } catch {}
-  }, [jobId, urlTitle, urlSectorId, urlSectorName, job, isPreview])
+  }, [jobId, urlTitle, urlSectorId, urlSectorName, job, isPreview, auth.status])
 
   const { savedIds, refresh: refreshSaved } = useSavedJobsQuery(auth.status === 'authenticated' && !isPreview)
   const { showToast } = useToast()
@@ -847,17 +875,17 @@ export default function JobDetailPage() {
                 {/* ================= LEFT PANE (Primary Details: fills space) ================= */}
                 <div className="flex-1 min-w-0 flex flex-col gap-6">
                   {/* 1. Elevated Hero Header Card */}
-                  <div className="relative overflow-hidden rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm sm:p-8">
+                  <div className="relative overflow-hidden rounded-2xl border border-surface-variant bg-surface-container-lowest p-4 sm:p-6 md:p-8 shadow-sm">
                     {/* Subtle Gradient Top Accent Edge */}
                     <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-primary via-primary-container to-accent" />
 
-                    <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6">
+                    <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-5 sm:gap-6">
                       {/* Left Column: Avatar + Company Name + Title + Meta Chips */}
-                      <div className="flex-1 min-w-0 space-y-4">
-                        <div className="flex items-center gap-3.5">
+                      <div className="flex-1 min-w-0 space-y-3.5 sm:space-y-4">
+                        <div className="flex items-center gap-3 sm:gap-3.5">
                           {/* Company Avatar / Logo */}
                           {job.companyLogoUrl ? (
-                            <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-surface-variant bg-surface-container-low p-2 shadow-xs">
+                            <div className="relative flex h-12 w-12 sm:h-14 sm:w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-surface-variant bg-surface-container-low p-1.5 sm:p-2 shadow-xs">
                               <img
                                 src={job.companyLogoUrl}
                                 alt={job.company ?? ''}
@@ -865,22 +893,22 @@ export default function JobDetailPage() {
                               />
                             </div>
                           ) : (
-                            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-primary-container/60 font-headline-md text-headline-md font-bold text-primary shadow-xs">
+                            <div className="flex h-12 w-12 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-xl bg-primary-container/60 font-headline-md text-base sm:text-headline-md font-bold text-primary shadow-xs">
                               {initialsOf(job.company || 'SG')}
                             </div>
                           )}
 
-                          <div className="min-w-0">
-                            <h2 className="font-headline-md text-headline-md font-semibold text-on-surface tracking-tight">
+                          <div className="min-w-0 flex-1">
+                            <h2 className="font-headline-md text-base sm:text-headline-md font-semibold text-on-surface tracking-tight truncate">
                               {job.company || 'Company Undisclosed'}
                             </h2>
                             {job.location && (
                               <Link
                                 to={`/jobs?location=${encodeURIComponent(job.location)}`}
-                                className="mt-1 inline-flex items-center gap-1.5 font-body-md text-body-md text-on-surface-variant hover:text-primary hover:underline transition-colors cursor-pointer"
+                                className="mt-0.5 sm:mt-1 inline-flex items-center gap-1.5 font-body-md text-xs sm:text-body-md text-on-surface-variant hover:text-primary hover:underline transition-colors cursor-pointer"
                                 title={`Browse all jobs in ${job.location}`}
                               >
-                                <span className="material-symbols-outlined text-[18px] text-on-surface-variant">
+                                <span className="material-symbols-outlined text-[16px] sm:text-[18px] text-on-surface-variant">
                                   location_on
                                 </span>
                                 <span className="truncate">{job.location}</span>
@@ -890,18 +918,18 @@ export default function JobDetailPage() {
                         </div>
 
                         {/* Job Title */}
-                        <h1 className="font-headline-lg text-headline-lg font-bold tracking-tight text-on-surface leading-snug break-words">
+                        <h1 className="font-headline-lg text-xl sm:text-headline-lg font-bold tracking-tight text-on-surface leading-snug break-words">
                           {job.title}
                         </h1>
 
                         {/* Meta Chips with Clickable Taxonomy */}
-                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pt-0.5 sm:pt-1">
                           <Link
                             to={`/jobs?type=${encodeURIComponent(job.jobType)}`}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container px-3 py-1 font-label-sm text-label-sm text-on-surface hover:bg-primary/10 hover:text-primary transition-all cursor-pointer"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container px-2.5 sm:px-3 py-1 font-label-sm text-xs sm:text-label-sm text-on-surface hover:bg-primary/10 hover:text-primary transition-all cursor-pointer"
                             title={`Browse all ${jobTypeLabel(job)} jobs`}
                           >
-                            <span className="material-symbols-outlined text-[16px] text-on-surface-variant">
+                            <span className="material-symbols-outlined text-[14px] sm:text-[16px] text-on-surface-variant">
                               schedule
                             </span>
                             {jobTypeLabel(job)}
@@ -909,10 +937,10 @@ export default function JobDetailPage() {
 
                           <Link
                             to={`/jobs?workMode=${encodeURIComponent(job.workMode)}`}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container px-3 py-1 font-label-sm text-label-sm text-on-surface hover:bg-primary/10 hover:text-primary transition-all cursor-pointer"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container px-2.5 sm:px-3 py-1 font-label-sm text-xs sm:text-label-sm text-on-surface hover:bg-primary/10 hover:text-primary transition-all cursor-pointer"
                             title={`Browse all ${workModeLabel(job.workMode)} jobs`}
                           >
-                            <span className="material-symbols-outlined text-[16px] text-on-surface-variant">
+                            <span className="material-symbols-outlined text-[14px] sm:text-[16px] text-on-surface-variant">
                               home_work
                             </span>
                             {workModeLabel(job.workMode)}
@@ -921,20 +949,20 @@ export default function JobDetailPage() {
                           {closesLabel(job.deadline) && (
                             <span
                               className={cn(
-                                'inline-flex items-center gap-1.5 rounded-lg px-3 py-1 font-label-sm text-label-sm font-semibold',
+                                'inline-flex items-center gap-1.5 rounded-lg px-2.5 sm:px-3 py-1 font-label-sm text-xs sm:text-label-sm font-semibold',
                                 new Date(job.deadline!).getTime() - Date.now() <= 7 * DAY_MS
                                   ? 'bg-error-container/80 text-on-error-container'
                                   : 'bg-primary-container/60 text-primary',
                               )}
                             >
-                              <span className="material-symbols-outlined text-[16px]">alarm</span>
+                              <span className="material-symbols-outlined text-[14px] sm:text-[16px]">alarm</span>
                               {closesLabel(job.deadline)}
                             </span>
                           )}
 
                           {job.sourceName && job.sourceName.toLowerCase() !== 'serago' && (
-                            <span className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container-low px-3 py-1 font-label-sm text-label-sm text-on-surface-variant">
-                              <span className="material-symbols-outlined text-[16px] text-primary">language</span>
+                            <span className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container-low px-2.5 sm:px-3 py-1 font-label-sm text-xs sm:text-label-sm text-on-surface-variant">
+                              <span className="material-symbols-outlined text-[14px] sm:text-[16px] text-primary">language</span>
                               Aggregated vacancy
                             </span>
                           )}
@@ -942,16 +970,16 @@ export default function JobDetailPage() {
                       </div>
 
                       {/* Right Column: Action Buttons (Apply CTA, Save Job, Share) */}
-                      <div className="flex flex-wrap items-center xl:items-start xl:justify-end gap-3 shrink-0 pt-2 xl:pt-1">
+                      <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center xl:items-start xl:justify-end gap-2.5 sm:gap-3 w-full xl:w-auto pt-2 xl:pt-0">
                         {/* Apply CTA Button */}
                         {isPreview ? (
-                          <span className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-outline-variant px-6 py-3 font-label-md text-label-md text-on-surface-variant">
+                          <span className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-outline-variant px-5 sm:px-6 py-3 font-label-md text-label-md text-on-surface-variant w-full sm:w-auto">
                             <span className="material-symbols-outlined text-lg">visibility</span>
                             Read-only preview
                           </span>
                         ) : isSerago ? (
                           hasApplied || applySuccess ? (
-                            <span className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary-container/30 px-7 py-3.5 font-label-md text-label-md font-semibold text-primary">
+                            <span className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary-container/30 px-6 sm:px-7 py-3 sm:py-3.5 font-label-md text-label-md font-semibold text-primary w-full sm:w-auto">
                               <span className="material-symbols-outlined text-[20px]">check_circle</span>
                               Application Submitted
                             </span>
@@ -966,7 +994,7 @@ export default function JobDetailPage() {
                                 handleApplyClick('header_serago_modal')
                                 setShowApplyForm(true)
                               }}
-                              className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-8 py-3.5 font-label-md text-label-md font-semibold text-on-accent shadow-sm transition-all hover:opacity-90 active:scale-95 cursor-pointer"
+                              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-6 sm:px-8 py-3 sm:py-3.5 font-label-md text-label-md font-semibold text-on-accent shadow-sm transition-all hover:opacity-90 active:scale-95 cursor-pointer"
                             >
                               <span>Apply on SeraGo</span>
                               <span className="material-symbols-outlined text-[18px]">north_east</span>
@@ -978,77 +1006,80 @@ export default function JobDetailPage() {
                             target="_blank"
                             rel="noreferrer"
                             onClick={() => handleApplyClick('header_external_link')}
-                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-8 py-3.5 font-label-md text-label-md font-semibold text-on-accent shadow-sm transition-all hover:opacity-90 active:scale-95 cursor-pointer"
+                            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-6 sm:px-8 py-3 sm:py-3.5 font-label-md text-label-md font-semibold text-on-accent shadow-sm transition-all hover:opacity-90 active:scale-95 cursor-pointer"
                           >
                             <span>Apply on {job.sourceName || 'Source'}</span>
                             <span className="material-symbols-outlined text-[18px]">open_in_new</span>
                           </a>
                         ) : (
-                          <span className="inline-flex cursor-not-allowed items-center justify-center gap-1.5 rounded-lg border border-outline-variant px-6 py-3 font-label-md text-label-md text-on-surface-variant/60">
+                          <span className="w-full sm:w-auto inline-flex cursor-not-allowed items-center justify-center gap-1.5 rounded-lg border border-outline-variant px-6 py-3 font-label-md text-label-md text-on-surface-variant/60">
                             Apply
                           </span>
                         )}
 
-                        {/* Save Button */}
-                        {!isPreview && (
+                        {/* Secondary Actions: Save + Share row */}
+                        <div className="flex items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
+                          {/* Save Button */}
+                          {!isPreview && (
+                            <button
+                              type="button"
+                              onClick={handleToggleSave}
+                              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-lg border border-surface-variant bg-surface-container-low px-4 sm:px-5 py-3 sm:py-3.5 font-label-md text-label-md font-semibold text-on-surface transition-colors hover:bg-surface-container cursor-pointer"
+                            >
+                              <span
+                                className={cn(
+                                  'material-symbols-outlined text-[20px]',
+                                  savedIds.has(job.id) ? 'text-accent' : 'text-on-surface-variant',
+                                )}
+                                style={{ fontVariationSettings: savedIds.has(job.id) ? "'FILL' 1" : "'FILL' 0" }}
+                              >
+                                {savedIds.has(job.id) ? 'bookmark' : 'bookmark_border'}
+                              </span>
+                              <span>{savedIds.has(job.id) ? 'Saved' : 'Save Job'}</span>
+                            </button>
+                          )}
+
+                          {/* Share Button */}
                           <button
                             type="button"
-                            onClick={handleToggleSave}
-                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-surface-variant bg-surface-container-low px-5 py-3.5 font-label-md text-label-md font-semibold text-on-surface transition-colors hover:bg-surface-container cursor-pointer"
+                            onClick={copyRoleShareLink}
+                            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-lg border border-surface-variant bg-surface-container-low px-4 sm:px-5 py-3 sm:py-3.5 font-label-md text-label-md font-semibold text-on-surface transition-colors hover:bg-surface-container cursor-pointer"
                           >
-                            <span
-                              className={cn(
-                                'material-symbols-outlined text-[20px]',
-                                savedIds.has(job.id) ? 'text-accent' : 'text-on-surface-variant',
-                              )}
-                              style={{ fontVariationSettings: savedIds.has(job.id) ? "'FILL' 1" : "'FILL' 0" }}
-                            >
-                              {savedIds.has(job.id) ? 'bookmark' : 'bookmark_border'}
-                            </span>
-                            <span>{savedIds.has(job.id) ? 'Saved' : 'Save Job'}</span>
+                            <span className="material-symbols-outlined text-[20px] text-on-surface-variant">share</span>
+                            <span>Share</span>
                           </button>
-                        )}
-
-                        {/* Share Button */}
-                        <button
-                          type="button"
-                          onClick={copyRoleShareLink}
-                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-surface-variant bg-surface-container-low px-5 py-3.5 font-label-md text-label-md font-semibold text-on-surface transition-colors hover:bg-surface-container cursor-pointer"
-                        >
-                          <span className="material-symbols-outlined text-[20px] text-on-surface-variant">share</span>
-                          <span>Share</span>
-                        </button>
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* 2. Quick Facts Ribbon (Horizontal 5-Column Grid) */}
-                  <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm">
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 lg:gap-6 divide-y md:divide-y-0 md:divide-x divide-surface-variant/50">
+                  {/* 2. Quick Facts Ribbon (5-Column Grid, Clean Tiles on Mobile) */}
+                  <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-4 sm:p-6 shadow-sm">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 sm:gap-4 lg:gap-6 md:divide-x md:divide-surface-variant/50">
                       {/* Col 1: Compensation */}
-                      <div className="flex flex-col gap-1 p-2 min-w-0">
-                        <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant">
-                          <span className="material-symbols-outlined text-[18px] text-primary">payments</span>
+                      <div className="flex flex-col gap-1 p-3 sm:p-2 rounded-xl bg-surface-container-low/50 sm:bg-transparent sm:rounded-none min-w-0">
+                        <div className="flex items-center gap-1.5 font-label-sm text-xs sm:text-label-sm text-on-surface-variant">
+                          <span className="material-symbols-outlined text-[16px] sm:text-[18px] text-primary">payments</span>
                           <span>Compensation</span>
                         </div>
-                        <div className="font-headline-md text-body-lg font-bold text-on-surface tracking-tight truncate">
+                        <div className="font-headline-md text-sm sm:text-body-lg font-bold text-on-surface tracking-tight truncate">
                           {salaryInfo.main}
                         </div>
-                        <div className="font-label-sm text-label-sm text-on-surface-variant/70 truncate">
+                        <div className="font-label-sm text-xs sm:text-label-sm text-on-surface-variant/70 truncate">
                           {salaryInfo.sub}
                         </div>
                       </div>
 
                       {/* Col 2: Experience */}
-                      <div className="flex flex-col gap-1 p-2 md:pl-6 min-w-0">
-                        <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant">
-                          <span className="material-symbols-outlined text-[18px] text-primary">psychology</span>
+                      <div className="flex flex-col gap-1 p-3 sm:p-2 rounded-xl bg-surface-container-low/50 sm:bg-transparent sm:rounded-none md:pl-6 min-w-0">
+                        <div className="flex items-center gap-1.5 font-label-sm text-xs sm:text-label-sm text-on-surface-variant">
+                          <span className="material-symbols-outlined text-[16px] sm:text-[18px] text-primary">psychology</span>
                           <span>Experience</span>
                         </div>
-                        <div className="font-headline-md text-body-lg font-bold text-on-surface truncate">
+                        <div className="font-headline-md text-sm sm:text-body-lg font-bold text-on-surface truncate">
                           {job.experienceLevel || job.experienceText || 'Not specified'}
                         </div>
-                        <div className="font-label-sm text-label-sm text-on-surface-variant/70 truncate">
+                        <div className="font-label-sm text-xs sm:text-label-sm text-on-surface-variant/70 truncate">
                           {job.maxExperienceYears ? `Up to ${job.maxExperienceYears} years` : 'Required level'}
                         </div>
                       </div>
@@ -1056,53 +1087,53 @@ export default function JobDetailPage() {
                       {/* Col 3: Sector */}
                       <Link
                         to={job.sectorId ? `/jobs?sectorId=${encodeURIComponent(job.sectorId)}` : `/jobs?sector=${encodeURIComponent(job.sectorName || 'General')}`}
-                        className="group/fact flex flex-col gap-1 p-2 md:pl-6 min-w-0 rounded-xl transition-colors hover:bg-surface-container-low/60 cursor-pointer"
+                        className="group/fact flex flex-col gap-1 p-3 sm:p-2 rounded-xl bg-surface-container-low/50 sm:bg-transparent sm:rounded-none md:pl-6 min-w-0 transition-colors hover:bg-surface-container-low/70 cursor-pointer"
                         title={`Browse all jobs in ${job.sectorName || 'this sector'}`}
                       >
-                        <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant">
-                          <span className="material-symbols-outlined text-[18px] text-primary">hub</span>
+                        <div className="flex items-center gap-1.5 font-label-sm text-xs sm:text-label-sm text-on-surface-variant">
+                          <span className="material-symbols-outlined text-[16px] sm:text-[18px] text-primary">hub</span>
                           <span>Sector</span>
                         </div>
-                        <div className="font-headline-md text-body-lg font-bold text-on-surface truncate group-hover/fact:text-primary group-hover/fact:underline transition-colors" title={job.sectorName || 'General'}>
+                        <div className="font-headline-md text-sm sm:text-body-lg font-bold text-on-surface truncate group-hover/fact:text-primary group-hover/fact:underline transition-colors" title={job.sectorName || 'General'}>
                           {job.sectorName || 'General'}
                         </div>
-                        <div className="font-label-sm text-label-sm text-on-surface-variant/70 truncate">
+                        <div className="font-label-sm text-xs sm:text-label-sm text-on-surface-variant/70 truncate">
                           {job.subSectorName || 'Industry Category'}
                         </div>
                       </Link>
 
                       {/* Col 4: Work Mode */}
-                      <div className="flex flex-col gap-1 p-2 md:pl-6 min-w-0">
-                        <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant">
-                          <span className="material-symbols-outlined text-[18px] text-primary">apartment</span>
+                      <div className="flex flex-col gap-1 p-3 sm:p-2 rounded-xl bg-surface-container-low/50 sm:bg-transparent sm:rounded-none md:pl-6 min-w-0">
+                        <div className="flex items-center gap-1.5 font-label-sm text-xs sm:text-label-sm text-on-surface-variant">
+                          <span className="material-symbols-outlined text-[16px] sm:text-[18px] text-primary">apartment</span>
                           <span>Work Mode</span>
                         </div>
                         <Link
                           to={`/jobs?workMode=${encodeURIComponent(job.workMode)}`}
-                          className="font-headline-md text-body-lg font-bold text-on-surface truncate hover:text-primary hover:underline transition-colors cursor-pointer"
+                          className="font-headline-md text-sm sm:text-body-lg font-bold text-on-surface truncate hover:text-primary hover:underline transition-colors cursor-pointer"
                           title={`Browse ${workModeLabel(job.workMode)} jobs`}
                         >
                           {workModeLabel(job.workMode)}
                         </Link>
                         <Link
                           to={`/jobs?location=${encodeURIComponent(job.location || 'Ethiopia')}`}
-                          className="font-label-sm text-label-sm text-on-surface-variant/70 truncate hover:text-primary hover:underline transition-colors cursor-pointer"
+                          className="font-label-sm text-xs sm:text-label-sm text-on-surface-variant/70 truncate hover:text-primary hover:underline transition-colors cursor-pointer"
                           title={`Browse jobs in ${job.location || 'Ethiopia'}`}
                         >
                           {job.location || 'Ethiopia'}
                         </Link>
                       </div>
 
-                      {/* Col 5: Deadline */}
-                      <div className="flex flex-col gap-1 p-2 md:pl-6 min-w-0">
-                        <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-accent">
-                          <span className="material-symbols-outlined text-[18px] text-accent">event_upcoming</span>
+                      {/* Col 5: Deadline (Spans 2 cols on mobile, 1 on sm+) */}
+                      <div className="col-span-2 sm:col-span-1 flex flex-col gap-1 p-3 sm:p-2 rounded-xl bg-surface-container-low/50 sm:bg-transparent sm:rounded-none md:pl-6 min-w-0">
+                        <div className="flex items-center gap-1.5 font-label-sm text-xs sm:text-label-sm text-accent">
+                          <span className="material-symbols-outlined text-[16px] sm:text-[18px] text-accent">event_upcoming</span>
                           <span>Application Due</span>
                         </div>
-                        <div className="font-headline-md text-body-lg font-bold text-on-surface truncate">
+                        <div className="font-headline-md text-sm sm:text-body-lg font-bold text-on-surface truncate">
                           {job.deadline ? formatDate(job.deadline) : (job.deadlineText || 'Open')}
                         </div>
-                        <div className="font-label-sm text-label-sm font-medium text-accent truncate">
+                        <div className="font-label-sm text-xs sm:text-label-sm font-medium text-accent truncate">
                           {closesLabel(job.deadline) || 'Actively hiring'}
                         </div>
                       </div>
@@ -1111,7 +1142,7 @@ export default function JobDetailPage() {
 
 
                   {/* 3. Universal Description Content Card */}
-                  <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm sm:p-8">
+                  <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-4 sm:p-6 md:p-8 shadow-sm">
                     <div className="flex items-center gap-2 pb-5 border-b border-surface-variant/50">
                       <div className="h-6 w-1.5 rounded-full bg-primary" />
                       <h2 className="font-headline-md text-headline-md font-bold text-on-surface">
@@ -1125,7 +1156,7 @@ export default function JobDetailPage() {
 
                   {/* 4. How to Apply Instructions (when present) */}
                   {applySections.length > 0 && (
-                    <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm sm:p-8 space-y-5">
+                    <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-4 sm:p-6 md:p-8 shadow-sm space-y-5">
                       <div className="flex items-center gap-2">
                         <div className="h-6 w-1.5 rounded-full bg-primary" />
                         <h2 className="font-headline-md text-headline-md font-bold text-on-surface">
@@ -1144,7 +1175,7 @@ export default function JobDetailPage() {
                             target="_blank"
                             rel="noreferrer"
                             onClick={() => handleApplyClick('bottom_instructions_cta')}
-                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-8 py-3.5 font-label-md text-label-md font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 cursor-pointer"
+                            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-6 sm:px-8 py-3.5 font-label-md text-label-md font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 cursor-pointer"
                           >
                             <span>Apply now</span>
                             <span className="material-symbols-outlined text-[18px]">open_in_new</span>
@@ -1157,7 +1188,7 @@ export default function JobDetailPage() {
 
                 {/* ================= RIGHT RAIL (Similar Jobs: wider & bigger) ================= */}
                 <aside id="similar-jobs" ref={similarJobsRef} className="w-full shrink-0 flex flex-col gap-4 lg:w-[380px] xl:w-[420px] 2xl:w-[450px] lg:sticky lg:top-20">
-                  <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-5 sm:p-6 shadow-sm">
+                  <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-4 sm:p-5 md:p-6 shadow-sm">
                     <div className="flex items-center pb-4">
                       <h2 className="font-headline-md text-headline-md font-bold text-on-surface">Similar Jobs</h2>
                     </div>
@@ -1432,7 +1463,7 @@ export default function JobDetailPage() {
             </div>
 
             {/* ================= STICKY MOBILE BOTTOM ACTION BAR ================= */}
-            <div className="fixed bottom-0 left-0 right-0 z-40 lg:hidden border-t border-surface-variant bg-surface-container-lowest/95 backdrop-blur-md px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+            <div className="fixed bottom-0 left-0 right-0 z-40 lg:hidden border-t border-surface-variant bg-surface-container-lowest/95 backdrop-blur-md px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
               <div className="mx-auto flex max-w-lg items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-label-sm text-label-sm text-on-surface-variant">{job.title}</div>
@@ -1514,7 +1545,7 @@ export default function JobDetailPage() {
           />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div
-              className="w-full max-w-2xl rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-xl"
+              className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-surface-variant bg-surface-container-lowest p-4 sm:p-6 shadow-xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between">
