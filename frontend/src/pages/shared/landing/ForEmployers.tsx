@@ -222,9 +222,11 @@ export default function ForEmployers() {
             >
               More than search
               <br />
-              <span className="text-accent">Let opportunities</span> find
+              <span className="text-accent">Let opportunities</span>
               <br />
-              their way to you
+              find their way
+              <br />
+              to you
             </h2>
             <p className="max-w-lg font-body-lg text-body-lg text-on-surface-variant">
               Every job site in Ethiopia brought directly to your fingertips —
