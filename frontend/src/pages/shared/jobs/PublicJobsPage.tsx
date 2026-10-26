@@ -117,19 +117,19 @@ export default function PublicJobsPage() {
   const selectedSectorName = sectors.find((s) => s.id === sectorId)?.name
 
   return (
-    <div className="min-h-screen bg-surface">
+    <div className="ui-scale min-h-screen bg-surface">
       {/* Hero Header */}
-      <div className="border-b border-surface-variant/40 bg-surface-container-lowest py-10 md:py-14">
-        <div className="mx-auto w-full max-w-6xl px-margin-mobile md:px-margin-desktop">
+      <div className="border-b border-surface-variant/40 bg-surface-container-lowest py-8 md:py-10">
+        <div className="mx-auto w-full max-w-[1680px] px-margin-mobile md:px-8 lg:px-10">
           <div className="flex flex-col gap-3">
             <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 font-label-sm text-label-sm font-semibold text-primary">
               <span className="material-symbols-outlined text-[16px]">travel_explore</span>
               Live Opportunities
             </span>
-            <h1 className="font-display-lg-mobile text-display-lg-mobile text-on-surface md:font-display-lg md:text-display-lg">
-              Explore All <span className="text-primary">Verified Jobs</span>
+            <h1 className="font-headline-lg text-headline-lg font-bold tracking-tight text-primary">
+              Explore All <span className="text-surface-tint">Verified Jobs</span>
             </h1>
-            <p className="max-w-2xl font-body-lg text-body-lg text-secondary">
+            <p className="max-w-2xl font-body-md text-body-md text-on-surface-variant">
               Browse current vacancies aggregated and verified across Ethiopia&apos;s leading job boards. Search by role, filter by sector, and find your next career step.
             </p>
           </div>
@@ -137,7 +137,7 @@ export default function PublicJobsPage() {
       </div>
 
       {/* Main Content Area */}
-      <main className="mx-auto w-full max-w-6xl px-margin-mobile py-8 md:px-margin-desktop md:py-10">
+      <main className="mx-auto w-full max-w-[1680px] px-margin-mobile py-6 md:px-8 lg:px-10">
         {/* Minimal Filters Bar: Search + Sector + Location + Sort */}
         <div className="flex flex-col gap-3 rounded-2xl border border-surface-variant bg-surface-container-lowest p-4 shadow-sm md:flex-row md:items-center">
           {/* Search Input */}
@@ -306,7 +306,7 @@ export default function PublicJobsPage() {
 
         {/* Jobs Feed Grid */}
         {jobsLoading ? (
-          <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
+          <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <div
                 key={i}
@@ -350,7 +350,7 @@ export default function PublicJobsPage() {
             )}
           </div>
         ) : (
-          <div className="mt-6 grid grid-cols-1 gap-5 xl:grid-cols-2">
+          <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
             {jobs.map((job) => (
               <JobCard
                 key={job.id}

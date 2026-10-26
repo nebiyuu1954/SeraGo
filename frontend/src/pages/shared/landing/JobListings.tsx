@@ -59,11 +59,11 @@ export default function JobListings() {
 
 
   return (
-    <section className="bg-surface">
-      <div className="mx-auto w-full max-w-container-max px-margin-mobile py-12 md:px-margin-desktop md:py-16">
+    <section className="ui-scale bg-surface">
+      <div className="mx-auto w-full max-w-[1680px] px-margin-mobile py-10 md:px-8 lg:px-10 md:py-14">
         {/* Section header */}
-        <div className="mb-12">
-          <h2 className="mb-4 font-display-lg-mobile text-display-lg-mobile text-on-surface md:font-display-lg md:text-display-lg">
+        <div className="mb-8">
+          <h2 className="mb-3 font-display-lg-mobile text-display-lg-mobile text-on-surface md:font-display-lg md:text-display-lg">
             Discover Your <span className="text-primary">Next Role</span>
           </h2>
           <p className="max-w-2xl font-body-lg text-body-lg text-secondary">
