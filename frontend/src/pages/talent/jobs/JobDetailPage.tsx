@@ -385,8 +385,8 @@ function JobDetailShell({
 }) {
   if (isPublicView) {
     return (
-      <div className="mx-auto w-full max-w-container-max px-margin-mobile py-8 md:px-margin-desktop md:py-10">
-        <div className="mb-6">
+      <div className="ui-scale w-full max-w-[1680px] mx-auto px-4 sm:px-6 md:px-8 lg:px-10 py-6">
+        <div className="mb-4">
           <Link
             to="/jobs"
             className="inline-flex items-center gap-1.5 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
@@ -853,7 +853,7 @@ export default function JobDetailPage() {
                     {/* Subtle Gradient Top Accent Edge */}
                     <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-primary via-primary-container to-accent" />
 
-                    <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+                    <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6">
                       {/* Left Column: Avatar + Company Name + Title + Meta Chips */}
                       <div className="flex-1 min-w-0 space-y-4">
                         <div className="flex items-center gap-3.5">
@@ -892,7 +892,7 @@ export default function JobDetailPage() {
                         </div>
 
                         {/* Job Title */}
-                        <h1 className="font-headline-lg text-headline-lg font-bold tracking-tight text-on-surface leading-snug">
+                        <h1 className="font-headline-lg text-headline-lg font-bold tracking-tight text-on-surface leading-snug break-words">
                           {job.title}
                         </h1>
 
@@ -944,7 +944,7 @@ export default function JobDetailPage() {
                       </div>
 
                       {/* Right Column: Action Buttons (Apply CTA, Save Job, Share) */}
-                      <div className="flex flex-wrap sm:flex-nowrap lg:flex-wrap items-center lg:items-start lg:justify-end gap-3 shrink-0 pt-2 lg:pt-1">
+                      <div className="flex flex-wrap items-center xl:items-start xl:justify-end gap-3 shrink-0 pt-2 xl:pt-1">
                         {/* Apply CTA Button */}
                         {isPreview ? (
                           <span className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-outline-variant px-6 py-3 font-label-md text-label-md text-on-surface-variant">
@@ -1028,29 +1028,29 @@ export default function JobDetailPage() {
                   <div className="rounded-2xl border border-surface-variant bg-surface-container-lowest p-6 shadow-sm">
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-4 lg:gap-6 divide-y md:divide-y-0 md:divide-x divide-surface-variant/50">
                       {/* Col 1: Compensation */}
-                      <div className="flex flex-col gap-1 p-2">
+                      <div className="flex flex-col gap-1 p-2 min-w-0">
                         <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant">
                           <span className="material-symbols-outlined text-[18px] text-primary">payments</span>
                           <span>Compensation</span>
                         </div>
-                        <div className="font-headline-md text-body-lg font-bold text-on-surface tracking-tight">
+                        <div className="font-headline-md text-body-lg font-bold text-on-surface tracking-tight truncate">
                           {salaryInfo.main}
                         </div>
-                        <div className="font-label-sm text-label-sm text-on-surface-variant/70">
+                        <div className="font-label-sm text-label-sm text-on-surface-variant/70 truncate">
                           {salaryInfo.sub}
                         </div>
                       </div>
 
                       {/* Col 2: Experience */}
-                      <div className="flex flex-col gap-1 p-2 md:pl-6">
+                      <div className="flex flex-col gap-1 p-2 md:pl-6 min-w-0">
                         <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant">
                           <span className="material-symbols-outlined text-[18px] text-primary">psychology</span>
                           <span>Experience</span>
                         </div>
-                        <div className="font-headline-md text-body-lg font-bold text-on-surface">
+                        <div className="font-headline-md text-body-lg font-bold text-on-surface truncate">
                           {job.experienceLevel || job.experienceText || 'Not specified'}
                         </div>
-                        <div className="font-label-sm text-label-sm text-on-surface-variant/70">
+                        <div className="font-label-sm text-label-sm text-on-surface-variant/70 truncate">
                           {job.maxExperienceYears ? `Up to ${job.maxExperienceYears} years` : 'Required level'}
                         </div>
                       </div>
@@ -1058,7 +1058,7 @@ export default function JobDetailPage() {
                       {/* Col 3: Sector */}
                       <Link
                         to={job.sectorId ? `/jobs?sectorId=${encodeURIComponent(job.sectorId)}` : `/jobs?sector=${encodeURIComponent(job.sectorName || 'General')}`}
-                        className="group/fact flex flex-col gap-1 p-2 md:pl-6 rounded-xl transition-colors hover:bg-surface-container-low/60 cursor-pointer"
+                        className="group/fact flex flex-col gap-1 p-2 md:pl-6 min-w-0 rounded-xl transition-colors hover:bg-surface-container-low/60 cursor-pointer"
                         title={`Browse all jobs in ${job.sectorName || 'this sector'}`}
                       >
                         <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant">
@@ -1074,14 +1074,14 @@ export default function JobDetailPage() {
                       </Link>
 
                       {/* Col 4: Work Mode */}
-                      <div className="flex flex-col gap-1 p-2 md:pl-6">
+                      <div className="flex flex-col gap-1 p-2 md:pl-6 min-w-0">
                         <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant">
                           <span className="material-symbols-outlined text-[18px] text-primary">apartment</span>
                           <span>Work Mode</span>
                         </div>
                         <Link
                           to={`/jobs?workMode=${encodeURIComponent(job.workMode)}`}
-                          className="font-headline-md text-body-lg font-bold text-on-surface hover:text-primary hover:underline transition-colors cursor-pointer"
+                          className="font-headline-md text-body-lg font-bold text-on-surface truncate hover:text-primary hover:underline transition-colors cursor-pointer"
                           title={`Browse ${workModeLabel(job.workMode)} jobs`}
                         >
                           {workModeLabel(job.workMode)}
@@ -1096,15 +1096,15 @@ export default function JobDetailPage() {
                       </div>
 
                       {/* Col 5: Deadline */}
-                      <div className="flex flex-col gap-1 p-2 md:pl-6">
+                      <div className="flex flex-col gap-1 p-2 md:pl-6 min-w-0">
                         <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-accent">
                           <span className="material-symbols-outlined text-[18px] text-accent">event_upcoming</span>
                           <span>Application Due</span>
                         </div>
-                        <div className="font-headline-md text-body-lg font-bold text-on-surface">
+                        <div className="font-headline-md text-body-lg font-bold text-on-surface truncate">
                           {job.deadline ? formatDate(job.deadline) : (job.deadlineText || 'Open')}
                         </div>
-                        <div className="font-label-sm text-label-sm font-medium text-accent">
+                        <div className="font-label-sm text-label-sm font-medium text-accent truncate">
                           {closesLabel(job.deadline) || 'Actively hiring'}
                         </div>
                       </div>
