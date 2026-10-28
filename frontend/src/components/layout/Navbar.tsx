@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Button } from '../ui/Button.tsx'
 import { getStoredAuthTokens } from '../../api'
@@ -60,111 +60,177 @@ export default function Navbar() {
 
 function PublicNavbar() {
   const [open, setOpen] = useState(false)
+  const [isVisible, setIsVisible] = useState(true)
+  const lastScrollY = useRef(0)
+
   // Checked at render time. Signing in/out happens on standalone auth pages
   // or via the dashboard sign-out, both of which unmount the Layout (and
   // thus this header) before navigating.
   const signedIn = getStoredAuthTokens() !== null
 
+  useEffect(() => {
+    let ticking = false
+
+    const handleScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const currentScrollY = window.scrollY
+          const prevScrollY = lastScrollY.current
+
+          // Always visible near top of page
+          if (currentScrollY <= 20) {
+            setIsVisible(true)
+          } else if (Math.abs(currentScrollY - prevScrollY) > 8) {
+            // Scroll down -> hide, scroll up -> show
+            if (currentScrollY > prevScrollY && currentScrollY > 70) {
+              setIsVisible(false)
+            } else if (currentScrollY < prevScrollY) {
+              setIsVisible(true)
+            }
+          }
+
+          lastScrollY.current = currentScrollY
+          ticking = false
+        })
+        ticking = true
+      }
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  // When mobile drawer is open, keep header visible
+  const shouldShow = isVisible || open
+
   return (
-    <header className="sticky top-0 z-50 w-full bg-surface-container-lowest">
-      <div className="mx-auto flex h-20 max-w-container-max items-center justify-between px-margin-mobile md:px-margin-desktop">
-        <Link
-          to="/"
-          className="font-headline-md text-headline-md font-bold tracking-tight text-primary"
-          aria-label="SeraGo home"
+    <>
+      {/* Spacer to preserve natural flow spacing for all public pages */}
+      <div className="h-20 w-full shrink-0 pointer-events-none" aria-hidden="true" />
+
+      {/* Floating Centered Island Header */}
+      <header
+        className={`fixed top-3 sm:top-5 left-0 right-0 z-50 flex justify-center px-4 sm:px-6 pointer-events-none transition-all duration-300 ease-in-out ${
+          shouldShow ? 'translate-y-0 opacity-100' : '-translate-y-28 opacity-0'
+        }`}
+      >
+        <div
+          className={`pointer-events-auto flex w-full max-w-5xl flex-col border border-slate-200/80 bg-white/90 px-5 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.07)] backdrop-blur-md transition-all duration-300 sm:px-7 sm:py-3 dark:border-slate-800 dark:bg-slate-900/90 ${
+            open ? 'rounded-3xl' : 'rounded-full'
+          }`}
         >
-          SeraGo
-        </Link>
-
-        {/* Desktop links */}
-        <nav className="hidden gap-8 md:flex">
-          {publicNavLinks.map((link) => (
+          {/* Main header row */}
+          <div className="flex items-center justify-between">
             <Link
-              key={link.to}
-              to={link.to}
-              className="font-body-md text-body-md text-secondary transition-colors duration-200 hover:text-primary"
+              to="/"
+              className="font-headline-md text-headline-md font-extrabold tracking-tight"
+              aria-label="SeraGo home"
             >
-              {link.label}
+              <span className="text-[#1A73E8]">Sera</span>
+              <span className="text-[#FF6600]">Go</span>
             </Link>
-          ))}
-        </nav>
 
-        <div className="hidden items-center gap-3 md:flex">
-          {signedIn ? (
-            <Button to="/dashboard" variant="primary">
-              Dashboard
-            </Button>
-          ) : (
-            <>
-              <Button to="/login" variant="secondary">
-                Log in
-              </Button>
-              <Button to="/signup" variant="primary">
-                Sign up
-              </Button>
-            </>
+            {/* Desktop links */}
+            <nav className="hidden items-center gap-8 md:flex">
+              {publicNavLinks.map((link) => (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  className="font-body-md text-body-md font-medium text-slate-600 transition-colors duration-200 hover:text-primary"
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+
+            <div className="hidden items-center gap-2.5 md:flex">
+              {signedIn ? (
+                <Button to="/dashboard" variant="primary" className="rounded-full px-5 py-2">
+                  Dashboard
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    to="/login"
+                    variant="ghost"
+                    className="rounded-full px-4 py-2 font-medium text-slate-700 hover:text-primary hover:bg-slate-100"
+                  >
+                    Log in
+                  </Button>
+                  <Button
+                    to="/signup"
+                    variant="primary"
+                    className="rounded-full px-5 py-2 font-semibold shadow-sm"
+                  >
+                    Sign up
+                  </Button>
+                </>
+              )}
+            </div>
+
+            {/* Mobile toggle */}
+            <button
+              type="button"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100 transition-colors md:hidden"
+              onClick={() => setOpen((o) => !o)}
+              aria-expanded={open}
+              aria-label="Toggle navigation menu"
+            >
+              <span className="material-symbols-outlined text-[24px]">
+                {open ? 'close' : 'menu'}
+              </span>
+            </button>
+          </div>
+
+          {/* Mobile menu inside curved container */}
+          {open && (
+            <div className="mt-4 flex flex-col gap-2 border-t border-slate-100 pt-3 md:hidden">
+              {publicNavLinks.map((link) => (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  onClick={() => setOpen(false)}
+                  className="rounded-xl px-3 py-2 font-body-md text-body-md text-secondary transition-colors hover:bg-slate-50 hover:text-primary"
+                >
+                  {link.label}
+                </Link>
+              ))}
+              <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-3">
+                {signedIn ? (
+                  <Button
+                    to="/dashboard"
+                    variant="primary"
+                    className="w-full rounded-full"
+                    onClick={() => setOpen(false)}
+                  >
+                    Dashboard
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      to="/login"
+                      variant="secondary"
+                      className="w-full rounded-full"
+                      onClick={() => setOpen(false)}
+                    >
+                      Log in
+                    </Button>
+                    <Button
+                      to="/signup"
+                      variant="primary"
+                      className="w-full rounded-full"
+                      onClick={() => setOpen(false)}
+                    >
+                      Sign up
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
           )}
         </div>
-
-        {/* Mobile toggle */}
-        <button
-          type="button"
-          className="text-primary md:hidden"
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
-          aria-label="Toggle navigation menu"
-        >
-          <span className="material-symbols-outlined">
-            {open ? 'close' : 'menu'}
-          </span>
-        </button>
-      </div>
-
-      {/* Mobile menu */}
-      {open && (
-        <div className="border-t border-outline-variant px-margin-mobile pb-4 pt-2 md:hidden">
-          {publicNavLinks.map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              onClick={() => setOpen(false)}
-              className="block rounded-lg px-3 py-2.5 font-body-md text-body-md text-secondary transition-colors hover:text-primary"
-            >
-              {link.label}
-            </Link>
-          ))}
-          {signedIn ? (
-            <Button
-              to="/dashboard"
-              variant="primary"
-              className="mt-2 w-full"
-              onClick={() => setOpen(false)}
-            >
-              Dashboard
-            </Button>
-          ) : (
-            <>
-              <Button
-                to="/login"
-                variant="secondary"
-                className="mt-2 w-full"
-                onClick={() => setOpen(false)}
-              >
-                Log in
-              </Button>
-              <Button
-                to="/signup"
-                variant="primary"
-                className="mt-2 w-full"
-                onClick={() => setOpen(false)}
-              >
-                Sign up
-              </Button>
-            </>
-          )}
-        </div>
-      )}
-    </header>
+      </header>
+    </>
   )
 }
 
@@ -173,20 +239,24 @@ function PublicNavbar() {
 /** Slim header shown while whoami resolves (avoids layout jumping). */
 function LoadingNavbar() {
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-surface-variant bg-surface-container-lowest">
-      <div className="mx-auto flex h-16 max-w-container-max items-center justify-between px-margin-mobile md:px-margin-desktop">
-        <Link
-          to="/"
-          className="font-headline-md text-headline-md font-bold tracking-tight text-primary"
-        >
-          SeraGo
-        </Link>
-        <span
-          aria-hidden="true"
-          className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary"
-        />
-      </div>
-    </header>
+    <>
+      <div className="h-20 w-full shrink-0 pointer-events-none" aria-hidden="true" />
+      <header className="fixed top-3 sm:top-5 left-0 right-0 z-50 flex justify-center px-4 sm:px-6 pointer-events-none">
+        <div className="pointer-events-auto flex w-full max-w-5xl items-center justify-between rounded-full border border-slate-200/80 bg-white/90 px-5 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.07)] backdrop-blur-md sm:px-7 sm:py-3 dark:border-slate-800 dark:bg-slate-900/90">
+          <Link
+            to="/"
+            className="font-headline-md text-headline-md font-extrabold tracking-tight"
+          >
+            <span className="text-[#1A73E8]">Sera</span>
+            <span className="text-[#FF6600]">Go</span>
+          </Link>
+          <span
+            aria-hidden="true"
+            className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary"
+          />
+        </div>
+      </header>
+    </>
   )
 }
 

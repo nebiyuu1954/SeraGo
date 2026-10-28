@@ -77,26 +77,42 @@ ${canonicalSectors}
 1. Compare each job's Title, Company, Scraper Raw Tag (Before), and Description Snippet against the Assigned Sector (After).
 2. Key classification disambiguation rules:
    - "SDR" / "Sales Development Representative" / "BPO cold calling" / "Telemarketer" / "Account Executive" -> MUST be "Sales & Marketing", NOT "Technology & IT" (even if the company is an IT company).
-   - "Crane Rigger" / "Equipment Operator" / "Welder" / "Mason" / "Carpenter" / "General Labor" -> MUST be "Skilled & General Labor" or "Engineering & Construction", NOT "Technology & IT".
+   - "Crane Rigger" / "Equipment Operator" / "Welder" / "Mason" / "Carpenter" / "General Labor" / "Auto Mechanic" / "Automotive Electrical Technician" / "EV Service Technician" -> MUST be "Skilled & General Labor" or "Engineering & Construction", NOT "Technology & IT".
+   - "Real Estate Project Manager" / "Real Estate Development Manager" -> MUST be "Engineering & Construction", NOT "Sales & Marketing" (oversees physical site construction & contractor delivery, distinct from real estate sales agents).
    - "Accountant" / "Cashier" / "Auditor" / "Finance Officer" / Amharic ("አካውንታንት", "ሲኒየር አካውንታንት", "ሲኒዬር አካውንታንት", "የሂሳብ ባለሙያ", "ካሸር", "ገንዘብ ያዥ") -> MUST ALWAYS be "Accounting & Finance", even if employed by a school, training institute, factory, or hospital!
    - "Graphic Designer" / "UI/UX Designer" / "Motion Graphics" -> MUST be "Design & Creative".
    - "Video Editor" / "Social Media Manager" / "Content Writer" / "Journalist" -> MUST be "Media & Communication".
+   - "Terms of Reference (TOR)" / Consultancy for developing accessible communication, multimedia, or Braille -> MUST be "Media & Communication", NOT "Procurement & Supply Chain".
    - "Civil Engineer" / "Site Supervisor" / "Draftsman" / "Structural Engineer" -> MUST be "Engineering & Construction".
+   - "Tender Officer" / "Bidding Officer" for commercial goods, lab equipment, or trading -> MUST be "Procurement & Supply Chain", NOT "Engineering & Construction".
    - "Software Engineer" / "Backend Developer" / "Data Analyst" / "System Admin" / Telecom & Software Platforms ("OCS Billing Engineer", "Charging System", "RBT Operation", "VAS Specialist", "Core Network Product Engineer") -> MUST be "Technology & IT", NEVER "Engineering & Construction".
    - "Doctor" / "Nurse" / "Pharmacist" / "Health Officer" / "Medical Internist" -> MUST be "Healthcare".
-   - Bank Branch Managers / Credit Officers / Loan Officers -> MUST be "Banking & Insurance", NOT "Business & Administration".
+   - "Lab Technician" in schools, academies, or educational institutions -> MUST be "Education & Training", NOT "Healthcare" (educational science lab, not clinical pathology).
+   - "Safety Health Environment & Quality Manager (SHEQM)" in factories/manufacturing -> MUST be "Manufacturing & Production", NOT "Healthcare" (industrial QA & occupational safety).
+   - "Green Development" in industrial parks/agro-industry -> MUST be "Agriculture & Natural Science", NOT "Engineering & Construction".
+   - Bank Branch Managers / Credit Officers / Loan Officers / Relationship Manager-Credit -> MUST be "Banking & Insurance", NOT "Business & Administration" or "Accounting & Finance".
    - NGO Livelihoods / MEAL / Economic Strengthening -> MUST be "Social Science & Community", NOT "Accounting & Finance".
+   - Retail & Commercial centers: "የሱቅ ሱፐርቫይዘር" (Shop/Retail Supervisor) -> MUST be "Sales & Marketing", NOT "Hospitality & Tourism".
+   - Entertainment & Arcades: "የጌም ዞን" / Game Zone / Mall Entertainment Center -> MUST be "Hospitality & Tourism".
+   - "የገበያ ጥናትና ልማት መምሪያ ሥራ አስኪያጅ" / Market Research & Business Development -> MUST be "Sales & Marketing", regardless of employer (church, school, or NGO).
 
 ### AUDIT TASK:
-1. Identify any jobs that appear MISCLASSIFIED or questionable.
-2. For each misclassified job, specify:
-   - Job # and Title
-   - Current Sector
-   - Recommended Correct Sector (from the canonical list)
-   - Reason why it is misclassified and why the recommended sector is superior.
-3. Calculate the overall classification accuracy percentage for this batch.
-4. Provide any actionable tips for improving the classification prompts or regex/keyword rules.
-5. AT THE VERY END OF YOUR RESPONSE, provide a clean JSON code block for SeraGo's 1-Click Batch Fix Tool containing ALL misclassified jobs formatted as:
+1. **Tier-by-Tier Error Count & Accuracy Breakdown:**
+   - First, count how many jobs were wronged by each classification tier:
+     * **LLM (Tier 1 OpenRouter Nemotron / Tier 2 Groq / Tier 3 Gemini)**
+     * **Vector Semantic Fallback (Tier 5 Cosine Similarity)**
+     * **Direct Tag Match (Scraper Direct Alias Rule)**
+   - Explain what is not accurate for each tier, and calculate the accuracy rate per tier as well as the **overall batch accuracy percentage**.
+2. **Itemized Audit of Misclassifications:**
+   - For each misclassified or questionable job, specify:
+     * Job # and Title
+     * Current Sector
+     * Recommended Correct Sector (from the canonical list)
+     * Reason why it is misclassified and why the recommended sector is superior.
+3. **Prompt & Code Engineering Recommendations:**
+   - Detail the exact code and prompt changes needed in the backend (`UnifiedJobClassificationService.cs` system prompt and classification pipeline) so that today's wrong classifications can be permanently prevented for the overall system.
+4. **1-Click Batch Fix JSON Payload:**
+   - At the very end of your response, provide a clean JSON code block for SeraGo's 1-Click Batch Fix Tool containing ALL misclassified jobs formatted as:
 \`\`\`json
 [
   {
@@ -108,6 +124,8 @@ ${canonicalSectors}
   }
 ]
 \`\`\`
+5. **Follow-Up Consultation:**
+   - Always conclude your audit by proactively asking the user what follow-up prompt/rule refinements or code implementations they would like you to execute next.
 
 ### BATCH OF JOBS CLASSIFIED ON ${selectedDate} (${jobs.length} TOTAL):
 ${formattedJobs}

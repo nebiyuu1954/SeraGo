@@ -290,18 +290,27 @@ public sealed class ClassificationAuditService
         1. Compare the Job's Title, Company, and Description against the Current Assigned Sector.
         2. Pay special attention to common confusion points:
            - "SDR (Sales Development Representative)" / "BPO cold calling" / "Sales rep" / "Sales Consultant" -> MUST be "sales-marketing", NOT "technology-it".
-           - Bank branch operations & branch managers ("Branch Business Manager", "Branch Manager") and credit/loan analysts ("Credit Officer", "Senior Credit Officer") -> MUST be "banking-insurance", NOT "business-administration" or "technology-it".
-           - Technical IT roles ("Core Banking System Admin", "Database Admin", "Cloud Engineer", "IT Officer", "OCS Billing Engineer", "RBT Operation", "VAS Specialist", "Telecom Network") -> MUST be "technology-it", even if employed by a bank, hospital, or telecom operator. Never confuse software/billing/telecom engineering with civil/construction engineering.
+           - "Real Estate Project Manager" / "Real Estate Development and Project Manager" -> MUST be "engineering-construction", NOT "sales-marketing" (physical site construction & contractor delivery, distinct from sales brokers).
+           - Bank branch operations & branch managers ("Branch Business Manager", "Branch Manager") and credit/loan analysts ("Credit Officer", "Senior Credit Officer", "Relationship Manager-Credit") -> MUST be "banking-insurance", NOT "business-administration" or "accounting-finance".
+           - Technical IT roles ("Core Banking System Admin", "Database Admin", "Cloud Engineer", "IT Officer", "OCS Billing Engineer", "RBT Operation", "VAS Specialist", "Telecom Network", "Data Analyst") -> MUST be "technology-it", even if employed by a bank, hospital, or telecom operator. Never confuse software/billing/telecom engineering with civil/construction engineering.
            - Construction firm functional heads ("Monitoring and Reporting", "Project Closing", "Bid Management", "Project Performance Audit") requiring Civil/Structural Engineering degrees -> MUST be "engineering-construction", NOT "accounting-finance".
+           - "Tender Officer" / "Bidding Officer" for commercial products, lab equipment, or trading goods -> MUST be "procurement-supply-chain", NOT "engineering-construction".
            - Humanitarian livelihoods ("Economic Strengthening Specialist", "Livelihoods", "GCR Refugee Advisor", "MEAL / M&E") in NGOs -> MUST be "social-science-community", NOT "accounting-finance" (ignore raw scraper tag "Economics").
            - Health program roles ("NCD Project Coordinator", "RMNCH", "HIV Service Officer") and medical clinicians ("Doctor", "Internist", "Anesthetist", "Nurse", "Pharmacist") -> MUST be "healthcare".
-           - Worksite safety ("Workplace Safety Officer", "HSE Coordinator", "Environment and Safety") -> MUST be "engineering-construction" or "healthcare", NEVER "security-protection" (which is strictly for guards and surveillance).
+           - "Lab Technician" in schools, academies, or international schools -> MUST be "education-training", NOT "healthcare" (educational science lab supporting teachers, not clinical hospital diagnostics).
+           - "Safety Health Environment & Quality Manager (SHEQM)" in factories/plants -> MUST be "manufacturing-production", NOT "healthcare".
+           - "Green Development Expert" in industrial parks/agro-industry -> MUST be "agriculture-natural-science", NOT "engineering-construction".
+           - Worksite safety ("Workplace Safety Officer", "HSE Coordinator", "Environment and Safety") -> MUST be "engineering-construction" or "manufacturing-production", NEVER "security-protection" (which is strictly for guards and surveillance).
            - Sourcing & purchasing ("Purchaser", "Senior Procurement", "Buyer", "Storekeeper") -> MUST be "procurement-supply-chain".
            - Manual operations ("Battery Swapper", "Tailor", "Ceramic Tiler", "Woodworker") -> MUST be "skilled-general-labor".
-           - Clerical ("TVET Secretary", "Executive Secretary") -> MUST be "business-administration", NOT "education-training".
-           - "Accountant" / "Cashier" / "Auditor" / Amharic ("አካውንታንት", "ሲኒየር አካውንታንት", "የሂሳብ ባለሙያ", "ካሸር") -> MUST ALWAYS be "accounting-finance", even if employed by a school, training institute, factory, or hospital.
+           - "Automotive Electrical Technician" / "Auto Electrician" / "EV Service Technician" -> MUST be "skilled-general-labor", NOT "engineering-construction".
+           - Clerical ("TVET Secretary", "Executive Secretary", "Team Assistant") -> MUST be "business-administration", NOT "education-training" or "accounting-finance".
+           - "Accountant" / "Cashier" / "Auditor" / Amharic ("አካውንታንት", "ሲኒየር አካውንታንት", "የሂሳብ ባለሙያ", "ካሸር", "ገንዘብ ያዥ") -> MUST ALWAYS be "accounting-finance", even if employed by a school, training institute, factory, or hospital.
            - "Graphic Designer" / "UI/UX Designer" -> MUST be "design-creative".
            - "Video Editor" / "Social Media Manager" / "Content Writer" -> MUST be "media-communication".
+           - Terms of Reference (TOR) or Consultancy for creating accessible communication, multimedia, or Braille materials -> MUST be "media-communication", NOT "procurement-supply-chain".
+           - Commercial mall recreation & retail: "የሱቅ ሱፐርቫይዘር" (Shop Supervisor) -> "sales-marketing"; "የጌም ዞን" / Game Zone / Mall Arcade / Food Court Supervisor -> "hospitality-tourism".
+           - "የገበያ ጥናትና ልማት መምሪያ ሥራ አስኪያጅ" / Market Research & Business Development -> MUST be "sales-marketing", regardless of employer.
         3. If the current sector is genuinely accurate, set verdict to "AGREE".
         4. If the current sector is incorrect or misplaced, set verdict to "MISMATCH", specify the true suggestedSectorSlug and suggestedSectorName, and explain why.
         5. Return ONLY a valid JSON object matching the schema below. No markdown wrappers, no commentary outside JSON.
