@@ -47,6 +47,7 @@ public static class SectorEndpoints
         admin.MapGet("/classification-history", GetClassificationHistoryAsync).RequireRateLimiting("jobs_read").WithOpenApi();
         admin.MapPost("/audit-classification", AuditClassificationAsync).RequireRateLimiting("jobs_write").WithOpenApi();
         admin.MapPost("/apply-audit-corrections", ApplyAuditCorrectionsAsync).RequireRateLimiting("jobs_write").WithOpenApi();
+        admin.MapGet("/provider-fallbacks", GetProviderFallbacksAsync).RequireRateLimiting("jobs_read").WithOpenApi();
 
         app.MapPost("/api/admin/sync/scraped-jobs", SyncScrapedJobsAsync)
             .RequireRateLimiting("jobs_write").WithTags("Sectors (admin)").WithOpenApi();
@@ -402,5 +403,119 @@ public static class SectorEndpoints
 
         var updated = await auditService.ApplyCorrectionsAsync(body.Corrections, ct);
         return Results.Ok(new { updated, message = $"Successfully updated {updated} jobs." });
+    }
+
+    [Authorize(Roles = "Admin")]
+    private static async Task<IResult> GetProviderFallbacksAsync(
+        ApplicationDbContext db,
+        string? date,
+        CancellationToken ct)
+    {
+        var targetDate = string.IsNullOrWhiteSpace(date) || !DateOnly.TryParse(date, out var parsedDate)
+            ? DateOnly.FromDateTime(DateTime.UtcNow)
+            : parsedDate;
+
+        var startOfDay = new DateTimeOffset(targetDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc), TimeSpan.Zero);
+        var endOfDay = new DateTimeOffset(targetDate.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc), TimeSpan.Zero);
+
+        var events = await db.AiProviderAuditLogs
+            .AsNoTracking()
+            .Where(e => e.OccurredAt >= startOfDay && e.OccurredAt <= endOfDay)
+            .OrderByDescending(e => e.OccurredAt)
+            .Take(100)
+            .Select(e => new
+            {
+                e.Id,
+                e.OccurredAt,
+                e.AttemptedTier,
+                e.FailedProvider,
+                e.HttpStatusCode,
+                e.ErrorCategory,
+                e.ErrorMessage,
+                e.FallbackTier,
+                e.JobCount,
+                e.WasRecovered,
+                e.JobTitlesSnippet
+            })
+            .ToListAsync(ct);
+
+        // Calculate today's provider health metrics
+        var oneHourAgo = DateTimeOffset.UtcNow.AddHours(-1);
+        var recentErrors = await db.AiProviderAuditLogs
+            .AsNoTracking()
+            .Where(e => e.OccurredAt >= oneHourAgo)
+            .ToListAsync(ct);
+
+        var openRouterFailsLastHour = recentErrors.Count(e => e.FailedProvider.Contains("OpenRouter", StringComparison.OrdinalIgnoreCase));
+        var groqFailsLastHour = recentErrors.Count(e => e.FailedProvider.Contains("Groq", StringComparison.OrdinalIgnoreCase));
+        var geminiFailsLastHour = recentErrors.Count(e => e.FailedProvider.Contains("Gemini", StringComparison.OrdinalIgnoreCase));
+
+        // Get count of jobs classified by each model today
+        var modelCountsToday = await db.JobClassificationRecords
+            .AsNoTracking()
+            .Where(r => r.ClassifiedAt >= startOfDay && r.ClassifiedAt <= endOfDay)
+            .GroupBy(r => r.ModelUsed)
+            .Select(g => new { Model = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        var totalClassifiedToday = modelCountsToday.Sum(m => m.Count);
+
+        var providers = new[]
+        {
+            new
+            {
+                Name = "OpenRouter Nemotron 550B",
+                Tier = "Tier 1",
+                Status = openRouterFailsLastHour >= 3 ? "degraded" : openRouterFailsLastHour > 0 ? "warning" : "healthy",
+                JobsClassifiedToday = modelCountsToday.FirstOrDefault(m => m.Model.Contains("OpenRouter", StringComparison.OrdinalIgnoreCase))?.Count ?? 0,
+                FailoversToday = events.Count(e => e.FailedProvider.Contains("OpenRouter", StringComparison.OrdinalIgnoreCase)),
+                LastFailureReason = events.FirstOrDefault(e => e.FailedProvider.Contains("OpenRouter", StringComparison.OrdinalIgnoreCase))?.ErrorMessage
+            },
+            new
+            {
+                Name = "Groq Llama 3.3 70B",
+                Tier = "Tier 2",
+                Status = groqFailsLastHour >= 3 ? "degraded" : groqFailsLastHour > 0 ? "warning" : "healthy",
+                JobsClassifiedToday = modelCountsToday.FirstOrDefault(m => m.Model.Equals("Groq", StringComparison.OrdinalIgnoreCase) || m.Model.Contains("Groq Llama 3.3", StringComparison.OrdinalIgnoreCase))?.Count ?? 0,
+                FailoversToday = events.Count(e => e.FailedProvider.Contains("Groq", StringComparison.OrdinalIgnoreCase)),
+                LastFailureReason = events.FirstOrDefault(e => e.FailedProvider.Contains("Groq", StringComparison.OrdinalIgnoreCase))?.ErrorMessage
+            },
+            new
+            {
+                Name = "Google Gemini 2.0 Flash",
+                Tier = "Tier 3",
+                Status = geminiFailsLastHour >= 3 ? "degraded" : geminiFailsLastHour > 0 ? "warning" : "healthy",
+                JobsClassifiedToday = modelCountsToday.FirstOrDefault(m => m.Model.Contains("Gemini", StringComparison.OrdinalIgnoreCase))?.Count ?? 0,
+                FailoversToday = events.Count(e => e.FailedProvider.Contains("Gemini", StringComparison.OrdinalIgnoreCase)),
+                LastFailureReason = events.FirstOrDefault(e => e.FailedProvider.Contains("Gemini", StringComparison.OrdinalIgnoreCase))?.ErrorMessage
+            },
+            new
+            {
+                Name = "Groq Llama 3.1 8B Instant",
+                Tier = "Emergency Pass",
+                Status = "healthy",
+                JobsClassifiedToday = modelCountsToday.FirstOrDefault(m => m.Model.Contains("8B", StringComparison.OrdinalIgnoreCase))?.Count ?? 0,
+                FailoversToday = 0,
+                LastFailureReason = (string?)null
+            },
+            new
+            {
+                Name = "Cosine Vector Fallback",
+                Tier = "Tier 5 (Safe Uncategorized)",
+                Status = "healthy",
+                JobsClassifiedToday = modelCountsToday.FirstOrDefault(m => m.Model.Contains("Cosine", StringComparison.OrdinalIgnoreCase))?.Count ?? 0,
+                FailoversToday = 0,
+                LastFailureReason = (string?)null
+            }
+        };
+
+        return Results.Ok(new
+        {
+            date = targetDate.ToString("yyyy-MM-dd"),
+            totalClassifiedToday,
+            eventsCount = events.Count,
+            providers,
+            events
+        });
     }
 }

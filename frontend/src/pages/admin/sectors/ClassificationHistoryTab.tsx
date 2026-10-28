@@ -2,7 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   fetchClassificationHistory,
   setJobSector,
+  fetchProviderFallbacks,
   getApiErrorMessage,
+} from '../../../api'
+import type {
+  ProviderFallbacksResponse,
 } from '../../../api'
 import type {
   ClassificationHistoryItem,
@@ -110,7 +114,7 @@ ${canonicalSectors}
      * Recommended Correct Sector (from the canonical list)
      * Reason why it is misclassified and why the recommended sector is superior.
 3. **Prompt & Code Engineering Recommendations:**
-   - Detail the exact code and prompt changes needed in the backend (`UnifiedJobClassificationService.cs` system prompt and classification pipeline) so that today's wrong classifications can be permanently prevented for the overall system.
+   - Detail the exact code and prompt changes needed in the backend (\`UnifiedJobClassificationService.cs\` system prompt and classification pipeline) so that today's wrong classifications can be permanently prevented for the overall system.
 4. **1-Click Batch Fix JSON Payload:**
    - At the very end of your response, provide a clean JSON code block for SeraGo's 1-Click Batch Fix Tool containing ALL misclassified jobs formatted as:
 \`\`\`json
@@ -157,6 +161,28 @@ export default function ClassificationHistoryTab({
   const [isExportingPrompt, setIsExportingPrompt] = useState(false)
   const [dailyPromptCopied, setDailyPromptCopied] = useState(false)
   const [showBatchModal, setShowBatchModal] = useState(false)
+
+  // Real-Time Provider Fallback Health & Transition Logs
+  const [providerData, setProviderData] = useState<ProviderFallbacksResponse | null>(null)
+  const [loadingProviders, setLoadingProviders] = useState(false)
+  const [showFallbackEvents, setShowFallbackEvents] = useState(false)
+
+  const loadProviderData = useCallback(async () => {
+    if (!token) return
+    setLoadingProviders(true)
+    try {
+      const data = await fetchProviderFallbacks(filterByDate ? selectedDate : undefined, token)
+      setProviderData(data)
+    } catch {
+      // Non-blocking
+    } finally {
+      setLoadingProviders(false)
+    }
+  }, [filterByDate, selectedDate, token])
+
+  useEffect(() => {
+    loadProviderData()
+  }, [loadProviderData])
 
   // Selection & UI state
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set())
@@ -423,6 +449,247 @@ ${JSON.stringify(payload, null, 2)}
           </div>
         </div>
       )}
+
+      {/* Real-Time AI Provider Health & Fallback Switch Tracker */}
+      <div className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest p-4 shadow-sm space-y-4">
+        {/* Header bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100 text-purple-700">
+              <span className="material-symbols-outlined text-xl">hub</span>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-title-sm text-title-sm font-bold text-on-surface">
+                  AI Provider Pipeline & Real-Time Transition Log
+                </h3>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                  Live Sync
+                </span>
+              </div>
+              <p className="font-body-sm text-body-sm text-on-surface-variant">
+                Instant audit trail of model switches, rate-limits (HTTP 429), timeouts, and failovers
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            <button
+              type="button"
+              onClick={() => setShowFallbackEvents(!showFallbackEvents)}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-label-sm text-label-sm font-semibold transition-colors shadow-xs',
+                showFallbackEvents
+                  ? 'border-purple-600 bg-purple-700 text-white'
+                  : 'border-outline-variant bg-surface hover:bg-surface-container-low text-on-surface',
+              )}
+            >
+              <span className="material-symbols-outlined text-base">
+                {showFallbackEvents ? 'visibility_off' : 'history'}
+              </span>
+              <span>
+                {showFallbackEvents ? 'Hide Log' : 'View Switch Log'}
+                {providerData && providerData.eventsCount > 0 && (
+                  <span
+                    className={cn(
+                      'ml-1.5 rounded-full px-1.5 py-0.2 text-[10px] font-bold',
+                      showFallbackEvents
+                        ? 'bg-purple-900 text-purple-100'
+                        : 'bg-amber-100 text-amber-800',
+                    )}
+                  >
+                    {providerData.eventsCount}
+                  </span>
+                )}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={loadProviderData}
+              disabled={loadingProviders}
+              title="Refresh provider status"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-outline-variant bg-surface hover:bg-surface-container-low text-on-surface-variant hover:text-on-surface transition-colors disabled:opacity-50"
+            >
+              <span className={cn('material-symbols-outlined text-base', loadingProviders && 'animate-spin')}>
+                refresh
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* 5-Tier Health Pills Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5">
+          {providerData?.providers?.map((p) => {
+            const isDegraded = p.status === 'degraded'
+            const isWarning = p.status === 'warning'
+
+            return (
+              <div
+                key={p.name}
+                className={cn(
+                  'rounded-lg border p-2.5 transition-all',
+                  isDegraded
+                    ? 'border-red-300 bg-red-50/60'
+                    : isWarning
+                    ? 'border-amber-300 bg-amber-50/60'
+                    : 'border-outline-variant/50 bg-surface-container-low/60 hover:bg-surface-container-low',
+                )}
+              >
+                <div className="flex items-center justify-between gap-1 mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                    {p.tier}
+                  </span>
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-full px-1.5 py-0.2 text-[10px] font-semibold',
+                      isDegraded
+                        ? 'bg-red-100 text-red-800'
+                        : isWarning
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-emerald-100 text-emerald-800',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'h-1.5 w-1.5 rounded-full',
+                        isDegraded
+                          ? 'bg-red-600'
+                          : isWarning
+                          ? 'bg-amber-600 animate-pulse'
+                          : 'bg-emerald-600',
+                      )}
+                    />
+                    {isDegraded ? 'Throttled' : isWarning ? 'Degraded' : 'Active'}
+                  </span>
+                </div>
+
+                <p className="font-label-md text-label-md font-bold text-on-surface truncate" title={p.name}>
+                  {p.name}
+                </p>
+
+                <div className="mt-1.5 flex items-center justify-between text-[11px] text-on-surface-variant">
+                  <span>
+                    Classified: <strong>{p.jobsClassifiedToday}</strong>
+                  </span>
+                  {p.failoversToday > 0 && (
+                    <span className="text-amber-700 font-semibold" title={p.lastFailureReason || undefined}>
+                      {p.failoversToday} switch{p.failoversToday > 1 ? 'es' : ''}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Real-Time Fallback Events Table / History Card */}
+        {showFallbackEvents && (
+          <div className="rounded-lg border border-outline-variant/60 bg-surface-container-lowest overflow-hidden transition-all animate-fadeIn">
+            <div className="border-b border-outline-variant/40 bg-surface-container-low/40 px-3 py-2 flex items-center justify-between">
+              <span className="font-label-sm text-label-sm font-bold text-on-surface flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-amber-600 text-base">emergency_home</span>
+                Recorded Provider Transitions & Failover Audit ({providerData?.events?.length || 0})
+              </span>
+              <span className="text-[11px] text-on-surface-variant">
+                Target Date: {providerData?.date || selectedDate}
+              </span>
+            </div>
+
+            {(!providerData?.events || providerData.events.length === 0) ? (
+              <div className="p-6 text-center">
+                <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 mb-2">
+                  <span className="material-symbols-outlined text-2xl">verified</span>
+                </div>
+                <p className="font-label-md text-label-md font-bold text-on-surface">
+                  Zero Failovers Detected
+                </p>
+                <p className="font-body-sm text-body-sm text-on-surface-variant max-w-md mx-auto mt-0.5">
+                  All job classifications on this day were handled directly by the primary model without falling back to secondary providers or vector similarity.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                <table className="w-full text-left font-body-sm text-body-sm border-collapse">
+                  <thead className="bg-surface-container-low text-[11px] font-bold uppercase tracking-wider text-on-surface-variant sticky top-0 z-10 border-b border-outline-variant/50">
+                    <tr>
+                      <th className="px-3 py-2">Time</th>
+                      <th className="px-3 py-2">Attempted Tier</th>
+                      <th className="px-3 py-2">Failure Reason & Error</th>
+                      <th className="px-3 py-2">Switched To</th>
+                      <th className="px-3 py-2">Jobs Affected</th>
+                      <th className="px-3 py-2">Outcome</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/30 text-on-surface">
+                    {providerData.events.map((evt) => (
+                      <tr key={evt.id} className="hover:bg-surface-container-low/50 transition-colors">
+                        <td className="px-3 py-2 font-mono text-[11px] whitespace-nowrap text-on-surface-variant">
+                          {new Date(evt.occurredAt).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                          })}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 font-semibold text-red-700 bg-red-50 rounded px-1.5 py-0.5 text-xs">
+                            <span className="material-symbols-outlined text-xs">cancel</span>
+                            {evt.failedProvider}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 max-w-xs">
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-xs text-red-900">
+                              {evt.errorCategory} {evt.httpStatusCode ? `(HTTP ${evt.httpStatusCode})` : ''}
+                            </span>
+                            <span
+                              className="text-[11px] text-on-surface-variant truncate font-mono"
+                              title={evt.errorMessage}
+                            >
+                              {evt.errorMessage}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 font-semibold text-purple-800 bg-purple-50 rounded px-1.5 py-0.5 text-xs">
+                            <span className="material-symbols-outlined text-xs">arrow_forward</span>
+                            {evt.fallbackTier}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <span className="font-semibold">{evt.jobCount} jobs</span>
+                          {evt.jobTitlesSnippet && (
+                            <span
+                              className="block text-[10px] text-on-surface-variant max-w-[200px] truncate"
+                              title={evt.jobTitlesSnippet}
+                            >
+                              {evt.jobTitlesSnippet}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {evt.wasRecovered ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 rounded-full px-2 py-0.5 text-xs font-semibold">
+                              <span className="material-symbols-outlined text-xs">check_circle</span>
+                              Recovered
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-red-700 bg-red-50 rounded-full px-2 py-0.5 text-xs font-semibold">
+                              <span className="material-symbols-outlined text-xs">warning</span>
+                              Degraded
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* 2. Search & Filter Bar */}
       <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-4 shadow-sm space-y-3">

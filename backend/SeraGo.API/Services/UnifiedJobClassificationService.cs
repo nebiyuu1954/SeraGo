@@ -23,6 +23,7 @@ public sealed class UnifiedJobClassificationService
     private readonly GeminiClient _gemini;
     private readonly OllamaClient _ollama;
     private readonly ILogger<UnifiedJobClassificationService> _logger;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public UnifiedJobClassificationService(
         ApplicationDbContext db,
@@ -30,7 +31,8 @@ public sealed class UnifiedJobClassificationService
         GroqClient groq,
         GeminiClient gemini,
         OllamaClient ollama,
-        ILogger<UnifiedJobClassificationService> logger)
+        ILogger<UnifiedJobClassificationService> logger,
+        IServiceScopeFactory scopeFactory)
     {
         _db = db;
         _openRouter = openRouter;
@@ -38,6 +40,7 @@ public sealed class UnifiedJobClassificationService
         _gemini = gemini;
         _ollama = ollama;
         _logger = logger;
+        _scopeFactory = scopeFactory;
     }
 
     /// <summary>
@@ -397,6 +400,7 @@ public sealed class UnifiedJobClassificationService
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Tier 1 (OpenRouter) classification failed or was rate-limited. Falling back to Tier 2 (Groq).");
+                await RecordFallbackAsync("Tier 1 (OpenRouter Nemotron 550B)", "OpenRouter", ex, "Tier 2 (Groq Llama 3.3 70B)", chunk, ct);
             }
         }
 
@@ -421,6 +425,7 @@ public sealed class UnifiedJobClassificationService
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Tier 2 (Groq) classification failed. Falling back to Tier 3 (Google Gemini).");
+                await RecordFallbackAsync("Tier 2 (Groq Llama 3.3 70B)", "Groq", ex, "Tier 3 (Google Gemini 2.0 Flash)", chunk, ct);
             }
         }
 
@@ -441,6 +446,7 @@ public sealed class UnifiedJobClassificationService
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Tier 3 (Gemini) classification failed or was rate-limited. Falling back to Tier 4 (Ollama).");
+                await RecordFallbackAsync("Tier 3 (Google Gemini 2.0 Flash)", "Gemini", ex, "Tier 4 (Ollama / Groq 8B)", chunk, ct);
             }
         }
 
@@ -481,12 +487,13 @@ public sealed class UnifiedJobClassificationService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Emergency Groq 8B Instant pass failed. Falling back to Tier 5 (Cosine Similarity).");
+                _logger.LogWarning(ex, "Emergency Groq 8B Instant pass failed. Falling back to Safe Uncategorized Queue.");
+                await RecordFallbackAsync("Emergency Groq 8B Instant", "Groq 8B", ex, "Safe Uncategorized Queue", chunk, ct);
             }
         }
 
-        // ── TIER 5: Semantic Cosine Similarity against historical classified jobs ─
-        _logger.LogInformation("Executing Tier 5 (Semantic Cosine Similarity) fallback for {Count} jobs.", chunk.Count);
+        // ── TIER 5: Safe Uncategorized Fallback (Prevents Cosine Bag-of-Words Misclassifications) ─
+        _logger.LogWarning("All AI tiers exhausted for {Count} jobs. Leaving Uncategorized for automated AI retry.", chunk.Count);
         return await FallbackCosineSimilarityAsync(chunk, sectors, ct);
     }
 
@@ -581,32 +588,17 @@ public sealed class UnifiedJobClassificationService
                 }
             }
 
-            // High acceptance threshold (>= 85%) and capped confidence (max 75%)
-            if (bestSimilarity >= 0.85 && bestSectorId.HasValue && sectorById.TryGetValue(bestSectorId.Value, out var matchedSec))
-            {
-                var cappedConfidence = Math.Min(Math.Round(bestSimilarity * 0.70, 2), 0.75);
-                results.Add(new UnifiedJobClassificationResult(
-                    job.Id,
-                    matchedSec.Id,
-                    matchedSec.Name,
-                    matchedSec.Slug,
-                    cappedConfidence,
-                    $"Nearest neighbor title match ({Math.Round(bestSimilarity * 100)}% similarity)",
-                    "CosineSimilarity",
-                    null));
-            }
-            else
-            {
-                results.Add(new UnifiedJobClassificationResult(
-                    job.Id,
-                    null,
-                    null,
-                    null,
-                    bestSimilarity,
-                    "Insufficient semantic confidence from past jobs; left for AI re-evaluation or admin review",
-                    "Uncategorized",
-                    null));
-            }
+            // SAFE FALLBACK: Never auto-assign a sector when LLMs are unavailable.
+            // Retain job as Uncategorized so it can be re-evaluated by the next AI sync or manually reviewed.
+            results.Add(new UnifiedJobClassificationResult(
+                job.Id,
+                null,
+                null,
+                null,
+                0.0,
+                "[AI Providers Busy] All AI tiers exhausted; safely left Uncategorized for automated AI retry",
+                "Uncategorized",
+                null));
         }
 
         return results;
@@ -681,6 +673,103 @@ public sealed class UnifiedJobClassificationService
     {
         if (string.IsNullOrEmpty(value)) return string.Empty;
         return value.Length <= max ? value : value[..max] + "...";
+    }
+
+    private async Task RecordFallbackAsync(
+        string attemptedTier,
+        string failedProvider,
+        Exception ex,
+        string fallbackTier,
+        IReadOnlyList<Job> chunk,
+        CancellationToken ct = default)
+    {
+        var (statusCode, category, details) = CategorizeException(ex);
+        var titleSnippet = string.Join(", ", chunk.Take(3).Select(j => j.Title));
+        if (chunk.Count > 3) titleSnippet += $" (+{chunk.Count - 3} more)";
+
+        try
+        {
+            var audit = new AiProviderAuditLog
+            {
+                Id = Guid.NewGuid(),
+                OccurredAt = DateTimeOffset.UtcNow,
+                AttemptedTier = attemptedTier,
+                FailedProvider = failedProvider,
+                HttpStatusCode = statusCode,
+                ErrorCategory = category,
+                ErrorMessage = details,
+                FallbackTier = fallbackTier,
+                JobCount = chunk.Count,
+                WasRecovered = true,
+                JobTitlesSnippet = titleSnippet
+            };
+
+            _db.AiProviderAuditLogs.Add(audit);
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (Exception dbEx)
+        {
+            _logger.LogWarning(dbEx, "Failed to persist AiProviderAuditLog.");
+        }
+
+        // Send instant Telegram alert to admin channel/group if configured
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var telegram = scope.ServiceProvider.GetService<TelegramBotService>();
+            if (telegram != null)
+            {
+                var codeStr = statusCode.HasValue ? $" ({statusCode.Value})" : "";
+                var msg = $"⚠️ <b>AI Provider Fallback Event</b>\n\n" +
+                          $"• <b>Attempted:</b> {attemptedTier}\n" +
+                          $"• <b>Failed:</b> {failedProvider} — <i>{category}{codeStr}</i>\n" +
+                          $"• <b>Reason:</b> <code>{details}</code>\n" +
+                          $"• <b>Switched To:</b> {fallbackTier}\n" +
+                          $"• <b>Jobs Affected:</b> {chunk.Count} jobs\n" +
+                          $"• <b>Sample:</b> {titleSnippet}";
+                await telegram.SendAdminAlertAsync(msg);
+            }
+        }
+        catch (Exception tgEx)
+        {
+            _logger.LogDebug(tgEx, "Optional Telegram alert failed.");
+        }
+    }
+
+    private static (int? StatusCode, string Category, string Details) CategorizeException(Exception ex)
+    {
+        var msg = ex.Message ?? "Unknown error";
+        if (ex is OpenRouterRateLimitException rle)
+        {
+            return (rle.StatusCode, "RateLimit", $"OpenRouter rate-limited: {rle.Message}");
+        }
+
+        if (msg.Contains("429", StringComparison.OrdinalIgnoreCase) || msg.Contains("rate limit", StringComparison.OrdinalIgnoreCase) || msg.Contains("quota", StringComparison.OrdinalIgnoreCase))
+        {
+            return (429, "RateLimit", Truncate(msg, 250));
+        }
+
+        if (ex is TaskCanceledException || ex is TimeoutException || msg.Contains("timed out", StringComparison.OrdinalIgnoreCase) || msg.Contains("timeout", StringComparison.OrdinalIgnoreCase))
+        {
+            return (408, "Timeout", Truncate(msg, 250));
+        }
+
+        if (msg.Contains("401", StringComparison.OrdinalIgnoreCase) || msg.Contains("unauthorized", StringComparison.OrdinalIgnoreCase) || msg.Contains("invalid api key", StringComparison.OrdinalIgnoreCase))
+        {
+            return (401, "Auth", Truncate(msg, 250));
+        }
+
+        if (msg.Contains("503", StringComparison.OrdinalIgnoreCase) || msg.Contains("502", StringComparison.OrdinalIgnoreCase) || msg.Contains("overloaded", StringComparison.OrdinalIgnoreCase))
+        {
+            return (503, "ServerError", Truncate(msg, 250));
+        }
+
+        if (ex is System.Text.Json.JsonException || msg.Contains("json", StringComparison.OrdinalIgnoreCase))
+        {
+            return (null, "MalformedJson", Truncate(msg, 250));
+        }
+
+        return (null, "Error", Truncate(msg, 250));
     }
 }
 

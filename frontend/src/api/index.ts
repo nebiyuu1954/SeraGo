@@ -49,6 +49,12 @@ export {
   fetchClassificationHistory,
   auditJobClassifications,
   applyAuditCorrections,
+  fetchProviderFallbacks,
+} from './sectors.ts'
+export type {
+  ProviderHealthItem,
+  ProviderFallbackEvent,
+  ProviderFallbacksResponse,
 } from './sectors.ts'
 export { fetchTopStats } from './stats.ts'
 export {

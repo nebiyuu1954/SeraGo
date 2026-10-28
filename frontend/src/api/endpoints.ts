@@ -95,6 +95,8 @@ export const API_ENDPOINTS = {
     auditClassification: '/admin/sectors/audit-classification',
     /** POST /api/admin/sectors/apply-audit-corrections */
     applyAuditCorrections: '/admin/sectors/apply-audit-corrections',
+    /** GET /api/admin/sectors/provider-fallbacks */
+    providerFallbacks: '/admin/sectors/provider-fallbacks',
   },
   adminUsers: {
     list: '/admin/users',

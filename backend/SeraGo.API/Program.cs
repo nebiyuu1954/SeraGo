@@ -311,6 +311,22 @@ for (var attempt = 1; ; attempt++)
             CREATE INDEX IF NOT EXISTS "IX_JobClassificationRecords_JobId" ON "JobClassificationRecords" ("JobId");
             CREATE INDEX IF NOT EXISTS "IX_JobClassificationRecords_ModelUsed" ON "JobClassificationRecords" ("ModelUsed");
             CREATE INDEX IF NOT EXISTS "IX_JobClassificationRecords_ClassifiedAt" ON "JobClassificationRecords" ("ClassifiedAt");
+
+            CREATE TABLE IF NOT EXISTS "AiProviderAuditLogs" (
+                "Id" uuid NOT NULL PRIMARY KEY,
+                "OccurredAt" timestamp with time zone NOT NULL,
+                "AttemptedTier" text NOT NULL,
+                "FailedProvider" text NOT NULL,
+                "HttpStatusCode" integer NULL,
+                "ErrorCategory" text NOT NULL,
+                "ErrorMessage" text NOT NULL,
+                "FallbackTier" text NOT NULL,
+                "JobCount" integer NOT NULL,
+                "WasRecovered" boolean NOT NULL,
+                "JobTitlesSnippet" text NULL
+            );
+            CREATE INDEX IF NOT EXISTS "IX_AiProviderAuditLogs_OccurredAt" ON "AiProviderAuditLogs" ("OccurredAt");
+            CREATE INDEX IF NOT EXISTS "IX_AiProviderAuditLogs_FailedProvider" ON "AiProviderAuditLogs" ("FailedProvider");
         """);
 
         await scope.ServiceProvider.GetRequiredService<AuthSeeder>().SeedAsync();

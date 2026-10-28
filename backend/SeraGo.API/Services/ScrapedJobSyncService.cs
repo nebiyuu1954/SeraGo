@@ -182,30 +182,13 @@ public sealed class ScrapedJobSyncService
                 seenKeys.Add($"{sourceName}|{externalId}");
             }
 
-            // Sector resolution: the NormalizedJob carries the raw sector_name;
-            // we resolve it through aliases, then fall back to title classification.
+            // Sector resolution: All newly scraped jobs flow to UnifiedJobClassificationService (AI-first)
+            // to eliminate crude tag misclassifications (e.g. Scraper Direct Alias Rule).
+            // Sector is initially left null and evaluated immediately via ClassifyTouchedJobsAsync below.
             var rawSector = ReadString(reader, "sector_name");
             var ethioCategories = ReadJsonArray(reader, "ethio_categories");
             var title = ReadString(reader, "title") ?? string.Empty;
-            var sector = ResolveSector(sectors, rawSector, title) ??
-                         (!string.IsNullOrWhiteSpace(ethioCategories) ? ResolveSector(sectors, ethioCategories, title) : null);
-            if (sector is null)
-            {
-                uncategorized++;
-                var cleanNames = TelegramJobService.ExtractCleanSectorList(rawSector);
-                if (cleanNames.Count == 0 && !string.IsNullOrWhiteSpace(ethioCategories))
-                {
-                    cleanNames = TelegramJobService.ExtractCleanSectorList(ethioCategories);
-                }
-                if (cleanNames.Count > 0)
-                {
-                    foreach (var n in cleanNames) unknownSectors.Add(n);
-                }
-                else if (!string.IsNullOrWhiteSpace(rawSector))
-                {
-                    unknownSectors.Add(rawSector);
-                }
-            }
+            Sector? sector = null;
 
             var job = jobsByKey.TryGetValue((sourceName, externalId), out var existing)
                 ? existing
@@ -345,8 +328,8 @@ public sealed class ScrapedJobSyncService
                 job.Salary = bestSalary;
                 job.PublishedAt = publishedAt;
                 job.Deadline = deadline;
-                job.SectorId = sector?.Id;
-                job.SectorName = sector?.Name;
+                job.SectorId = sector?.Id ?? job.SectorId;
+                job.SectorName = sector?.Name ?? job.SectorName;
                 job.CompanyLogoUrl = bestLogo;
                 job.ExperienceLevel = bestExperience;
                 job.WorkMode = workMode;

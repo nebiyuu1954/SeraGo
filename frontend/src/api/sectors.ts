@@ -151,3 +151,48 @@ export function applyAuditCorrections(
   )
 }
 
+export interface ProviderHealthItem {
+  name: string
+  tier: string
+  status: 'healthy' | 'warning' | 'degraded'
+  jobsClassifiedToday: number
+  failoversToday: number
+  lastFailureReason?: string | null
+}
+
+export interface ProviderFallbackEvent {
+  id: string
+  occurredAt: string
+  attemptedTier: string
+  failedProvider: string
+  httpStatusCode?: number | null
+  errorCategory: string
+  errorMessage: string
+  fallbackTier: string
+  jobCount: number
+  wasRecovered: boolean
+  jobTitlesSnippet?: string | null
+}
+
+export interface ProviderFallbacksResponse {
+  date: string
+  totalClassifiedToday: number
+  eventsCount: number
+  providers: ProviderHealthItem[]
+  events: ProviderFallbackEvent[]
+}
+
+/** GET /api/admin/sectors/provider-fallbacks — real-time AI provider health and fallback logs. */
+export function fetchProviderFallbacks(
+  date?: string,
+  accessToken?: string,
+): Promise<ProviderFallbacksResponse> {
+  const q = new URLSearchParams()
+  if (date) q.set('date', date)
+  const url = `${API_ENDPOINTS.sectors.providerFallbacks}${q.toString() ? `?${q.toString()}` : ''}`
+  return request<ProviderFallbacksResponse>(url, {
+    headers: accessToken ? auth(accessToken) : undefined,
+  })
+}
+
+

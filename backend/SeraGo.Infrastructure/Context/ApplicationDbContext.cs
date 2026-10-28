@@ -31,6 +31,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<TelegramScheduledMessage> TelegramScheduledMessages => Set<TelegramScheduledMessage>();
     public DbSet<JobSimilarityCache> JobSimilarityCaches => Set<JobSimilarityCache>();
     public DbSet<JobClassificationRecord> JobClassificationRecords => Set<JobClassificationRecord>();
+    public DbSet<AiProviderAuditLog> AiProviderAuditLogs => Set<AiProviderAuditLog>();
 
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
     {
