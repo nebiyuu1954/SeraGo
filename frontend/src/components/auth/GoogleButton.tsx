@@ -2,8 +2,12 @@ import { useEffect, useState } from 'react'
 import { buildGoogleChallengeUrl, fetchExternalProviders } from '../../api'
 
 interface GoogleButtonProps {
-  /** Button label, e.g. "Sign up with Google" / "Log in with Google". */
-  label: string
+  /** Button label, e.g. "Sign up with Google" / "Log in with Google". Optional if iconOnly. */
+  label?: string
+  /** If true, only the Google sign/logo is shown centered. */
+  iconOnly?: boolean
+  /** Optional custom CSS classes. */
+  className?: string
 }
 
 /**
@@ -11,7 +15,7 @@ interface GoogleButtonProps {
  * (with a tooltip) until the API reports Google has real credentials, so it
  * degrades gracefully instead of landing on a raw 404 when creds are blank.
  */
-export default function GoogleButton({ label }: GoogleButtonProps) {
+export default function GoogleButton({ label, iconOnly, className }: GoogleButtonProps) {
   // True once the backend reports Google configured (real OAuth credentials).
   const [available, setAvailable] = useState(false)
   useEffect(() => {
@@ -33,21 +37,27 @@ export default function GoogleButton({ label }: GoogleButtonProps) {
     window.location.href = buildGoogleChallengeUrl(callbackUrl)
   }
 
+  const effectiveLabel = label || 'Continue with Google'
+
   return (
     <button
       type="button"
       onClick={handleClick}
       disabled={!available}
       aria-disabled={!available}
+      aria-label={effectiveLabel}
       title={
         available
-          ? label
+          ? effectiveLabel
           : 'Google sign-in is not configured yet — add Google credentials in the backend appsettings.json'
       }
-      className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl border border-outline-variant bg-surface-container-lowest py-2.5 font-label-md text-label-md font-medium text-on-surface shadow-sm transition-colors duration-200 hover:border-primary/40 hover:bg-surface-container-low disabled:cursor-not-allowed disabled:opacity-60"
+      className={
+        className ??
+        'flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl border border-outline-variant bg-surface-container-lowest py-2.5 font-label-md text-label-md font-medium text-on-surface shadow-sm transition-colors duration-200 hover:border-primary/40 hover:bg-surface-container-low disabled:cursor-not-allowed disabled:opacity-60'
+      }
     >
       <svg
-        className="h-5 w-5"
+        className="h-5 w-5 shrink-0"
         viewBox="0 0 24 24"
         xmlns="http://www.w3.org/2000/svg"
         aria-hidden="true"
@@ -69,7 +79,7 @@ export default function GoogleButton({ label }: GoogleButtonProps) {
           fill="#EA4335"
         />
       </svg>
-      {label}
+      {!iconOnly && label && <span>{label}</span>}
     </button>
   )
 }

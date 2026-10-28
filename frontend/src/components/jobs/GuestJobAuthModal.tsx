@@ -166,21 +166,12 @@ export default function GuestJobAuthModal({
                 <label className="block font-label-sm text-label-sm font-medium text-on-surface">
                   Password
                 </label>
-                <div className="flex items-center gap-2 font-label-sm text-label-sm">
-                  <Link
-                    to={`/signup?redirect=${redirectParam}`}
-                    className="font-medium text-primary hover:underline"
-                  >
-                    Create account
-                  </Link>
-                  <span className="text-outline-variant text-[12px]">•</span>
-                  <Link
-                    to="/forgot-password"
-                    className="text-secondary hover:underline"
-                  >
-                    Forgot?
-                  </Link>
-                </div>
+                <Link
+                  to="/forgot-password"
+                  className="font-label-sm text-label-sm text-secondary hover:text-primary hover:underline"
+                >
+                  Forgot?
+                </Link>
               </div>
               <input
                 type="password"
@@ -195,7 +186,7 @@ export default function GuestJobAuthModal({
             <button
               type="submit"
               disabled={loading}
-              className="mt-1 flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 font-label-md text-label-md font-semibold text-on-accent transition-colors hover:opacity-90 disabled:opacity-50"
+              className="mt-1 flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 font-label-md text-label-md font-semibold text-on-accent transition-colors hover:opacity-90 disabled:opacity-50 cursor-pointer"
             >
               {loading ? (
                 <>
@@ -207,7 +198,7 @@ export default function GuestJobAuthModal({
               )}
             </button>
 
-            {/* Social Sign-In (2 Stacked Rows Under Sign In & Continue) */}
+            {/* Social Sign-In: 1 Row, 2 Columns (Signs Only) */}
             <div className="relative my-1 text-center font-label-sm text-label-sm text-outline">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-surface-variant" />
@@ -217,9 +208,23 @@ export default function GuestJobAuthModal({
               </span>
             </div>
 
-            <div className="flex flex-col gap-2.5">
-              <GoogleButton label="Continue with Google" />
-              <TelegramButton label="Continue with Telegram" />
+            <div className="grid grid-cols-2 gap-3">
+              <GoogleButton iconOnly />
+              <TelegramButton iconOnly />
+            </div>
+
+            {/* 1 Row Text and Button for Signup */}
+            <div className="mt-1 flex items-center justify-between rounded-xl border border-surface-variant bg-surface-container-low/70 px-4 py-2.5">
+              <span className="font-body-sm text-body-sm text-secondary">
+                Don't have an account?
+              </span>
+              <Link
+                to={`/signup?redirect=${redirectParam}`}
+                onClick={onClose}
+                className="inline-flex items-center justify-center rounded-lg border border-primary/30 bg-surface-container-lowest px-3.5 py-1.5 font-label-sm text-label-sm font-semibold text-primary shadow-xs transition-all hover:border-primary hover:bg-primary hover:text-white active:scale-95 cursor-pointer"
+              >
+                Sign up
+              </Link>
             </div>
           </form>
         </div>

@@ -26,7 +26,7 @@ export default function PublicJobsPage() {
   const [jobType, setJobType] = useState(searchParams.get('type') || searchParams.get('jobType') || '')
   const [sort, setSort] = useState(searchParams.get('sort') || 'newest')
   const [page, setPage] = useState(1)
-  const pageSize = 10
+  const pageSize = 12
 
   const handleToggleSave = async (job: JobResponse) => {
     if (auth.status === 'authenticated') {

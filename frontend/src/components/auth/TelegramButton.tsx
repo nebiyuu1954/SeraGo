@@ -24,8 +24,10 @@ declare global {
 }
 
 interface TelegramButtonProps {
-  /** Label on the button, e.g. "Log in with Telegram" / "Sign up with Telegram". */
-  label: string
+  /** Label on the button, e.g. "Log in with Telegram" / "Sign up with Telegram". Optional if iconOnly. */
+  label?: string
+  /** If true, only the Telegram sign/logo is shown centered. */
+  iconOnly?: boolean
   /** Optional custom handler called upon successful Telegram authentication. */
   onAuth?: (user: TelegramAuthPayload) => void
   /** Optional CSS class overrides. */
@@ -36,7 +38,7 @@ interface TelegramButtonProps {
  * Telegram authentication button matching GoogleButton's design tokens.
  * Launches the official Telegram Login popup and dispatches auth to the backend.
  */
-export default function TelegramButton({ label, onAuth, className }: TelegramButtonProps) {
+export default function TelegramButton({ label, iconOnly, onAuth, className }: TelegramButtonProps) {
   const navigate = useNavigate()
   const [available, setAvailable] = useState(false)
   const [botUsername, setBotUsername] = useState<string | null>(null)
@@ -161,6 +163,8 @@ export default function TelegramButton({ label, onAuth, className }: TelegramBut
     }
   }
 
+  const effectiveLabel = label || 'Continue with Telegram'
+
   return (
     <div className="w-full">
       <button
@@ -168,9 +172,10 @@ export default function TelegramButton({ label, onAuth, className }: TelegramBut
         onClick={handleClick}
         disabled={!available || loading}
         aria-disabled={!available || loading}
+        aria-label={effectiveLabel}
         title={
           available
-            ? label
+            ? effectiveLabel
             : 'Telegram sign-in is not configured yet — add TELEGRAM_BOT_TOKEN in the backend .env'
         }
         className={
@@ -190,7 +195,11 @@ export default function TelegramButton({ label, onAuth, className }: TelegramBut
             fill="#229ED9"
           />
         </svg>
-        {loading ? 'Connecting…' : label}
+        {loading ? (
+          <span className="text-xs">Connecting…</span>
+        ) : (
+          !iconOnly && label && <span>{label}</span>
+        )}
       </button>
 
       {error && (
