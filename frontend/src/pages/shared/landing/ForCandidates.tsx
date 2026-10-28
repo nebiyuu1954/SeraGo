@@ -184,12 +184,6 @@ export default function ForCandidates() {
         >
           {/* Text content */}
           <div className="candidates-left z-10 flex flex-col gap-8 py-12 md:py-24 lg:py-32">
-            <div className="inline-flex w-fit items-center gap-2 rounded-full bg-surface-container-low px-4 py-2">
-              <span className="h-2 w-2 rounded-full bg-primary" />
-              <span className="font-label-md text-label-md text-on-surface">
-                AI-Powered Career Discovery for Talents
-              </span>
-            </div>
             <h2
               className="font-display-lg-mobile text-display-lg-mobile text-on-surface md:font-display-lg md:text-display-lg"
               style={{ lineHeight: HEADLINE_LINE_HEIGHT }}

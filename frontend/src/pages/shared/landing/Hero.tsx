@@ -1,8 +1,19 @@
 import { useState, useEffect, useRef } from 'react'
+import type { CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchHeroSuggestions } from '../../../api/jobs.ts'
 import { useAuthUser } from '../../../hooks/useAuthUser.ts'
 import type { HeroRoleSuggestion } from '../../../types'
+
+/**
+ * ★ HERO TOP SPACING KNOBS ★
+ * Controls the vertical distance (in pixels) from the top of the screen to the
+ * "Find your dream job. Instantly on SeraGo" headline.
+ *   • HERO_TOP_OFFSET_MOBILE_PX  = Distance on mobile/phone screens in px (e.g. 80, 96, 112)
+ *   • HERO_TOP_OFFSET_DESKTOP_PX = Distance on desktop screens in px (e.g. 120, 140, 160)
+ */
+export const HERO_TOP_OFFSET_MOBILE_PX = 110
+export const HERO_TOP_OFFSET_DESKTOP_PX = 110
 
 const PLACEHOLDER_ROLES = [
   'Software Developer',
@@ -150,7 +161,15 @@ export default function Hero() {
   const totalPositionsFormatted = totalPositions.toLocaleString()
 
   return (
-    <section className="relative w-full overflow-hidden bg-surface pt-6 pb-14 sm:pt-10 sm:pb-20 lg:pt-12 lg:pb-24">
+    <section
+      style={
+        {
+          '--hero-top-mobile': `${HERO_TOP_OFFSET_MOBILE_PX}px`,
+          '--hero-top-desktop': `${HERO_TOP_OFFSET_DESKTOP_PX}px`,
+        } as CSSProperties
+      }
+      className="relative w-full overflow-hidden bg-surface pt-[var(--hero-top-mobile)] md:pt-[var(--hero-top-desktop)] pb-14 sm:pb-20 lg:pb-24"
+    >
       {/* Subtle ambient glow in center */}
       <div className="pointer-events-none absolute top-1/2 left-1/2 h-[480px] w-[760px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-tr from-blue-100/30 via-sky-50/40 to-orange-100/20 blur-3xl" />
 

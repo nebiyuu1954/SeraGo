@@ -21,7 +21,7 @@ const publicNavLinks = [{ label: 'Jobs', to: '/jobs' }]
  * Change this value (number in px or CSS string) to customize the desktop header width.
  * Examples: 1024 (default), 960, 1140, 1200, or '100%' / '1024px'.
  */
-export const DESKTOP_HEADER_MAX_WIDTH = 1024
+export const DESKTOP_HEADER_MAX_WIDTH = 700
 
 /**
  * App-wide header. Signed-out visitors get the marketing navbar; signed-in
@@ -126,17 +126,17 @@ function PublicNavbar() {
           style={{ maxWidth: maxWidthStyle }}
           className="relative pointer-events-auto flex w-full items-center justify-between rounded-full border border-slate-200/80 bg-white/95 px-4 py-2 shadow-[0_8px_30px_rgb(0,0,0,0.07)] backdrop-blur-md transition-all sm:px-7 sm:py-3 dark:border-slate-800 dark:bg-slate-900/95"
         >
-          {/* Brand Logo: Favicon image on phone, SeraGo text on desktop */}
+          {/* Brand Logo: Favicon logo on phone and desktop (with SeraGo text on desktop) */}
           <Link
             to="/"
-            className="flex items-center gap-2 shrink-0 z-10 transition-transform active:scale-95"
+            className="flex items-center gap-2.5 shrink-0 z-10 transition-transform active:scale-95"
             aria-label="SeraGo home"
           >
-            {/* Phone: Favicon logo */}
+            {/* Favicon logo */}
             <img
               src="/sources/logo%20favicon/apple-touch-icon.png"
               alt="SeraGo"
-              className="h-8 w-8 rounded-full object-contain md:hidden"
+              className="h-8 w-8 rounded-full object-contain"
             />
             {/* Desktop: SeraGo text */}
             <span className="hidden font-headline-md text-headline-md font-extrabold tracking-tight md:inline-block">
