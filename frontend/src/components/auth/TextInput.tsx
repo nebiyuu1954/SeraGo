@@ -17,7 +17,7 @@ function InputIcon({ icon, className }: { icon: string; className?: string }) {
     <span
       aria-hidden="true"
       className={cn(
-        'material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-2xl leading-none text-on-surface-variant',
+        'material-symbols-outlined pointer-events-none absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-[18px] sm:text-2xl leading-none text-on-surface-variant',
         className,
       )}
     >
@@ -31,7 +31,6 @@ export interface TextInputProps {
   name: string
   label: string
   icon?: string
-  hideIconMobile?: boolean
   error?: string
   type?: string
   autoComplete?: string
@@ -52,7 +51,6 @@ export default function TextInput({
   name,
   label,
   icon,
-  hideIconMobile = false,
   error,
   type = 'text',
   autoComplete,
@@ -69,20 +67,12 @@ export default function TextInput({
     <div className="space-y-1.5 min-w-0">
       <label
         htmlFor={id}
-        className={cn(
-          'block font-label-md text-label-md font-medium text-on-surface',
-          hideIconMobile && 'text-xs sm:text-label-md truncate',
-        )}
+        className="block font-label-md text-xs sm:text-label-md font-medium text-on-surface truncate"
       >
         {label}
       </label>
       <div className="relative">
-        {icon && (
-          <InputIcon
-            icon={icon}
-            className={hideIconMobile ? 'hidden sm:inline-block' : undefined}
-          />
-        )}
+        {icon && <InputIcon icon={icon} />}
         <input
           id={id}
           name={name}
@@ -95,9 +85,9 @@ export default function TextInput({
           onFocus={onFocus}
           aria-invalid={Boolean(error)}
           className={cn(
-            inputBaseClasses,
-            hideIconMobile &&
-              'pl-3 sm:pl-11 pr-2 sm:pr-3 text-sm sm:text-body-md py-2 sm:py-2.5',
+            'w-full rounded-xl border border-outline-variant bg-surface-container-lowest py-2 sm:py-2.5 font-body-md text-xs sm:text-body-md text-on-surface placeholder:text-on-surface-variant/60 transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/25 focus:outline-none',
+            icon ? 'pl-[34px] sm:pl-11' : 'pl-3 sm:pl-3.5',
+            suffix ? 'pr-10 sm:pr-11' : 'pr-2 sm:pr-3',
             error && 'border-error focus:border-error focus:ring-error/25',
             className,
           )}

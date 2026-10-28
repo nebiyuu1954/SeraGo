@@ -258,7 +258,6 @@ export default function SignupPage() {
                 name="firstName"
                 label="First name"
                 icon="person"
-                hideIconMobile
                 autoComplete="given-name"
                 placeholder="Abebe"
                 value={formik.values.firstName}
@@ -271,7 +270,6 @@ export default function SignupPage() {
                 name="middleName"
                 label="Middle name"
                 icon="person"
-                hideIconMobile
                 autoComplete="additional-name"
                 placeholder="Kebede"
                 value={formik.values.middleName}
@@ -283,8 +281,7 @@ export default function SignupPage() {
                 id="lastName"
                 name="lastName"
                 label="Last name"
-                icon="badge"
-                hideIconMobile
+                icon="person"
                 autoComplete="family-name"
                 placeholder="Balcha"
                 value={formik.values.lastName}
@@ -311,7 +308,6 @@ export default function SignupPage() {
                 name="email"
                 label="Email address"
                 icon="mail"
-                hideIconMobile
                 type="email"
                 autoComplete="email"
                 placeholder="you@company.com"

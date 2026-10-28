@@ -118,9 +118,8 @@ function PublicNavbar() {
 
       {/* Floating Centered Island Header */}
       <header
-        className={`fixed top-3 sm:top-5 left-0 right-0 z-50 flex justify-center px-3.5 sm:px-6 pointer-events-none transition-all duration-300 ease-in-out ${
-          isVisible ? 'translate-y-0 opacity-100' : '-translate-y-28 opacity-0'
-        }`}
+        className={`fixed top-3 sm:top-5 left-0 right-0 z-50 flex justify-center px-3.5 sm:px-6 pointer-events-none transition-all duration-300 ease-in-out ${isVisible ? 'translate-y-0 opacity-100' : '-translate-y-28 opacity-0'
+          }`}
       >
         <div
           style={{ maxWidth: maxWidthStyle }}
