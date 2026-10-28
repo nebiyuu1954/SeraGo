@@ -12,11 +12,14 @@ export const inputBaseClasses =
  * must NOT rely on `flex items-center`. Centering is done with
  * `top-1/2 -translate-y-1/2` instead.
  */
-function InputIcon({ icon }: { icon: string }) {
+function InputIcon({ icon, className }: { icon: string; className?: string }) {
   return (
     <span
       aria-hidden="true"
-      className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-2xl leading-none text-on-surface-variant"
+      className={cn(
+        'material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-2xl leading-none text-on-surface-variant',
+        className,
+      )}
     >
       {icon}
     </span>
@@ -27,7 +30,8 @@ export interface TextInputProps {
   id: string
   name: string
   label: string
-  icon: string
+  icon?: string
+  hideIconMobile?: boolean
   error?: string
   type?: string
   autoComplete?: string
@@ -48,6 +52,7 @@ export default function TextInput({
   name,
   label,
   icon,
+  hideIconMobile = false,
   error,
   type = 'text',
   autoComplete,
@@ -61,15 +66,23 @@ export default function TextInput({
   className,
 }: TextInputProps) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1.5 min-w-0">
       <label
         htmlFor={id}
-        className="block font-label-md text-label-md font-medium text-on-surface"
+        className={cn(
+          'block font-label-md text-label-md font-medium text-on-surface',
+          hideIconMobile && 'text-xs sm:text-label-md truncate',
+        )}
       >
         {label}
       </label>
       <div className="relative">
-        <InputIcon icon={icon} />
+        {icon && (
+          <InputIcon
+            icon={icon}
+            className={hideIconMobile ? 'hidden sm:inline-block' : undefined}
+          />
+        )}
         <input
           id={id}
           name={name}
@@ -83,6 +96,8 @@ export default function TextInput({
           aria-invalid={Boolean(error)}
           className={cn(
             inputBaseClasses,
+            hideIconMobile &&
+              'pl-3 sm:pl-11 pr-2 sm:pr-3 text-sm sm:text-body-md py-2 sm:py-2.5',
             error && 'border-error focus:border-error focus:ring-error/25',
             className,
           )}
@@ -90,7 +105,10 @@ export default function TextInput({
         {suffix}
       </div>
       {error && (
-        <p role="alert" className="font-label-sm text-label-sm text-error">
+        <p
+          role="alert"
+          className="font-label-sm text-xs sm:text-label-sm text-error leading-tight"
+        >
           {error}
         </p>
       )}

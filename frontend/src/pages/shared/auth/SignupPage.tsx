@@ -250,14 +250,15 @@ export default function SignupPage() {
           {accountExists && <AccountExistsBanner email={formik.values.email} />}
           {error && <ErrorBanner message={error} />}
 
-          <form onSubmit={formik.handleSubmit} noValidate className="space-y-5">
-            {/* Name fields */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <form onSubmit={formik.handleSubmit} noValidate className="space-y-4 sm:space-y-5">
+            {/* 1st row: First name, Middle name, Last name (3 columns) */}
+            <div className="grid grid-cols-3 gap-2 sm:gap-4">
               <TextInput
                 id="firstName"
                 name="firstName"
                 label="First name"
                 icon="person"
+                hideIconMobile
                 autoComplete="given-name"
                 placeholder="Abebe"
                 value={formik.values.firstName}
@@ -270,6 +271,7 @@ export default function SignupPage() {
                 name="middleName"
                 label="Middle name"
                 icon="person"
+                hideIconMobile
                 autoComplete="additional-name"
                 placeholder="Kebede"
                 value={formik.values.middleName}
@@ -282,6 +284,7 @@ export default function SignupPage() {
                 name="lastName"
                 label="Last name"
                 icon="badge"
+                hideIconMobile
                 autoComplete="family-name"
                 placeholder="Balcha"
                 value={formik.values.lastName}
@@ -291,55 +294,64 @@ export default function SignupPage() {
               />
             </div>
 
-            {/* Ethiopian Phone field */}
-            <EthiopianPhoneInput
-              id="phoneNumber"
-              name="phoneNumber"
-              label="Phone number"
-              value={formik.values.phoneNumber}
-              onChange={formik.handleChange}
-              onBlur={formik.handleBlur}
-              error={fieldError('phoneNumber')}
-            />
+            {/* 2nd row: Phone number and Email address (2 columns) */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-4 items-start">
+              <EthiopianPhoneInput
+                id="phoneNumber"
+                name="phoneNumber"
+                label="Phone number"
+                placeholder="910 10 10 10"
+                value={formik.values.phoneNumber}
+                onChange={formik.handleChange}
+                onBlur={formik.handleBlur}
+                error={fieldError('phoneNumber')}
+              />
+              <TextInput
+                id="email"
+                name="email"
+                label="Email address"
+                icon="mail"
+                hideIconMobile
+                type="email"
+                autoComplete="email"
+                placeholder="you@company.com"
+                value={formik.values.email}
+                onChange={formik.handleChange}
+                onBlur={formik.handleBlur}
+                error={fieldError('email')}
+              />
+            </div>
 
-            <TextInput
-              id="email"
-              name="email"
-              label="Email address"
-              icon="mail"
-              type="email"
-              autoComplete="email"
-              placeholder="you@company.com"
-              value={formik.values.email}
-              onChange={formik.handleChange}
-              onBlur={formik.handleBlur}
-              error={fieldError('email')}
-            />
+            {/* 3rd row: Password (1 column) */}
+            <div>
+              <PasswordInput
+                id="password"
+                name="password"
+                label="Password"
+                autoComplete="new-password"
+                placeholder="••••••••"
+                showStrength
+                value={formik.values.password}
+                onChange={formik.handleChange}
+                onBlur={formik.handleBlur}
+                error={fieldError('password')}
+              />
+            </div>
 
-            <PasswordInput
-              id="password"
-              name="password"
-              label="Password"
-              autoComplete="new-password"
-              placeholder="••••••••"
-              showStrength
-              value={formik.values.password}
-              onChange={formik.handleChange}
-              onBlur={formik.handleBlur}
-              error={fieldError('password')}
-            />
-
-            <PasswordInput
-              id="confirmPassword"
-              name="confirmPassword"
-              label="Confirm password"
-              autoComplete="new-password"
-              placeholder="••••••••"
-              value={formik.values.confirmPassword}
-              onChange={formik.handleChange}
-              onBlur={formik.handleBlur}
-              error={fieldError('confirmPassword')}
-            />
+            {/* 4th row: Confirm password (1 column) */}
+            <div>
+              <PasswordInput
+                id="confirmPassword"
+                name="confirmPassword"
+                label="Confirm password"
+                autoComplete="new-password"
+                placeholder="••••••••"
+                value={formik.values.confirmPassword}
+                onChange={formik.handleChange}
+                onBlur={formik.handleBlur}
+                error={fieldError('confirmPassword')}
+              />
+            </div>
 
             <SubmitButton
               loading={formik.isSubmitting}
