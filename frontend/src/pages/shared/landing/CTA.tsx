@@ -24,14 +24,7 @@ export default function CTA() {
           <div className="pointer-events-none absolute -top-40 left-1/2 h-72 w-[42rem] -translate-x-1/2 rounded-full bg-white/20 blur-3xl" />
 
           <div className="relative">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/30 px-4 py-1.5">
-              <span className="h-2 w-2 rounded-full bg-green-500" />
-              <span className="font-label-md text-label-md text-surface-container-lowest/80">
-                SeraGo
-              </span>
-            </div>
-
-            <h2 className="mx-auto mt-6 max-w-3xl font-display-lg-mobile text-display-lg-mobile tracking-tight text-surface-container-lowest md:font-display-lg md:text-display-lg">
+            <h2 className="mx-auto max-w-3xl font-display-lg-mobile text-display-lg-mobile tracking-tight text-surface-container-lowest md:font-display-lg md:text-display-lg">
               Only jobs that <span className="text-accent">matter to you</span>.
             </h2>
             <p className="mx-auto mt-5 max-w-xl font-body-lg text-body-lg text-surface-container-lowest/70">

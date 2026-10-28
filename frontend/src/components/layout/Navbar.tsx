@@ -17,6 +17,13 @@ import { NotificationBell } from '../notifications'
 const publicNavLinks = [{ label: 'Jobs', to: '/jobs' }]
 
 /**
+ * ★ DESKTOP HEADER WIDTH KNOB ★
+ * Change this value (number in px or CSS string) to customize the desktop header width.
+ * Examples: 1024 (default), 960, 1140, 1200, or '100%' / '1024px'.
+ */
+export const DESKTOP_HEADER_MAX_WIDTH = 1024
+
+/**
  * App-wide header. Signed-out visitors get the marketing navbar; signed-in
  * users get a slim role-specific header (logo + avatar menu with sign out) —
  * all navigation lives in the dashboard sidebar, so the header stays clean.
@@ -59,7 +66,6 @@ export default function Navbar() {
 /* ------------------------------------------------------------ Public */
 
 function PublicNavbar() {
-  const [open, setOpen] = useState(false)
   const [isVisible, setIsVisible] = useState(true)
   const lastScrollY = useRef(0)
 
@@ -100,8 +106,10 @@ function PublicNavbar() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // When mobile drawer is open, keep header visible
-  const shouldShow = isVisible || open
+  const maxWidthStyle =
+    typeof DESKTOP_HEADER_MAX_WIDTH === 'number'
+      ? `${DESKTOP_HEADER_MAX_WIDTH}px`
+      : DESKTOP_HEADER_MAX_WIDTH
 
   return (
     <>
@@ -110,39 +118,68 @@ function PublicNavbar() {
 
       {/* Floating Centered Island Header */}
       <header
-        className={`fixed top-3 sm:top-5 left-0 right-0 z-50 flex justify-center px-4 sm:px-6 pointer-events-none transition-all duration-300 ease-in-out ${
-          shouldShow ? 'translate-y-0 opacity-100' : '-translate-y-28 opacity-0'
+        className={`fixed top-3 sm:top-5 left-0 right-0 z-50 flex justify-center px-3.5 sm:px-6 pointer-events-none transition-all duration-300 ease-in-out ${
+          isVisible ? 'translate-y-0 opacity-100' : '-translate-y-28 opacity-0'
         }`}
       >
         <div
-          className={`pointer-events-auto flex w-full max-w-5xl flex-col border border-slate-200/80 bg-white/90 px-5 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.07)] backdrop-blur-md transition-all duration-300 sm:px-7 sm:py-3 dark:border-slate-800 dark:bg-slate-900/90 ${
-            open ? 'rounded-3xl' : 'rounded-full'
-          }`}
+          style={{ maxWidth: maxWidthStyle }}
+          className="relative pointer-events-auto flex w-full items-center justify-between rounded-full border border-slate-200/80 bg-white/95 px-4 py-2 shadow-[0_8px_30px_rgb(0,0,0,0.07)] backdrop-blur-md transition-all sm:px-7 sm:py-3 dark:border-slate-800 dark:bg-slate-900/95"
         >
-          {/* Main header row */}
-          <div className="flex items-center justify-between">
-            <Link
-              to="/"
-              className="font-headline-md text-headline-md font-extrabold tracking-tight"
-              aria-label="SeraGo home"
-            >
+          {/* Brand Logo: Favicon image on phone, SeraGo text on desktop */}
+          <Link
+            to="/"
+            className="flex items-center gap-2 shrink-0 z-10 transition-transform active:scale-95"
+            aria-label="SeraGo home"
+          >
+            {/* Phone: Favicon logo */}
+            <img
+              src="/sources/logo%20favicon/apple-touch-icon.png"
+              alt="SeraGo"
+              className="h-8 w-8 rounded-full object-contain md:hidden"
+            />
+            {/* Desktop: SeraGo text */}
+            <span className="hidden font-headline-md text-headline-md font-extrabold tracking-tight md:inline-block">
               <span className="text-[#1A73E8]">Sera</span>
               <span className="text-[#FF6600]">Go</span>
-            </Link>
+            </span>
+          </Link>
 
-            {/* Desktop links */}
-            <nav className="hidden items-center gap-8 md:flex">
-              {publicNavLinks.map((link) => (
+          {/* Center Navigation: "Jobs" link centered in both mobile and desktop */}
+          <nav className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center">
+            {publicNavLinks.map((link) => (
+              <Link
+                key={link.to}
+                to={link.to}
+                className="font-body-md text-sm sm:text-base font-semibold sm:font-medium text-slate-700 transition-colors duration-200 hover:text-primary px-3 py-1.5"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+
+          {/* Right Action Area */}
+          <div className="flex items-center gap-2 sm:gap-3 z-10">
+            {/* Mobile-only Log in button: Orange bg + Black text (Signup omitted) */}
+            <div className="md:hidden">
+              {signedIn ? (
                 <Link
-                  key={link.to}
-                  to={link.to}
-                  className="font-body-md text-body-md font-medium text-slate-600 transition-colors duration-200 hover:text-primary"
+                  to="/dashboard"
+                  className="rounded-full bg-[#FF6600] px-4 py-1.5 text-xs font-bold text-black shadow-xs transition-all hover:bg-[#e65c00] active:scale-95"
                 >
-                  {link.label}
+                  Dashboard
                 </Link>
-              ))}
-            </nav>
+              ) : (
+                <Link
+                  to="/login"
+                  className="rounded-full bg-[#FF6600] px-4 py-1.5 text-xs font-bold text-black shadow-xs transition-all hover:bg-[#e65c00] active:scale-95"
+                >
+                  Log in
+                </Link>
+              )}
+            </div>
 
+            {/* Desktop-only Auth Buttons */}
             <div className="hidden items-center gap-2.5 md:flex">
               {signedIn ? (
                 <Button to="/dashboard" variant="primary" className="rounded-full px-5 py-2">
@@ -167,67 +204,7 @@ function PublicNavbar() {
                 </>
               )}
             </div>
-
-            {/* Mobile toggle */}
-            <button
-              type="button"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100 transition-colors md:hidden"
-              onClick={() => setOpen((o) => !o)}
-              aria-expanded={open}
-              aria-label="Toggle navigation menu"
-            >
-              <span className="material-symbols-outlined text-[24px]">
-                {open ? 'close' : 'menu'}
-              </span>
-            </button>
           </div>
-
-          {/* Mobile menu inside curved container */}
-          {open && (
-            <div className="mt-4 flex flex-col gap-2 border-t border-slate-100 pt-3 md:hidden">
-              {publicNavLinks.map((link) => (
-                <Link
-                  key={link.to}
-                  to={link.to}
-                  onClick={() => setOpen(false)}
-                  className="rounded-xl px-3 py-2 font-body-md text-body-md text-secondary transition-colors hover:bg-slate-50 hover:text-primary"
-                >
-                  {link.label}
-                </Link>
-              ))}
-              <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-3">
-                {signedIn ? (
-                  <Button
-                    to="/dashboard"
-                    variant="primary"
-                    className="w-full rounded-full"
-                    onClick={() => setOpen(false)}
-                  >
-                    Dashboard
-                  </Button>
-                ) : (
-                  <>
-                    <Button
-                      to="/login"
-                      variant="secondary"
-                      className="w-full rounded-full"
-                      onClick={() => setOpen(false)}
-                    >
-                      Log in
-                    </Button>
-                    <Button
-                      to="/signup"
-                      variant="primary"
-                      className="w-full rounded-full"
-                      onClick={() => setOpen(false)}
-                    >
-                      Sign up
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
         </div>
       </header>
     </>
@@ -238,17 +215,29 @@ function PublicNavbar() {
 
 /** Slim header shown while whoami resolves (avoids layout jumping). */
 function LoadingNavbar() {
+  const maxWidthStyle =
+    typeof DESKTOP_HEADER_MAX_WIDTH === 'number'
+      ? `${DESKTOP_HEADER_MAX_WIDTH}px`
+      : DESKTOP_HEADER_MAX_WIDTH
+
   return (
     <>
       <div className="h-20 w-full shrink-0 pointer-events-none" aria-hidden="true" />
-      <header className="fixed top-3 sm:top-5 left-0 right-0 z-50 flex justify-center px-4 sm:px-6 pointer-events-none">
-        <div className="pointer-events-auto flex w-full max-w-5xl items-center justify-between rounded-full border border-slate-200/80 bg-white/90 px-5 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.07)] backdrop-blur-md sm:px-7 sm:py-3 dark:border-slate-800 dark:bg-slate-900/90">
-          <Link
-            to="/"
-            className="font-headline-md text-headline-md font-extrabold tracking-tight"
-          >
-            <span className="text-[#1A73E8]">Sera</span>
-            <span className="text-[#FF6600]">Go</span>
+      <header className="fixed top-3 sm:top-5 left-0 right-0 z-50 flex justify-center px-3.5 sm:px-6 pointer-events-none">
+        <div
+          style={{ maxWidth: maxWidthStyle }}
+          className="pointer-events-auto flex w-full items-center justify-between rounded-full border border-slate-200/80 bg-white/95 px-4 py-2 shadow-[0_8px_30px_rgb(0,0,0,0.07)] backdrop-blur-md sm:px-7 sm:py-3 dark:border-slate-800 dark:bg-slate-900/95"
+        >
+          <Link to="/" className="flex items-center gap-2 shrink-0">
+            <img
+              src="/sources/logo%20favicon/apple-touch-icon.png"
+              alt="SeraGo"
+              className="h-8 w-8 rounded-full object-contain md:hidden"
+            />
+            <span className="hidden font-headline-md text-headline-md font-extrabold tracking-tight md:inline-block">
+              <span className="text-[#1A73E8]">Sera</span>
+              <span className="text-[#FF6600]">Go</span>
+            </span>
           </Link>
           <span
             aria-hidden="true"
