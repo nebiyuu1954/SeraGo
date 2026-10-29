@@ -21,7 +21,7 @@ import { cn } from '../../../lib/cn.ts'
 import CopyPromptModal from './CopyPromptModal.tsx'
 import ClassificationHistoryTab from './ClassificationHistoryTab.tsx'
 
-type Tab = 'sectors' | 'aliases' | 'review' | 'history'
+type Tab = 'history' | 'review' | 'sectors' | 'aliases'
 
 /**
  * Admin console for the sector vocabulary: manage canonical sectors and the
@@ -31,9 +31,9 @@ type Tab = 'sectors' | 'aliases' | 'review' | 'history'
 export default function SectorsPage() {
   const auth = useRequireRole('Admin')
   const [searchParams, setSearchParams] = useSearchParams()
-  const initialTab = (searchParams.get('tab') as Tab) || 'sectors'
+  const initialTab = (searchParams.get('tab') as Tab) || 'history'
   const [tab, setTab] = useState<Tab>(
-    ['sectors', 'aliases', 'review', 'history'].includes(initialTab) ? initialTab : 'sectors',
+    ['history', 'review', 'sectors', 'aliases'].includes(initialTab) ? initialTab : 'history',
   )
   const token = useAdminToken()
   const { sectors } = useSectors()
@@ -71,10 +71,10 @@ export default function SectorsPage() {
       <div className="mt-6 flex flex-wrap gap-1 rounded-lg border border-surface-variant bg-surface-container-lowest p-1 shadow-sm sm:w-fit">
         {(
           [
+            { id: 'history', label: 'Classification history' },
+            { id: 'review', label: 'Review & sync' },
             { id: 'sectors', label: 'Sectors' },
             { id: 'aliases', label: 'Aliases' },
-            { id: 'review', label: 'Review & sync' },
-            { id: 'history', label: 'Classification history' },
           ] as { id: Tab; label: string }[]
         ).map((t) => (
           <button
@@ -95,12 +95,12 @@ export default function SectorsPage() {
       </div>
 
       <div className="mt-6">
-        {tab === 'sectors' && <SectorsTab />}
-        {tab === 'aliases' && <AliasesTab />}
-        {tab === 'review' && <ReviewTab />}
         {tab === 'history' && (
           <ClassificationHistoryTab sectors={sectors} token={token ?? ''} />
         )}
+        {tab === 'review' && <ReviewTab />}
+        {tab === 'sectors' && <SectorsTab />}
+        {tab === 'aliases' && <AliasesTab />}
       </div>
     </DashboardShell>
   )
