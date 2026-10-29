@@ -31,15 +31,11 @@ public sealed class OpenRouterClient
     {
         _logger = logger;
 
-        // Collect all configured API keys (primary, secondary, or comma-separated list)
-        var primaryKey = config["OPENROUTER_API_KEY"]
-            ?? Environment.GetEnvironmentVariable("OPENROUTER_API_KEY")
-            ?? config["OpenRouter:ApiKey"]
-            ?? string.Empty;
-
-        if (!string.IsNullOrWhiteSpace(primaryKey))
+        // Collect all configured API keys (supports 4+ keys, comma-separated lists, and numbered keys)
+        void AddKeys(string? candidate)
         {
-            var parts = primaryKey.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (string.IsNullOrWhiteSpace(candidate)) return;
+            var parts = candidate.Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             foreach (var part in parts)
             {
                 if (!string.IsNullOrWhiteSpace(part) && !_apiKeys.Contains(part))
@@ -49,24 +45,18 @@ public sealed class OpenRouterClient
             }
         }
 
-        var secondaryKey = config["OPENROUTER_API_KEY_SECONDARY"]
-            ?? Environment.GetEnvironmentVariable("OPENROUTER_API_KEY_SECONDARY")
-            ?? config["OPENROUTER_API_KEY_2"]
-            ?? Environment.GetEnvironmentVariable("OPENROUTER_API_KEY_2")
-            ?? config["OpenRouter:SecondaryApiKey"]
-            ?? string.Empty;
+        AddKeys(config["OPENROUTER_API_KEYS"] ?? Environment.GetEnvironmentVariable("OPENROUTER_API_KEYS"));
+        AddKeys(config["OPENROUTER_API_KEY"] ?? Environment.GetEnvironmentVariable("OPENROUTER_API_KEY") ?? config["OpenRouter:ApiKey"]);
 
-        if (!string.IsNullOrWhiteSpace(secondaryKey))
+        for (var i = 1; i <= 10; i++)
         {
-            var parts = secondaryKey.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            foreach (var part in parts)
-            {
-                if (!string.IsNullOrWhiteSpace(part) && !_apiKeys.Contains(part))
-                {
-                    _apiKeys.Add(part);
-                }
-            }
+            AddKeys(config[$"OPENROUTER_API_KEY_{i}"] ?? Environment.GetEnvironmentVariable($"OPENROUTER_API_KEY_{i}"));
+            AddKeys(config[$"OpenRouter:ApiKey{i}"]);
         }
+
+        AddKeys(config["OPENROUTER_API_KEY_SECONDARY"] ?? Environment.GetEnvironmentVariable("OPENROUTER_API_KEY_SECONDARY") ?? config["OpenRouter:SecondaryApiKey"]);
+        AddKeys(config["OPENROUTER_API_KEY_TERTIARY"] ?? Environment.GetEnvironmentVariable("OPENROUTER_API_KEY_TERTIARY"));
+        AddKeys(config["OPENROUTER_API_KEY_QUATERNARY"] ?? Environment.GetEnvironmentVariable("OPENROUTER_API_KEY_QUATERNARY"));
 
         _primaryModel = config["OPENROUTER_MODEL"]
             ?? Environment.GetEnvironmentVariable("OPENROUTER_MODEL")

@@ -9,15 +9,16 @@ namespace SeraGo.API.Services;
 
 /// <summary>
 /// 5-Tier unified job classification pipeline:
-///   Tier 1: OpenRouter (NVIDIA Nemotron 3 Ultra 550B / Google DeepMind Gemma 4 with Dual-Key Failover)
-///   Tier 2: Groq Cloud LLM (Meta Llama 3.3 70B - 1,000 free req/day)
-///   Tier 3: Google Gemini (Gemini 2.0 Flash / Flash Thinking - 1,500 free req/day)
-///   Tier 4: Local Ollama (Offline / On-Premise fallback)
-///   Tier 5: Semantic Cosine Similarity against historical classified jobs
+///   Tier 1: DeepSeek API (DeepSeek-V4.1-Flash-1017 via https://api.deepseek.com - 2,500 concurrency)
+///   Tier 2: OpenRouter (NVIDIA Nemotron 3 Ultra 550B with Dual-Key Failover)
+///   Tier 3: Groq Cloud LLM (Meta Llama 3.3 70B - 1,000 free req/day)
+///   Tier 4: Google Gemini (Gemini 2.0 Flash / Flash Thinking - 1,500 free req/day)
+///   Tier 5: Safe Uncategorized Fallback (with Emergency Groq 8B Instant pass)
 /// </summary>
 public sealed class UnifiedJobClassificationService
 {
     private readonly ApplicationDbContext _db;
+    private readonly DeepSeekClient _deepSeek;
     private readonly OpenRouterClient _openRouter;
     private readonly GroqClient _groq;
     private readonly GeminiClient _gemini;
@@ -27,6 +28,7 @@ public sealed class UnifiedJobClassificationService
 
     public UnifiedJobClassificationService(
         ApplicationDbContext db,
+        DeepSeekClient deepSeek,
         OpenRouterClient openRouter,
         GroqClient groq,
         GeminiClient gemini,
@@ -35,6 +37,7 @@ public sealed class UnifiedJobClassificationService
         IServiceScopeFactory scopeFactory)
     {
         _db = db;
+        _deepSeek = deepSeek;
         _openRouter = openRouter;
         _groq = groq;
         _gemini = gemini;
@@ -86,37 +89,45 @@ public sealed class UnifiedJobClassificationService
 
             switch (r.Method.ToLowerInvariant())
             {
+                case "deepseek":
+                case "deepseek flash":
+                case "deepseek-flash":
+                case "deepseek v4 flash":
+                    modelUsed = "DeepSeek V4 Flash";
+                    modelTier = "Tier 1 (DeepSeek V4.1 Flash via DeepSeek API)";
+                    break;
                 case "openrouter nemotron":
                 case "openrouter":
                 case "nemotron":
                     modelUsed = "OpenRouter Nemotron";
-                    modelTier = "Tier 1 (NVIDIA Nemotron 3 Ultra 550B via OpenRouter)";
+                    modelTier = "Tier 2 (NVIDIA Nemotron 3 Ultra 550B via OpenRouter)";
                     break;
                 case "groq":
                 case "groq llama":
                     modelUsed = "Groq Llama 3.3 70B";
-                    modelTier = "Tier 2 (Meta Llama 3.3 70B via Groq Cloud)";
+                    modelTier = "Tier 3 (Meta Llama 3.3 70B via Groq Cloud)";
+                    break;
+                case "gemini":
+                case "google gemini":
+                    modelUsed = "Google Gemini 2.0 Flash";
+                    modelTier = "Tier 4 (Google Gemini 2.0 Flash)";
                     break;
                 case "groq llama 8b instant":
                 case "groq llama 8b":
                 case "groq 8b":
                     modelUsed = "Groq Llama 3.1 8B Instant";
-                    modelTier = "Tier 2-Fast (Meta Llama 3.1 8B Instant via Groq Cloud)";
-                    break;
-                case "gemini":
-                case "google gemini":
-                    modelUsed = "Google Gemini 2.0 Flash";
-                    modelTier = "Tier 3 (Google Gemini 2.0 Flash)";
+                    modelTier = "Emergency (Meta Llama 3.1 8B Instant via Groq Cloud)";
                     break;
                 case "ollama":
                 case "local ollama":
                     modelUsed = "Local Ollama";
-                    modelTier = "Tier 4 (Local Ollama Offline LLM)";
+                    modelTier = "Offline (Local Ollama Offline LLM)";
                     break;
                 case "cosine":
                 case "cosinesimilarity":
-                    modelUsed = "Cosine Similarity";
-                    modelTier = "Tier 5 (Vector Semantic Similarity Fallback)";
+                case "uncategorized":
+                    modelUsed = "Safe Fallback";
+                    modelTier = "Tier 5 (Safe Uncategorized Fallback)";
                     break;
                 default:
                     modelUsed = r.Method;
@@ -388,12 +399,33 @@ public sealed class UnifiedJobClassificationService
         {{JsonSerializer.Serialize(userItems, new JsonSerializerOptions { WriteIndented = true })}}
         """;
 
-        // ── TIER 1: OpenRouter (NVIDIA Nemotron 3 Ultra 550B / Llama 3.3 70B with Dual-Key Failover) ──
+        // ── TIER 1: DeepSeek API (Primary: DeepSeek-V4.1-Flash-1017 - 2,500 Concurrency) ──
+        if (_deepSeek.IsConfigured)
+        {
+            try
+            {
+                _logger.LogInformation("Attempting Tier 1 (DeepSeek V4 Flash) classification for {Count} jobs.", chunk.Count);
+                var deepSeekEnvelope = await _deepSeek.ChatJsonAsync<ClassificationEnvelope>(
+                    systemPrompt, userPrompt, timeoutSeconds: 40, ct: ct);
+
+                if (deepSeekEnvelope?.Results is { Count: > 0 })
+                {
+                    return MapResults(chunk, deepSeekEnvelope.Results, sectorBySlug, "DeepSeek Flash");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Tier 1 (DeepSeek Flash) classification failed or was rate-limited. Falling back to Tier 2 (OpenRouter).");
+                await RecordFallbackAsync("Tier 1 (DeepSeek V4 Flash)", "DeepSeek", ex, "Tier 2 (OpenRouter Nemotron 550B)", chunk, ct);
+            }
+        }
+
+        // ── TIER 2: OpenRouter (NVIDIA Nemotron 3 Ultra 550B with Dual-Key Failover) ──
         if (_openRouter.IsConfigured)
         {
             try
             {
-                _logger.LogInformation("Attempting Tier 1 (OpenRouter Nemotron 550B) classification for {Count} jobs.", chunk.Count);
+                _logger.LogInformation("Attempting Tier 2 (OpenRouter Nemotron 550B) classification for {Count} jobs.", chunk.Count);
                 var openRouterEnvelope = await _openRouter.ChatJsonAsync<ClassificationEnvelope>(
                     systemPrompt, userPrompt, timeoutSeconds: 45, ct: ct);
 
@@ -404,17 +436,17 @@ public sealed class UnifiedJobClassificationService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Tier 1 (OpenRouter) classification failed or was rate-limited. Falling back to Tier 2 (Groq).");
-                await RecordFallbackAsync("Tier 1 (OpenRouter Nemotron 550B)", "OpenRouter", ex, "Tier 2 (Groq Llama 3.3 70B)", chunk, ct);
+                _logger.LogWarning(ex, "Tier 2 (OpenRouter) classification failed or was rate-limited. Falling back to Tier 3 (Groq).");
+                await RecordFallbackAsync("Tier 2 (OpenRouter Nemotron 550B)", "OpenRouter", ex, "Tier 3 (Groq Llama 3.3 70B)", chunk, ct);
             }
         }
 
-        // ── TIER 2: Groq Cloud LLM (Meta Llama 3.3 70B with automatic 8B Instant fallback) ──
+        // ── TIER 3: Groq Cloud LLM (Meta Llama 3.3 70B with automatic 8B Instant fallback) ──
         if (_groq.IsConfigured)
         {
             try
             {
-                _logger.LogInformation("Attempting Tier 2 (Groq Llama 3.3 70B) classification for {Count} jobs.", chunk.Count);
+                _logger.LogInformation("Attempting Tier 3 (Groq Llama 3.3 70B) classification for {Count} jobs.", chunk.Count);
                 var groqEnvelope = await _groq.ChatJsonAsync<ClassificationEnvelope>(
                     model: "",
                     systemPrompt: systemPrompt,
@@ -429,17 +461,17 @@ public sealed class UnifiedJobClassificationService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Tier 2 (Groq) classification failed. Falling back to Tier 3 (Google Gemini).");
-                await RecordFallbackAsync("Tier 2 (Groq Llama 3.3 70B)", "Groq", ex, "Tier 3 (Google Gemini 2.0 Flash)", chunk, ct);
+                _logger.LogWarning(ex, "Tier 3 (Groq) classification failed. Falling back to Tier 4 (Google Gemini).");
+                await RecordFallbackAsync("Tier 3 (Groq Llama 3.3 70B)", "Groq", ex, "Tier 4 (Google Gemini 2.0 Flash)", chunk, ct);
             }
         }
 
-        // ── TIER 3: Google Gemini (Gemini 2.0 Flash / Flash Thinking - 1,500 free req/day) ──
+        // ── TIER 4: Google Gemini (Gemini 2.0 Flash / Flash Thinking - 1,500 free req/day) ──
         if (_gemini.IsConfigured)
         {
             try
             {
-                _logger.LogInformation("Attempting Tier 3 (Gemini 2.0 Flash) classification for {Count} jobs.", chunk.Count);
+                _logger.LogInformation("Attempting Tier 4 (Gemini 2.0 Flash) classification for {Count} jobs.", chunk.Count);
                 var geminiEnvelope = await _gemini.GenerateJsonAsync<ClassificationEnvelope>(
                     systemPrompt, userPrompt, ct);
 
@@ -450,15 +482,15 @@ public sealed class UnifiedJobClassificationService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Tier 3 (Gemini) classification failed or was rate-limited. Falling back to Tier 4 (Ollama).");
-                await RecordFallbackAsync("Tier 3 (Google Gemini 2.0 Flash)", "Gemini", ex, "Tier 4 (Ollama / Groq 8B)", chunk, ct);
+                _logger.LogWarning(ex, "Tier 4 (Gemini) classification failed or was rate-limited. Falling back to Emergency Pass.");
+                await RecordFallbackAsync("Tier 4 (Google Gemini 2.0 Flash)", "Gemini", ex, "Emergency Groq 8B Instant", chunk, ct);
             }
         }
 
-        // ── TIER 4: Local Ollama (Offline / On-Prem) ──────────────────────────
+        // ── LOCAL OLLAMA (Optional Offline / On-Prem) ──────────────────────────
         try
         {
-            _logger.LogInformation("Attempting Tier 4 (Local Ollama) classification for {Count} jobs.", chunk.Count);
+            _logger.LogInformation("Attempting Local Ollama classification for {Count} jobs.", chunk.Count);
             var ollamaEnvelope = await _ollama.ChatJsonAsync<ClassificationEnvelope>(
                 systemPrompt, userPrompt, ct);
 
@@ -469,7 +501,7 @@ public sealed class UnifiedJobClassificationService
         }
         catch (Exception ex)
         {
-            _logger.LogInformation("Tier 4 (Ollama) unavailable or failed: {Message}.", ex.Message);
+            _logger.LogInformation("Local Ollama unavailable or failed: {Message}.", ex.Message);
         }
 
         // ── EMERGENCY HIGH-THROUGHPUT AI PASS (Groq Llama 3.1 8B Instant - 30,000 TPM) ──
@@ -744,6 +776,12 @@ public sealed class UnifiedJobClassificationService
     private static (int? StatusCode, string Category, string Details) CategorizeException(Exception ex)
     {
         var msg = ex.Message ?? "Unknown error";
+
+        if (ex is DeepSeekRateLimitException dsEx)
+        {
+            return (dsEx.StatusCode, "RateLimit", $"DeepSeek rate-limited/balance ({dsEx.StatusCode}): {dsEx.Message}");
+        }
+
         if (ex is OpenRouterRateLimitException rle)
         {
             return (rle.StatusCode, "RateLimit", $"OpenRouter rate-limited: {rle.Message}");

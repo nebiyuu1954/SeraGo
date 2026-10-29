@@ -72,10 +72,10 @@ public static class SectorEndpoints
 
     public sealed record ClassificationDashboardStatsResponse(
         string Date,
-        TierMetricDto Tier1OpenRouter,
-        TierMetricDto Tier2Groq,
-        TierMetricDto Tier3Gemini,
-        TierMetricDto Tier4FastPass,
+        TierMetricDto Tier1DeepSeek,
+        TierMetricDto Tier2OpenRouter,
+        TierMetricDto Tier3Groq,
+        TierMetricDto Tier4Gemini,
         TierMetricDto Tier5SafeFallback,
         DailyOperationalMetricsDto DailyMetrics
     );
@@ -475,6 +475,7 @@ public static class SectorEndpoints
             .Where(e => e.OccurredAt >= oneHourAgo)
             .ToListAsync(ct);
 
+        var deepSeekFailsLastHour = recentErrors.Count(e => e.FailedProvider.Contains("DeepSeek", StringComparison.OrdinalIgnoreCase));
         var openRouterFailsLastHour = recentErrors.Count(e => e.FailedProvider.Contains("OpenRouter", StringComparison.OrdinalIgnoreCase));
         var groqFailsLastHour = recentErrors.Count(e => e.FailedProvider.Contains("Groq", StringComparison.OrdinalIgnoreCase));
         var geminiFailsLastHour = recentErrors.Count(e => e.FailedProvider.Contains("Gemini", StringComparison.OrdinalIgnoreCase));
@@ -493,8 +494,17 @@ public static class SectorEndpoints
         {
             new
             {
-                Name = "OpenRouter Nemotron 550B",
+                Name = "DeepSeek V4 Flash",
                 Tier = "Tier 1",
+                Status = deepSeekFailsLastHour >= 3 ? "degraded" : deepSeekFailsLastHour > 0 ? "warning" : "healthy",
+                JobsClassifiedToday = modelCountsToday.FirstOrDefault(m => m.Model.Contains("DeepSeek", StringComparison.OrdinalIgnoreCase))?.Count ?? 0,
+                FailoversToday = events.Count(e => e.FailedProvider.Contains("DeepSeek", StringComparison.OrdinalIgnoreCase)),
+                LastFailureReason = events.FirstOrDefault(e => e.FailedProvider.Contains("DeepSeek", StringComparison.OrdinalIgnoreCase))?.ErrorMessage
+            },
+            new
+            {
+                Name = "OpenRouter Nemotron 550B",
+                Tier = "Tier 2",
                 Status = openRouterFailsLastHour >= 3 ? "degraded" : openRouterFailsLastHour > 0 ? "warning" : "healthy",
                 JobsClassifiedToday = modelCountsToday.FirstOrDefault(m => m.Model.Contains("OpenRouter", StringComparison.OrdinalIgnoreCase))?.Count ?? 0,
                 FailoversToday = events.Count(e => e.FailedProvider.Contains("OpenRouter", StringComparison.OrdinalIgnoreCase)),
@@ -503,7 +513,7 @@ public static class SectorEndpoints
             new
             {
                 Name = "Groq Llama 3.3 70B",
-                Tier = "Tier 2",
+                Tier = "Tier 3",
                 Status = groqFailsLastHour >= 3 ? "degraded" : groqFailsLastHour > 0 ? "warning" : "healthy",
                 JobsClassifiedToday = modelCountsToday.FirstOrDefault(m => m.Model.Equals("Groq", StringComparison.OrdinalIgnoreCase) || m.Model.Contains("Groq Llama 3.3", StringComparison.OrdinalIgnoreCase))?.Count ?? 0,
                 FailoversToday = events.Count(e => e.FailedProvider.Contains("Groq", StringComparison.OrdinalIgnoreCase)),
@@ -512,7 +522,7 @@ public static class SectorEndpoints
             new
             {
                 Name = "Google Gemini 2.0 Flash",
-                Tier = "Tier 3",
+                Tier = "Tier 4",
                 Status = geminiFailsLastHour >= 3 ? "degraded" : geminiFailsLastHour > 0 ? "warning" : "healthy",
                 JobsClassifiedToday = modelCountsToday.FirstOrDefault(m => m.Model.Contains("Gemini", StringComparison.OrdinalIgnoreCase))?.Count ?? 0,
                 FailoversToday = events.Count(e => e.FailedProvider.Contains("Gemini", StringComparison.OrdinalIgnoreCase)),
@@ -520,19 +530,10 @@ public static class SectorEndpoints
             },
             new
             {
-                Name = "Groq Llama 3.1 8B Instant",
-                Tier = "Emergency Pass",
+                Name = "Safe Uncategorized Fallback",
+                Tier = "Tier 5",
                 Status = "healthy",
-                JobsClassifiedToday = modelCountsToday.FirstOrDefault(m => m.Model.Contains("8B", StringComparison.OrdinalIgnoreCase))?.Count ?? 0,
-                FailoversToday = 0,
-                LastFailureReason = (string?)null
-            },
-            new
-            {
-                Name = "Cosine Vector Fallback",
-                Tier = "Tier 5 (Safe Uncategorized)",
-                Status = "healthy",
-                JobsClassifiedToday = modelCountsToday.FirstOrDefault(m => m.Model.Contains("Cosine", StringComparison.OrdinalIgnoreCase))?.Count ?? 0,
+                JobsClassifiedToday = modelCountsToday.FirstOrDefault(m => m.Model.Contains("Safe", StringComparison.OrdinalIgnoreCase) || m.Model.Contains("Cosine", StringComparison.OrdinalIgnoreCase))?.Count ?? 0,
                 FailoversToday = 0,
                 LastFailureReason = (string?)null
             }
@@ -602,36 +603,36 @@ public static class SectorEndpoints
         int CountRuns(IEnumerable<JobClassificationRecord> tierRecords) =>
             tierRecords.GroupBy(r => new { r.ClassifiedAt.Hour, r.ClassifiedAt.Minute, Window = r.ClassifiedAt.Second / 5 }).Count();
 
-        // Tier 1: OpenRouter
-        var t1Records = records.Where(r => r.ModelUsed.Contains("OpenRouter", StringComparison.OrdinalIgnoreCase) || r.ModelTier.Contains("OpenRouter", StringComparison.OrdinalIgnoreCase)).ToList();
-        var t1Fails = events.Where(e => e.FailedProvider.Contains("OpenRouter", StringComparison.OrdinalIgnoreCase)).ToList();
+        // Tier 1: DeepSeek V4 Flash
+        var t1Records = records.Where(r => r.ModelUsed.Contains("DeepSeek", StringComparison.OrdinalIgnoreCase) || r.ModelTier.Contains("DeepSeek", StringComparison.OrdinalIgnoreCase)).ToList();
+        var t1Fails = events.Where(e => e.FailedProvider.Contains("DeepSeek", StringComparison.OrdinalIgnoreCase)).ToList();
         var t1JobsClassified = t1Records.Count(r => !string.IsNullOrEmpty(r.SectorSlug));
         var t1JobsFailed = t1Fails.Sum(e => e.JobCount);
         var t1SuccessRuns = CountRuns(t1Records);
         var t1FailedRuns = t1Fails.Count;
         var t1Status = t1FailedRuns >= 3 ? "degraded" : t1FailedRuns > 0 ? "warning" : t1JobsClassified > 0 ? "active" : "idle";
 
-        // Tier 2: Groq Llama 3.3 70B
-        var t2Records = records.Where(r => (r.ModelUsed.Equals("Groq", StringComparison.OrdinalIgnoreCase) || r.ModelUsed.Contains("Groq Llama 3.3", StringComparison.OrdinalIgnoreCase)) && !r.ModelUsed.Contains("8B", StringComparison.OrdinalIgnoreCase)).ToList();
-        var t2Fails = events.Where(e => e.FailedProvider.Contains("Groq", StringComparison.OrdinalIgnoreCase) && !e.AttemptedTier.Contains("8B", StringComparison.OrdinalIgnoreCase)).ToList();
+        // Tier 2: OpenRouter Nemotron 550B
+        var t2Records = records.Where(r => r.ModelUsed.Contains("OpenRouter", StringComparison.OrdinalIgnoreCase) || r.ModelTier.Contains("OpenRouter", StringComparison.OrdinalIgnoreCase)).ToList();
+        var t2Fails = events.Where(e => e.FailedProvider.Contains("OpenRouter", StringComparison.OrdinalIgnoreCase)).ToList();
         var t2JobsClassified = t2Records.Count(r => !string.IsNullOrEmpty(r.SectorSlug));
         var t2JobsFailed = t2Fails.Sum(e => e.JobCount);
         var t2SuccessRuns = CountRuns(t2Records);
         var t2FailedRuns = t2Fails.Count;
         var t2Status = t2FailedRuns >= 3 ? "degraded" : t2FailedRuns > 0 ? "warning" : t2JobsClassified > 0 ? "active" : "idle";
 
-        // Tier 3: Google Gemini 2.0 Flash
-        var t3Records = records.Where(r => r.ModelUsed.Contains("Gemini", StringComparison.OrdinalIgnoreCase)).ToList();
-        var t3Fails = events.Where(e => e.FailedProvider.Contains("Gemini", StringComparison.OrdinalIgnoreCase)).ToList();
+        // Tier 3: Groq Llama 3.3 70B
+        var t3Records = records.Where(r => (r.ModelUsed.Equals("Groq", StringComparison.OrdinalIgnoreCase) || r.ModelUsed.Contains("Groq Llama 3.3", StringComparison.OrdinalIgnoreCase)) && !r.ModelUsed.Contains("8B", StringComparison.OrdinalIgnoreCase)).ToList();
+        var t3Fails = events.Where(e => e.FailedProvider.Contains("Groq", StringComparison.OrdinalIgnoreCase) && !e.AttemptedTier.Contains("8B", StringComparison.OrdinalIgnoreCase)).ToList();
         var t3JobsClassified = t3Records.Count(r => !string.IsNullOrEmpty(r.SectorSlug));
         var t3JobsFailed = t3Fails.Sum(e => e.JobCount);
         var t3SuccessRuns = CountRuns(t3Records);
         var t3FailedRuns = t3Fails.Count;
         var t3Status = t3FailedRuns >= 3 ? "degraded" : t3Fails.Count > 0 ? "warning" : t3JobsClassified > 0 ? "active" : "idle";
 
-        // Tier 4: Emergency Pass (Groq Llama 3.1 8B Instant)
-        var t4Records = records.Where(r => r.ModelUsed.Contains("8B", StringComparison.OrdinalIgnoreCase)).ToList();
-        var t4Fails = events.Where(e => e.AttemptedTier.Contains("8B", StringComparison.OrdinalIgnoreCase)).ToList();
+        // Tier 4: Google Gemini 2.0 Flash
+        var t4Records = records.Where(r => r.ModelUsed.Contains("Gemini", StringComparison.OrdinalIgnoreCase)).ToList();
+        var t4Fails = events.Where(e => e.FailedProvider.Contains("Gemini", StringComparison.OrdinalIgnoreCase)).ToList();
         var t4JobsClassified = t4Records.Count(r => !string.IsNullOrEmpty(r.SectorSlug));
         var t4JobsFailed = t4Fails.Sum(e => e.JobCount);
         var t4SuccessRuns = CountRuns(t4Records);
@@ -646,10 +647,10 @@ public static class SectorEndpoints
 
         var response = new ClassificationDashboardStatsResponse(
             targetDate.ToString("yyyy-MM-dd"),
-            new TierMetricDto("Tier 1", "OpenRouter Nemotron 550B", t1JobsClassified, t1JobsFailed, t1SuccessRuns, t1FailedRuns, t1Status),
-            new TierMetricDto("Tier 2", "Groq Llama 3.3 70B", t2JobsClassified, t2JobsFailed, t2SuccessRuns, t2FailedRuns, t2Status),
-            new TierMetricDto("Tier 3", "Google Gemini 2.0 Flash", t3JobsClassified, t3JobsFailed, t3SuccessRuns, t3FailedRuns, t3Status),
-            new TierMetricDto("Emergency Pass", "Groq Llama 3.1 8B Instant", t4JobsClassified, t4JobsFailed, t4SuccessRuns, t4FailedRuns, t4Status),
+            new TierMetricDto("Tier 1", "DeepSeek V4 Flash", t1JobsClassified, t1JobsFailed, t1SuccessRuns, t1FailedRuns, t1Status),
+            new TierMetricDto("Tier 2", "OpenRouter Nemotron 550B", t2JobsClassified, t2JobsFailed, t2SuccessRuns, t2FailedRuns, t2Status),
+            new TierMetricDto("Tier 3", "Groq Llama 3.3 70B", t3JobsClassified, t3JobsFailed, t3SuccessRuns, t3FailedRuns, t3Status),
+            new TierMetricDto("Tier 4", "Google Gemini 2.0 Flash", t4JobsClassified, t4JobsFailed, t4SuccessRuns, t4FailedRuns, t4Status),
             new TierMetricDto("Tier 5", "Safe Uncategorized Fallback", 0, t5JobsUnclassified, t5SuccessRuns, 0, t5Status),
             new DailyOperationalMetricsDto(totalClassified, totalUnclassified, avgConfidence, totalInsertedOrSynced, successRate)
         );

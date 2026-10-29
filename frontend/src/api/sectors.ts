@@ -215,10 +215,10 @@ export interface DailyOperationalMetrics {
 
 export interface ClassificationDashboardStatsResponse {
   date: string
-  tier1OpenRouter: TierMetric
-  tier2Groq: TierMetric
-  tier3Gemini: TierMetric
-  tier4FastPass: TierMetric
+  tier1DeepSeek: TierMetric
+  tier2OpenRouter: TierMetric
+  tier3Groq: TierMetric
+  tier4Gemini: TierMetric
   tier5SafeFallback: TierMetric
   dailyMetrics: DailyOperationalMetrics
 }

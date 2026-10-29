@@ -228,11 +228,12 @@ builder.Services.AddHostedService<SyncScheduler>();
 
 builder.Services.AddScoped<ISectorNormalizer, SectorNormalizer>(); // sector standardization
 builder.Services.AddScoped<IHeroSuggestionService, HeroSuggestionService>(); // hero role prediction & matching
-builder.Services.AddSingleton<OpenRouterClient>();                 // OpenRouter client (Tier 1: NVIDIA Nemotron 3 Ultra 550B with dual-key failover)
-builder.Services.AddSingleton<GroqClient>();                       // Groq AI client (Tier 2: Meta Llama 3.3 70B classifier fallback)
-builder.Services.AddSingleton<GeminiClient>();                     // Google Gemini client (Tier 3: Gemini 2.0 Flash classifier fallback)
-builder.Services.AddSingleton<OllamaClient>();                     // Local Ollama client (Tier 4: Offline classifier fallback)
-builder.Services.AddScoped<UnifiedJobClassificationService>();     // 5-tier unified classification service (OpenRouter 550B -> Groq 70B -> Gemini -> Ollama -> Cosine)
+builder.Services.AddSingleton<DeepSeekClient>();                   // DeepSeek client (Tier 1: DeepSeek-V4.1-Flash-1017 primary classifier)
+builder.Services.AddSingleton<OpenRouterClient>();                 // OpenRouter client (Tier 2: NVIDIA Nemotron 3 Ultra 550B with dual-key failover)
+builder.Services.AddSingleton<GroqClient>();                       // Groq AI client (Tier 3: Meta Llama 3.3 70B classifier fallback)
+builder.Services.AddSingleton<GeminiClient>();                     // Google Gemini client (Tier 4: Gemini 2.0 Flash classifier fallback)
+builder.Services.AddSingleton<OllamaClient>();                     // Local Ollama client (Tier 5: Offline classifier fallback)
+builder.Services.AddScoped<UnifiedJobClassificationService>();     // 5-tier unified classification service (DeepSeek Flash -> OpenRouter 550B -> Groq 70B -> Gemini -> Safe Fallback)
 builder.Services.AddScoped<JobClassificationService>();          // AI job classification (legacy — keeps the Groq call available for other uses)
 builder.Services.AddScoped<ClassificationAuditService>();         // AI classification auditor & quality judge
 

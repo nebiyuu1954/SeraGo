@@ -520,8 +520,17 @@ ${JSON.stringify(payload, null, 2)}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
             {[
-              dashboardStats?.tier1OpenRouter ?? {
+              dashboardStats?.tier1DeepSeek ?? {
                 tierName: 'Tier 1',
+                providerName: 'DeepSeek V4 Flash',
+                jobsClassified: 0,
+                jobsFailed: 0,
+                successfulRuns: 0,
+                failedRuns: 0,
+                status: 'idle',
+              },
+              dashboardStats?.tier2OpenRouter ?? {
+                tierName: 'Tier 2',
                 providerName: 'OpenRouter Nemotron 550B',
                 jobsClassified: 0,
                 jobsFailed: 0,
@@ -529,8 +538,8 @@ ${JSON.stringify(payload, null, 2)}
                 failedRuns: 0,
                 status: 'idle',
               },
-              dashboardStats?.tier2Groq ?? {
-                tierName: 'Tier 2',
+              dashboardStats?.tier3Groq ?? {
+                tierName: 'Tier 3',
                 providerName: 'Groq Llama 3.3 70B',
                 jobsClassified: 0,
                 jobsFailed: 0,
@@ -538,18 +547,9 @@ ${JSON.stringify(payload, null, 2)}
                 failedRuns: 0,
                 status: 'idle',
               },
-              dashboardStats?.tier3Gemini ?? {
-                tierName: 'Tier 3',
+              dashboardStats?.tier4Gemini ?? {
+                tierName: 'Tier 4',
                 providerName: 'Google Gemini 2.0 Flash',
-                jobsClassified: 0,
-                jobsFailed: 0,
-                successfulRuns: 0,
-                failedRuns: 0,
-                status: 'idle',
-              },
-              dashboardStats?.tier4FastPass ?? {
-                tierName: 'Emergency Pass',
-                providerName: 'Groq Llama 3.1 8B Instant',
                 jobsClassified: 0,
                 jobsFailed: 0,
                 successfulRuns: 0,
