@@ -195,4 +195,45 @@ export function fetchProviderFallbacks(
   })
 }
 
+export interface TierMetric {
+  tierName: string
+  providerName: string
+  jobsClassified: number
+  jobsFailed: number
+  successfulRuns: number
+  failedRuns: number
+  status: 'active' | 'degraded' | 'warning' | 'idle'
+}
+
+export interface DailyOperationalMetrics {
+  totalClassified: number
+  totalUnclassified: number
+  averageConfidence: number
+  totalInsertedOrSynced: number
+  successRatePercentage: number
+}
+
+export interface ClassificationDashboardStatsResponse {
+  date: string
+  tier1OpenRouter: TierMetric
+  tier2Groq: TierMetric
+  tier3Gemini: TierMetric
+  tier4FastPass: TierMetric
+  tier5SafeFallback: TierMetric
+  dailyMetrics: DailyOperationalMetrics
+}
+
+/** GET /api/admin/sectors/dashboard-stats — 5x2 dual-row metrics grid for any date. */
+export function fetchClassificationDashboardStats(
+  date?: string,
+  accessToken?: string,
+): Promise<ClassificationDashboardStatsResponse> {
+  const q = new URLSearchParams()
+  if (date) q.set('date', date)
+  const url = `${API_ENDPOINTS.sectors.dashboardStats}${q.toString() ? `?${q.toString()}` : ''}`
+  return request<ClassificationDashboardStatsResponse>(url, {
+    headers: accessToken ? auth(accessToken) : undefined,
+  })
+}
+
 

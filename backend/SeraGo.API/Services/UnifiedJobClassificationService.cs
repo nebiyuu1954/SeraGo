@@ -170,10 +170,10 @@ public sealed class UnifiedJobClassificationService
             }
         }
 
-        if (updatedCount > 0)
+        if (jobs.Count > 0)
         {
             await _db.SaveChangesAsync(ct);
-            _logger.LogInformation("Unified classifier updated {Count}/{Total} jobs.", updatedCount, jobs.Count);
+            _logger.LogInformation("Unified classifier processed {Total} jobs (updated {Count} assigned sectors).", jobs.Count, updatedCount);
         }
 
         return results;
@@ -247,6 +247,7 @@ public sealed class UnifiedJobClassificationService
 
         8. AGRICULTURE & NATURAL SCIENCE:
            - "Green Development Expert", "Environmental Management Expert", "Agronomist", "Forestry Specialist", "Soil Scientist" -> MUST be "agriculture-natural-science", NOT "engineering-construction".
+           - Coffee & Agro-Industry: "Cupper", "Senior Q Grader", "Coffee Quality Officer", "Quality Manager (Coffee)" -> MUST be "agriculture-natural-science".
 
         9. WORKPLACE SAFETY & HSE vs SECURITY:
            - "Workplace Safety Officer", "Senior Environment and Workplace Safety Officer", "HSE Coordinator", "Environmental Health & Safety" on construction sites or factories -> MUST be "engineering-construction" (if on civil worksites) or "manufacturing-production" (factory shop floor), NEVER "security-protection".
@@ -257,9 +258,13 @@ public sealed class UnifiedJobClassificationService
            - "Tender Officer" / "Bidding Officer" for commercial products, lab equipment, or trading goods -> MUST be "procurement-supply-chain", NOT "engineering-construction".
            - Drivers (truck driver, mixer driver, light vehicle driver, motorbike delivery driver, courier), Fleet Officer, Dispatcher, Freight Forwarder, Customs Clearance -> "logistics-transportation".
 
-        11. SKILLED & GENERAL LABOR:
+        11. SKILLED & GENERAL LABOR vs FACTORY PRODUCTION:
            - "Battery Swapper" (electric vehicle battery swapping attendant), Tailor / Garment Maker ("የልብስ ስፌት"), Woodworker / Carpenter ("የእንጨት ሥራ"), Furniture Machinist, Ceramic Professional / Tiler ("የሴራሚክ ባለሙያ"), Welder, Mason, Janitor/Cleaner -> MUST be "skilled-general-labor".
-           - "Automotive Electrical Technician" / "Auto Electrician" / "EV Service Technician" / "Auto Mechanic" -> MUST be "skilled-general-labor", NOT "engineering-construction".
+           - "Automotive Electrical Technician" / "Auto Electrician" / "EV Service Technician" / "Auto Mechanic" / "Ev car mechanic" / "Jewelries Expert" / "Carving Expert" / "Air Conditioning Technician" / "GSE/GTV Electrician" -> MUST be "skilled-general-labor", NOT "engineering-construction".
+           - "Packer / ጫኝና አውራጅ" (Manual Loaders & Unloaders) -> MUST be "skilled-general-labor", NOT "logistics-transportation".
+           - Factory plant machinery: "Automizer Main Operator", "Crether Main Operator", "Blowing Operator", "Production Supervisor (Factory Production Manager)", "Soap & Detergent Lab Chemist" -> MUST be "manufacturing-production".
+           - "Real Estate Sales" -> MUST be "sales-marketing", NOT "engineering-construction".
+           - "School Nanny" -> MUST be "education-training".
 
         12. HOSPITALITY & TOURISM vs RETAIL:
            - Hotel management, chef, cook, waiter/waitress, front desk hotel, food court supervisor ("Food Court Supervisor and Marketing") -> MUST be "hospitality-tourism".
@@ -700,7 +705,7 @@ public sealed class UnifiedJobClassificationService
                 ErrorMessage = details,
                 FallbackTier = fallbackTier,
                 JobCount = chunk.Count,
-                WasRecovered = true,
+                WasRecovered = !fallbackTier.Contains("Safe Uncategorized", StringComparison.OrdinalIgnoreCase),
                 JobTitlesSnippet = titleSnippet
             };
 

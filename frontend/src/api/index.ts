@@ -50,11 +50,15 @@ export {
   auditJobClassifications,
   applyAuditCorrections,
   fetchProviderFallbacks,
+  fetchClassificationDashboardStats,
 } from './sectors.ts'
 export type {
   ProviderHealthItem,
   ProviderFallbackEvent,
   ProviderFallbacksResponse,
+  TierMetric,
+  DailyOperationalMetrics,
+  ClassificationDashboardStatsResponse,
 } from './sectors.ts'
 export { fetchTopStats } from './stats.ts'
 export {

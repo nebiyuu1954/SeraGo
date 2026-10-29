@@ -48,6 +48,7 @@ public static class SectorEndpoints
         admin.MapPost("/audit-classification", AuditClassificationAsync).RequireRateLimiting("jobs_write").WithOpenApi();
         admin.MapPost("/apply-audit-corrections", ApplyAuditCorrectionsAsync).RequireRateLimiting("jobs_write").WithOpenApi();
         admin.MapGet("/provider-fallbacks", GetProviderFallbacksAsync).RequireRateLimiting("jobs_read").WithOpenApi();
+        admin.MapGet("/dashboard-stats", GetDashboardStatsAsync).RequireRateLimiting("jobs_read").WithOpenApi();
 
         app.MapPost("/api/admin/sync/scraped-jobs", SyncScrapedJobsAsync)
             .RequireRateLimiting("jobs_write").WithTags("Sectors (admin)").WithOpenApi();
@@ -68,6 +69,34 @@ public static class SectorEndpoints
     public sealed record SectorWriteRequest(string? Name, bool? IsActive, string? Slug);
 
     public sealed record AddAliasesRequest(List<string> Aliases);
+
+    public sealed record ClassificationDashboardStatsResponse(
+        string Date,
+        TierMetricDto Tier1OpenRouter,
+        TierMetricDto Tier2Groq,
+        TierMetricDto Tier3Gemini,
+        TierMetricDto Tier4FastPass,
+        TierMetricDto Tier5SafeFallback,
+        DailyOperationalMetricsDto DailyMetrics
+    );
+
+    public sealed record TierMetricDto(
+        string TierName,
+        string ProviderName,
+        int JobsClassified,
+        int JobsFailed,
+        int SuccessfulRuns,
+        int FailedRuns,
+        string Status
+    );
+
+    public sealed record DailyOperationalMetricsDto(
+        int TotalClassified,
+        int TotalUnclassified,
+        double AverageConfidence,
+        int TotalInsertedOrSynced,
+        double SuccessRatePercentage
+    );
 
     // -------------------------------------------------------------- Handlers
 
@@ -517,5 +546,114 @@ public static class SectorEndpoints
             providers,
             events
         });
+    }
+
+    /// <summary>
+    /// GET /api/admin/sectors/dashboard-stats?date=YYYY-MM-DD
+    /// Returns 5 Tier metrics (Row 1) and 5 Daily operational metrics (Row 2) for the given date.
+    /// </summary>
+    private static async Task<IResult> GetDashboardStatsAsync(
+        DateTime? date,
+        ApplicationDbContext db,
+        CancellationToken ct)
+    {
+        var targetDate = date.HasValue ? DateOnly.FromDateTime(date.Value) : DateOnly.FromDateTime(DateTime.UtcNow);
+        var startOfDay = new DateTimeOffset(targetDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var endOfDay = new DateTimeOffset(targetDate.ToDateTime(TimeOnly.MaxValue), TimeSpan.Zero);
+
+        // 1. Fetch exact classification records on this date
+        var records = await db.JobClassificationRecords
+            .AsNoTracking()
+            .Where(r => r.ClassifiedAt >= startOfDay && r.ClassifiedAt <= endOfDay)
+            .ToListAsync(ct);
+
+        // 2. Fetch failover events on this date
+        var events = await db.AiProviderAuditLogs
+            .AsNoTracking()
+            .Where(e => e.OccurredAt >= startOfDay && e.OccurredAt <= endOfDay)
+            .ToListAsync(ct);
+
+        // 3. Count jobs inserted / updated on this date
+        var jobsCreated = await db.Jobs.AsNoTracking()
+            .CountAsync(j => j.CreatedAt >= startOfDay && j.CreatedAt <= endOfDay, ct);
+        var jobsUpdated = await db.Jobs.AsNoTracking()
+            .CountAsync(j => j.UpdatedAt >= startOfDay && j.UpdatedAt <= endOfDay, ct);
+        var totalInsertedOrSynced = Math.Max(jobsCreated, jobsUpdated);
+
+        // 4. Jobs with non-null sector on this date
+        var recordsWithSector = records.Count(r => !string.IsNullOrEmpty(r.SectorSlug));
+        var jobsWithSectorToday = await db.Jobs.AsNoTracking()
+            .CountAsync(j => j.SectorId != null && ((j.UpdatedAt >= startOfDay && j.UpdatedAt <= endOfDay) || (j.CreatedAt >= startOfDay && j.CreatedAt <= endOfDay)), ct);
+        var totalClassified = Math.Max(recordsWithSector, jobsWithSectorToday);
+
+        // Jobs without a sector on this date
+        var totalUnclassified = await db.Jobs.AsNoTracking()
+            .CountAsync(j => j.SectorId == null && ((j.UpdatedAt >= startOfDay && j.UpdatedAt <= endOfDay) || (j.CreatedAt >= startOfDay && j.CreatedAt <= endOfDay)), ct);
+
+        // Avg confidence
+        var confidenceScores = records.Where(r => r.Confidence > 0).Select(r => r.Confidence).ToList();
+        var avgConfidence = confidenceScores.Count > 0 ? Math.Round(confidenceScores.Average() * 100, 1) : 95.0;
+
+        // Success rate (%)
+        var totalEvaluated = totalClassified + totalUnclassified;
+        var successRate = totalEvaluated > 0 ? Math.Round(((double)totalClassified / totalEvaluated) * 100, 1) : 100.0;
+
+        // Helper to count batch runs: group records into batches by 5-second execution windows
+        int CountRuns(IEnumerable<JobClassificationRecord> tierRecords) =>
+            tierRecords.GroupBy(r => new { r.ClassifiedAt.Hour, r.ClassifiedAt.Minute, Window = r.ClassifiedAt.Second / 5 }).Count();
+
+        // Tier 1: OpenRouter
+        var t1Records = records.Where(r => r.ModelUsed.Contains("OpenRouter", StringComparison.OrdinalIgnoreCase) || r.ModelTier.Contains("OpenRouter", StringComparison.OrdinalIgnoreCase)).ToList();
+        var t1Fails = events.Where(e => e.FailedProvider.Contains("OpenRouter", StringComparison.OrdinalIgnoreCase)).ToList();
+        var t1JobsClassified = t1Records.Count(r => !string.IsNullOrEmpty(r.SectorSlug));
+        var t1JobsFailed = t1Fails.Sum(e => e.JobCount);
+        var t1SuccessRuns = CountRuns(t1Records);
+        var t1FailedRuns = t1Fails.Count;
+        var t1Status = t1FailedRuns >= 3 ? "degraded" : t1FailedRuns > 0 ? "warning" : t1JobsClassified > 0 ? "active" : "idle";
+
+        // Tier 2: Groq Llama 3.3 70B
+        var t2Records = records.Where(r => (r.ModelUsed.Equals("Groq", StringComparison.OrdinalIgnoreCase) || r.ModelUsed.Contains("Groq Llama 3.3", StringComparison.OrdinalIgnoreCase)) && !r.ModelUsed.Contains("8B", StringComparison.OrdinalIgnoreCase)).ToList();
+        var t2Fails = events.Where(e => e.FailedProvider.Contains("Groq", StringComparison.OrdinalIgnoreCase) && !e.AttemptedTier.Contains("8B", StringComparison.OrdinalIgnoreCase)).ToList();
+        var t2JobsClassified = t2Records.Count(r => !string.IsNullOrEmpty(r.SectorSlug));
+        var t2JobsFailed = t2Fails.Sum(e => e.JobCount);
+        var t2SuccessRuns = CountRuns(t2Records);
+        var t2FailedRuns = t2Fails.Count;
+        var t2Status = t2FailedRuns >= 3 ? "degraded" : t2FailedRuns > 0 ? "warning" : t2JobsClassified > 0 ? "active" : "idle";
+
+        // Tier 3: Google Gemini 2.0 Flash
+        var t3Records = records.Where(r => r.ModelUsed.Contains("Gemini", StringComparison.OrdinalIgnoreCase)).ToList();
+        var t3Fails = events.Where(e => e.FailedProvider.Contains("Gemini", StringComparison.OrdinalIgnoreCase)).ToList();
+        var t3JobsClassified = t3Records.Count(r => !string.IsNullOrEmpty(r.SectorSlug));
+        var t3JobsFailed = t3Fails.Sum(e => e.JobCount);
+        var t3SuccessRuns = CountRuns(t3Records);
+        var t3FailedRuns = t3Fails.Count;
+        var t3Status = t3FailedRuns >= 3 ? "degraded" : t3Fails.Count > 0 ? "warning" : t3JobsClassified > 0 ? "active" : "idle";
+
+        // Tier 4: Emergency Pass (Groq Llama 3.1 8B Instant)
+        var t4Records = records.Where(r => r.ModelUsed.Contains("8B", StringComparison.OrdinalIgnoreCase)).ToList();
+        var t4Fails = events.Where(e => e.AttemptedTier.Contains("8B", StringComparison.OrdinalIgnoreCase)).ToList();
+        var t4JobsClassified = t4Records.Count(r => !string.IsNullOrEmpty(r.SectorSlug));
+        var t4JobsFailed = t4Fails.Sum(e => e.JobCount);
+        var t4SuccessRuns = CountRuns(t4Records);
+        var t4FailedRuns = t4Fails.Count;
+        var t4Status = t4FailedRuns >= 3 ? "degraded" : t4Fails.Count > 0 ? "warning" : t4JobsClassified > 0 ? "active" : "idle";
+
+        // Tier 5: Safe Uncategorized Fallback
+        var t5Fails = events.Where(e => e.FallbackTier.Contains("Safe Uncategorized", StringComparison.OrdinalIgnoreCase)).ToList();
+        var t5JobsUnclassified = totalUnclassified;
+        var t5SuccessRuns = t5Fails.Count;
+        var t5Status = totalUnclassified > 0 ? "active" : "idle";
+
+        var response = new ClassificationDashboardStatsResponse(
+            targetDate.ToString("yyyy-MM-dd"),
+            new TierMetricDto("Tier 1", "OpenRouter Nemotron 550B", t1JobsClassified, t1JobsFailed, t1SuccessRuns, t1FailedRuns, t1Status),
+            new TierMetricDto("Tier 2", "Groq Llama 3.3 70B", t2JobsClassified, t2JobsFailed, t2SuccessRuns, t2FailedRuns, t2Status),
+            new TierMetricDto("Tier 3", "Google Gemini 2.0 Flash", t3JobsClassified, t3JobsFailed, t3SuccessRuns, t3FailedRuns, t3Status),
+            new TierMetricDto("Emergency Pass", "Groq Llama 3.1 8B Instant", t4JobsClassified, t4JobsFailed, t4SuccessRuns, t4FailedRuns, t4Status),
+            new TierMetricDto("Tier 5", "Safe Uncategorized Fallback", 0, t5JobsUnclassified, t5SuccessRuns, 0, t5Status),
+            new DailyOperationalMetricsDto(totalClassified, totalUnclassified, avgConfidence, totalInsertedOrSynced, successRate)
+        );
+
+        return Results.Ok(response);
     }
 }
