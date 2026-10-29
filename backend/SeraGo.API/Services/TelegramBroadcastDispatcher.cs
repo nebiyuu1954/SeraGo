@@ -297,40 +297,58 @@ public sealed class TelegramBroadcastDispatcher
         var totalRecipients = 0;
 
         // ── 1. Channel Broadcast ─────────────────────────────────────────────
-        if (sendChannel)
-        {
-            var channelTarget = isTest
-                ? (_options.TestChannelId ?? _options.ChannelId)
-                : _options.ChannelId;
+        Message? sentChannelMsg = null;
+        var channelTarget = isTest
+            ? (_options.TestChannelId ?? _options.ChannelId)
+            : _options.ChannelId;
 
-            if (!string.IsNullOrWhiteSpace(channelTarget))
+        if (sendChannel && !string.IsNullOrWhiteSpace(channelTarget))
+        {
+            try
             {
-                try
-                {
-                    var channelMsg = await BuildChannelMessageAsync(statsService, messageBuilder, message, ct);
-                    await SendFormattedAsync(client, new ChatId(channelTarget), channelMsg);
-                    totalRecipients++;
-                    _logger.LogInformation("Broadcasted scheduled message {Id} to channel {Channel}", message.Id, channelTarget);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed channel send for scheduled message {Id}", message.Id);
-                }
+                var channelMsg = await BuildChannelMessageAsync(statsService, messageBuilder, message, ct);
+                sentChannelMsg = await SendFormattedAsync(client, new ChatId(channelTarget), channelMsg);
+                totalRecipients++;
+                _logger.LogInformation("Broadcasted scheduled message {Id} to channel {Channel} (MessageId: {MsgId})",
+                    message.Id, channelTarget, sentChannelMsg?.MessageId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed channel send for scheduled message {Id}", message.Id);
             }
         }
 
         // ── 2. Bot DMs ───────────────────────────────────────────────────────
         if (sendBot)
         {
+            // For general announcements / ads where message was sent to channel, forward the channel post
+            // so every bot user's view increments the view count on the public channel post!
+            var canForwardChannelPost = sentChannelMsg != null && !string.IsNullOrWhiteSpace(channelTarget)
+                && (message.MessageType == TelegramMessageType.CustomAd || message.MessageType == TelegramMessageType.CustomMessage);
+
             if (isTest)
             {
                 if (_options.TestChatId.HasValue)
                 {
                     try
                     {
-                        var botMsg = await BuildBotDmMessageAsync(statsService, messageBuilder, message, "Test User", new List<Guid>(), ct);
-                        await SendFormattedAsync(client, new ChatId(_options.TestChatId.Value), botMsg);
-                        totalRecipients++;
+                        if (canForwardChannelPost)
+                        {
+                            await client.ForwardMessage(
+                                chatId: new ChatId(_options.TestChatId.Value),
+                                fromChatId: new ChatId(channelTarget!),
+                                messageId: sentChannelMsg!.MessageId,
+                                cancellationToken: ct);
+                            totalRecipients++;
+                            _logger.LogInformation("Forwarded test channel broadcast {Id} to test chat {ChatId}",
+                                message.Id, _options.TestChatId.Value);
+                        }
+                        else
+                        {
+                            var botMsg = await BuildBotDmMessageAsync(statsService, messageBuilder, message, "Test User", new List<Guid>(), ct);
+                            await SendFormattedAsync(client, new ChatId(_options.TestChatId.Value), botMsg);
+                            totalRecipients++;
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -361,14 +379,27 @@ public sealed class TelegramBroadcastDispatcher
                         continue;
                     }
 
-                    var preferredSectors = UserSettingsReader.GetForYouSectorIds(setting.Settings);
-                    var firstName = userNamesById.GetValueOrDefault(setting.UserId, "there");
-
                     try
                     {
-                        var botMsg = await BuildBotDmMessageAsync(statsService, messageBuilder, message, firstName, preferredSectors, ct);
-                        await SendFormattedAsync(client, new ChatId(chatId.Value), botMsg);
-                        totalRecipients++;
+                        if (canForwardChannelPost)
+                        {
+                            // Forward the channel post directly to this user so their view increments the channel view counter!
+                            await client.ForwardMessage(
+                                chatId: new ChatId(chatId.Value),
+                                fromChatId: new ChatId(channelTarget!),
+                                messageId: sentChannelMsg!.MessageId,
+                                cancellationToken: ct);
+                            totalRecipients++;
+                        }
+                        else
+                        {
+                            var preferredSectors = UserSettingsReader.GetForYouSectorIds(setting.Settings);
+                            var firstName = userNamesById.GetValueOrDefault(setting.UserId, "there");
+
+                            var botMsg = await BuildBotDmMessageAsync(statsService, messageBuilder, message, firstName, preferredSectors, ct);
+                            await SendFormattedAsync(client, new ChatId(chatId.Value), botMsg);
+                            totalRecipients++;
+                        }
 
                         await Task.Delay(40, ct);
                     }
@@ -479,7 +510,7 @@ public sealed class TelegramBroadcastDispatcher
         return null;
     }
 
-    private static async Task SendFormattedAsync(
+    private static async Task<Message?> SendFormattedAsync(
         ITelegramBotClient client,
         ChatId chatId,
         BuiltTelegramMessage message)
@@ -500,13 +531,12 @@ public sealed class TelegramBroadcastDispatcher
             {
                 if (!string.IsNullOrWhiteSpace(_seragoPhotoFileId))
                 {
-                    await client.SendPhoto(
+                    return await client.SendPhoto(
                         chatId: chatId,
                         photo: InputFile.FromFileId(_seragoPhotoFileId),
                         caption: caption,
                         parseMode: ParseMode.Html,
                         replyMarkup: message.Keyboard);
-                    return;
                 }
 
                 var localPath = TryResolveLocalPath(message.MediaPathOrUrl ?? "sources/serago.jpg");
@@ -521,7 +551,7 @@ public sealed class TelegramBroadcastDispatcher
                         replyMarkup: message.Keyboard);
 
                     _seragoPhotoFileId = sent.Photo?.LastOrDefault()?.FileId;
-                    return;
+                    return sent;
                 }
 
                 // Fall back to public URL
@@ -537,7 +567,7 @@ public sealed class TelegramBroadcastDispatcher
                     replyMarkup: message.Keyboard);
 
                 _seragoPhotoFileId = sentRemote.Photo?.LastOrDefault()?.FileId;
-                return;
+                return sentRemote;
             }
             catch
             {
@@ -551,13 +581,12 @@ public sealed class TelegramBroadcastDispatcher
             {
                 if (!string.IsNullOrWhiteSpace(_seragoVideoFileId))
                 {
-                    await client.SendVideo(
+                    return await client.SendVideo(
                         chatId: chatId,
                         video: InputFile.FromFileId(_seragoVideoFileId),
                         caption: caption,
                         parseMode: ParseMode.Html,
                         replyMarkup: message.Keyboard);
-                    return;
                 }
 
                 var localPath = TryResolveLocalPath(message.MediaPathOrUrl ?? "sources/SeraGoAD.mp4");
@@ -572,7 +601,7 @@ public sealed class TelegramBroadcastDispatcher
                         replyMarkup: message.Keyboard);
 
                     _seragoVideoFileId = sent.Video?.FileId;
-                    return;
+                    return sent;
                 }
 
                 // Fall back to public URL
@@ -588,7 +617,7 @@ public sealed class TelegramBroadcastDispatcher
                     replyMarkup: message.Keyboard);
 
                 _seragoVideoFileId = sentRemote.Video?.FileId;
-                return;
+                return sentRemote;
             }
             catch
             {
@@ -597,7 +626,7 @@ public sealed class TelegramBroadcastDispatcher
         }
 
         // 3. Fallback: Standard text message
-        await client.SendMessage(
+        return await client.SendMessage(
             chatId: chatId,
             text: message.Text,
             parseMode: ParseMode.Html,

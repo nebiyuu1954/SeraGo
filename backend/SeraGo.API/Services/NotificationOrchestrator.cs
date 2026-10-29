@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using SeraGo.Infrastructure.Context;
 using StackExchange.Redis;
 using Telegram.Bot;
+using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
 
 namespace SeraGo.API.Services;
@@ -173,15 +174,59 @@ public sealed class NotificationOrchestrator
             {
                 var data = notification.Data ?? "{}";
                 var dataObj = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(data) ?? new();
-                var jobUrl = dataObj.TryGetValue("job_id", out var jobId)
-                    && jobId.ValueKind == JsonValueKind.String
-                    && Guid.TryParse(jobId.GetString(), out _)
-                        ? $"https://serago.pro.et/jobs/{jobId.GetString()}?utm_source=telegram&utm_medium=bot_dm&utm_campaign=job_alert"
+                if (dataObj.TryGetValue("job_id", out var jobIdElem)
+                    && jobIdElem.ValueKind == JsonValueKind.String
+                    && Guid.TryParse(jobIdElem.GetString(), out var parsedJobId))
+                {
+                    var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == parsedJobId);
+                    var channelId = Environment.GetEnvironmentVariable("TELEGRAM_CHANNEL_ID");
+                    if (job?.TelegramChannelMessageId.HasValue == true && job.TelegramChannelMessageId.Value > 0 && !string.IsNullOrWhiteSpace(channelId))
+                    {
+                        try
+                        {
+                            var forwarded = await telegramClient.ForwardMessage(
+                                chatId: chatId.Value,
+                                fromChatId: new ChatId(channelId),
+                                messageId: (int)job.TelegramChannelMessageId.Value);
+
+                            var jobUrl = $"https://serago.pro.et/jobs/{parsedJobId}?utm_source=telegram&utm_medium=bot_dm&utm_campaign=job_alert";
+                            var companionMarkup = new InlineKeyboardMarkup(new[]
+                            {
+                                new[] { InlineKeyboardButton.WithUrl("🚀 See More & Apply on SeraGo", jobUrl) }
+                            });
+
+                            await telegramClient.SendMessage(
+                                chatId: chatId.Value,
+                                text: message,
+                                parseMode: Telegram.Bot.Types.Enums.ParseMode.Html,
+                                replyParameters: new ReplyParameters { MessageId = forwarded.MessageId },
+                                replyMarkup: companionMarkup);
+
+                            notification.TelegramSent = true;
+                            notification.TelegramSentAt = DateTimeOffset.UtcNow;
+                            await db.SaveChangesAsync();
+
+                            _logger.LogInformation(
+                                "Forwarded channel post {MsgId} for job notification {Id} to chat {ChatId}",
+                                job.TelegramChannelMessageId.Value, notificationId, chatId);
+                            return;
+                        }
+                        catch (Exception fwdEx)
+                        {
+                            _logger.LogWarning(fwdEx, "Failed forwarding channel post for job {JobId}; falling back to standard text message", parsedJobId);
+                        }
+                    }
+                }
+
+                var fallbackJobUrl = dataObj.TryGetValue("job_id", out var fallbackId)
+                    && fallbackId.ValueKind == JsonValueKind.String
+                    && Guid.TryParse(fallbackId.GetString(), out _)
+                        ? $"https://serago.pro.et/jobs/{fallbackId.GetString()}?utm_source=telegram&utm_medium=bot_dm&utm_campaign=job_alert"
                         : "https://serago.pro.et/jobs";
 
                 replyMarkup = new InlineKeyboardMarkup(new[]
                 {
-                    new[] { InlineKeyboardButton.WithUrl("See More on SeraGo", jobUrl) }
+                    new[] { InlineKeyboardButton.WithUrl("See More on SeraGo", fallbackJobUrl) }
                 });
             }
 

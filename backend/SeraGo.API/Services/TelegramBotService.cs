@@ -1188,12 +1188,13 @@ public sealed class TelegramBotService
             return;
         }
 
-        await TelegramJobService.SendDirectJobAlertToUserAsync(
+        var jobService = scope.ServiceProvider.GetRequiredService<TelegramJobService>();
+        await jobService.SendTalentJobAlertAsync(
             _botClient,
+            db,
             chatId,
             testJob,
-            sectorName: sectorName,
-            logger: _logger);
+            sectorName: sectorName);
     }
 
     public async Task SendOrEditCvManagementCardAsync(long chatId, int? messageId, string userId)

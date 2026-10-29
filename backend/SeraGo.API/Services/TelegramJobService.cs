@@ -390,7 +390,7 @@ public sealed class TelegramJobService
         var client = scope.ServiceProvider.GetService<ITelegramBotClient>();
         var notifications = scope.ServiceProvider.GetRequiredService<NotificationService>();
 
-        var jobs = await db.Jobs.AsNoTracking()
+        var jobs = await db.Jobs
             .Include(j => j.Sector)
             .Where(j => jobIds.Contains(j.Id) && j.Status == JobStatus.Published && j.IsActive && j.SectorId != null)
             .ToListAsync();
@@ -474,18 +474,17 @@ public sealed class TelegramJobService
                 {
                     try
                     {
-                        await SendDirectJobAlertToUserAsync(
+                        await SendTalentJobAlertAsync(
                             client,
-                            chatId.Value,
+                            db,
+                            new ChatId(chatId.Value),
                             job,
-                            linkBase: _options.JobLinkBase,
-                            sectorName: sectorName,
-                            logger: _logger);
+                            sectorName: sectorName);
                         talentSentCounts[setting.UserId] = currentSent + 1;
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Failed to send direct job alert to chatId {ChatId} for job {JobId}", chatId, job.Id);
+                        _logger.LogWarning(ex, "Failed to send job alert to chatId {ChatId} for job {JobId}", chatId, job.Id);
                     }
                 }
 
@@ -645,7 +644,129 @@ public sealed class TelegramJobService
             .ToList();
     }
 
-    // ── Message building ─────────────────────────────────────────────────
+    // ── Message building & Channel-First Delivery ───────────────────────
+
+    /// <summary>
+    /// Delivers a job alert to a talent's direct chat with the bot.
+    /// Uses CHANNEL-FIRST FORWARDING: If channel posting is enabled, ensures the job is posted
+    /// to the public channel first, then forwards that exact channel post to the talent.
+    /// Every talent viewing the forwarded message increments the view counter on the public channel post!
+    /// Also sends a companion 1-click interactive reply button.
+    /// Gracefully falls back to direct photo delivery if channel is disabled or forwarding fails.
+    /// </summary>
+    public async Task<Message> SendTalentJobAlertAsync(
+        ITelegramBotClient client,
+        ApplicationDbContext db,
+        ChatId chatId,
+        Job job,
+        string? sectorName = null,
+        string? header = null,
+        string? buttonText = null)
+    {
+        if (_options.WantsChannel && !string.IsNullOrWhiteSpace(_options.ChannelId))
+        {
+            var channelTarget = _options.ActiveChannelId ?? _options.ChannelId;
+            var channelChatId = new ChatId(channelTarget!);
+
+            // Ensure job is posted to the channel if not yet posted
+            if (!job.TelegramChannelMessageId.HasValue || job.TelegramChannelMessageId.Value <= 0)
+            {
+                await EnsureJobPostedToChannelAsync(client, db, job);
+            }
+
+            if (job.TelegramChannelMessageId.HasValue && job.TelegramChannelMessageId.Value > 0)
+            {
+                try
+                {
+                    var forwarded = await client.ForwardMessage(
+                        chatId: chatId,
+                        fromChatId: channelChatId,
+                        messageId: (int)job.TelegramChannelMessageId.Value);
+
+                    // Send interactive companion button so user has 1-click application in bot chat
+                    var jobUrl = BuildJobLink(job, _options.JobLinkBase);
+                    var btnText = buttonText ?? "🚀 See More & Apply on SeraGo";
+                    var replyKeyboard = new InlineKeyboardMarkup(new[]
+                    {
+                        new[] { InlineKeyboardButton.WithUrl(btnText, jobUrl) }
+                    });
+
+                    var resolvedSector = sectorName ?? ResolveSectorName(job) ?? "General";
+                    var captionText = !string.IsNullOrWhiteSpace(header)
+                        ? header
+                        : $"🎯 <i>Matching alert for your sector:</i> <b>{Escape(resolvedSector)}</b>";
+
+                    try
+                    {
+                        await client.SendMessage(
+                            chatId: chatId,
+                            text: captionText,
+                            parseMode: ParseMode.Html,
+                            replyParameters: new ReplyParameters { MessageId = forwarded.MessageId },
+                            replyMarkup: replyKeyboard);
+                    }
+                    catch (Exception replyEx)
+                    {
+                        _logger.LogDebug(replyEx, "Could not send companion reply button for job {JobId} to chatId {ChatId}", job.Id, chatId);
+                    }
+
+                    return forwarded;
+                }
+                catch (Exception fwdEx)
+                {
+                    _logger.LogWarning(fwdEx,
+                        "ForwardMessage failed for job {JobId} (MessageId: {MsgId}) to chatId {ChatId}; falling back to direct photo",
+                        job.Id, job.TelegramChannelMessageId.Value, chatId);
+                }
+            }
+        }
+
+        // Fallback: Direct photo delivery
+        return await SendDirectJobAlertToUserAsync(
+            client,
+            chatId,
+            job,
+            linkBase: _options.JobLinkBase,
+            sectorName: sectorName,
+            header: header,
+            buttonText: buttonText,
+            logger: _logger);
+    }
+
+    private async Task EnsureJobPostedToChannelAsync(ITelegramBotClient client, ApplicationDbContext db, Job job)
+    {
+        // Re-read latest state from DB in case another worker already posted it
+        var latest = await db.Jobs.Where(j => j.Id == job.Id).Select(j => new { j.TelegramChannelMessageId, j.TelegramChannelPostedAt }).FirstOrDefaultAsync();
+        if (latest?.TelegramChannelMessageId != null && latest.TelegramChannelMessageId > 0)
+        {
+            job.TelegramChannelMessageId = latest.TelegramChannelMessageId;
+            job.TelegramChannelPostedAt = latest.TelegramChannelPostedAt;
+            return;
+        }
+
+        try
+        {
+            var link = BuildJobLink(job);
+            var keyboard = new InlineKeyboardMarkup(new[]
+            {
+                new[] { InlineKeyboardButton.WithUrl("See More on SeraGo", link) }
+            });
+
+            var channelMsg = await SendChannelPostAsync(client, job, link, keyboard);
+            job.TelegramChannelPostedAt = DateTimeOffset.UtcNow;
+            job.TelegramChannelMessageId = channelMsg.MessageId;
+
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE \"Jobs\" SET \"TelegramChannelMessageId\" = {channelMsg.MessageId}, \"TelegramChannelPostedAt\" = {DateTimeOffset.UtcNow} WHERE \"Id\" = {job.Id}");
+
+            _logger.LogInformation("Channel-First: Posted job {JobId} ({Title}) to channel (MessageId: {MsgId})",
+                job.Id, job.Title, channelMsg.MessageId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to post job {JobId} to channel during Channel-First preparation", job.Id);
+        }
+    }
 
     private async Task<Message> SendChannelPostAsync(
         ITelegramBotClient client,
@@ -653,9 +774,10 @@ public sealed class TelegramJobService
         string link,
         InlineKeyboardMarkup keyboard)
     {
+        var targetChannel = _options.ActiveChannelId ?? _options.ChannelId;
         return await SendDirectJobAlertToUserAsync(
             client,
-            new ChatId(_options.ChannelId!),
+            new ChatId(targetChannel!),
             job,
             linkBase: _options.JobLinkBase,
             header: string.Empty,
@@ -934,6 +1056,8 @@ public sealed class TelegramJobService
             }
         }
 
+        sb.AppendLine();
+        sb.AppendLine($"👉 <a href=\"{Escape(link)}\"><b>See More &amp; Apply on SeraGo</b></a>");
         sb.AppendLine();
         sb.AppendLine("Get Personalized Jobs through our bot @My_Serago_Bot");
         return sb.ToString();
