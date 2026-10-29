@@ -108,6 +108,15 @@ public sealed class ClassificationAuditService
             {
                 q = q.Where(j => string.IsNullOrEmpty(j.SourceName));
             }
+            else if (m == "deepseek")
+            {
+                var matchingJobIds = await _db.JobClassificationRecords
+                    .Where(r => r.ModelUsed.Contains("DeepSeek"))
+                    .Select(r => r.JobId)
+                    .Distinct()
+                    .ToListAsync(ct);
+                q = q.Where(j => matchingJobIds.Contains(j.Id));
+            }
             else if (m == "openrouter" || m == "nemotron")
             {
                 var matchingJobIds = await _db.JobClassificationRecords
@@ -133,7 +142,7 @@ public sealed class ClassificationAuditService
                     .Select(r => r.JobId)
                     .Distinct()
                     .ToListAsync(ct);
-                q = q.Where(j => matchingJobIds.Contains(j.Id) || (j.ClassificationId != null && !matchingJobIds.Contains(j.Id)));
+                q = q.Where(j => matchingJobIds.Contains(j.Id));
             }
             else if (m == "ai")
             {
@@ -526,7 +535,7 @@ public sealed class ClassificationAuditService
         }
 
         // Historical scraped jobs prior to exact JobClassificationRecords logging
-        return ("Google Gemini Flash", "Tier 3 (Google Gemini 2.0 Flash)", 0.95, "Classified by Google Gemini 2.0 Flash automated sync");
+        return ("Historical Placement", "Historical Placement (Prior to Tier Logging)", 0.90, "Classified prior to detailed tier logging");
     }
 
     private static List<string> ParseJsonList(string? json)
