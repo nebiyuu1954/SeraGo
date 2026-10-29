@@ -976,11 +976,12 @@ ${JSON.stringify(payload, null, 2)}
             className="rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none"
           >
             <option value="">All Methods</option>
-            <option value="openrouter">NVIDIA Nemotron 3 Ultra (Tier 1 OpenRouter)</option>
-            <option value="groq">Meta Llama 3.3 70B (Tier 2 Groq)</option>
-            <option value="gemini">Google Gemini 2.0 Flash (Tier 3 Gemini)</option>
-            <option value="ollama">Local Ollama (Tier 4 Ollama)</option>
-            <option value="cosine">Cosine Similarity (Tier 5 Vector)</option>
+            <option value="deepseek">DeepSeek V4 Flash (Tier 1 DeepSeek API)</option>
+            <option value="openrouter">NVIDIA Nemotron 3 Ultra (Tier 2 OpenRouter)</option>
+            <option value="groq">Meta Llama 3.3 70B (Tier 3 Groq)</option>
+            <option value="gemini">Google Gemini 2.0 Flash (Tier 4 Gemini)</option>
+            <option value="ollama">Local Ollama (Offline LLM)</option>
+            <option value="cosine">Safe Fallback (Tier 5 Queue)</option>
             <option value="adminmanual">Admin Manual Override</option>
             <option value="alias">Scraper Direct Alias Rule</option>
             <option value="uncategorized">Uncategorized</option>
@@ -1515,6 +1516,9 @@ ${JSON.stringify(payload, null, 2)}
 
 function getMethodBadgeStyle(method: string): string {
   const m = method?.toLowerCase() || ''
+  if (m.includes('deepseek')) {
+    return 'bg-blue-100 text-blue-950 border-blue-400 font-bold'
+  }
   if (m.includes('openrouter') || m.includes('nemotron')) {
     return 'bg-emerald-100 text-emerald-950 border-emerald-300 font-bold'
   }
@@ -1534,13 +1538,14 @@ function getMethodBadgeStyle(method: string): string {
     return 'bg-amber-100 text-amber-950 border-amber-300 font-bold'
   }
   if (m.includes('alias')) {
-    return 'bg-blue-100 text-blue-950 border-blue-300 font-semibold'
+    return 'bg-slate-100 text-slate-900 border-slate-300 font-semibold'
   }
   return 'bg-surface-variant text-on-surface-variant border-outline-variant'
 }
 
 function getMethodIcon(method: string): string {
   const m = method?.toLowerCase() || ''
+  if (m.includes('deepseek')) return 'psychology'
   if (m.includes('openrouter') || m.includes('nemotron')) return 'smart_toy'
   if (m.includes('groq') || m.includes('llama')) return 'bolt'
   if (m.includes('gemini')) return 'auto_awesome'
@@ -1553,23 +1558,26 @@ function getMethodIcon(method: string): string {
 
 function formatMethodLabel(method: string): string {
   const m = method?.toLowerCase() || ''
+  if (m.includes('deepseek')) {
+    return 'DeepSeek V4 Flash (Tier 1 DeepSeek API)'
+  }
   if (m.includes('openrouter') || m.includes('nemotron')) {
-    return 'NVIDIA Nemotron 3 Ultra (Tier 1 OpenRouter)'
+    return 'NVIDIA Nemotron 3 Ultra (Tier 2 OpenRouter)'
   }
   if (m.includes('8b')) {
-    return 'Meta Llama 3.1 8B Instant (Tier 2-Fast Groq Cloud)'
+    return 'Meta Llama 3.1 8B Instant (Emergency Pass Groq Cloud)'
   }
   if (m.includes('groq') || m.includes('llama')) {
-    return 'Meta Llama 3.3 70B (Tier 2 Groq Cloud)'
+    return 'Meta Llama 3.3 70B (Tier 3 Groq Cloud)'
   }
   if (m.includes('gemini')) {
-    return 'Google Gemini 2.0 Flash (Tier 3 Gemini)'
+    return 'Google Gemini 2.0 Flash (Tier 4 Gemini)'
   }
   if (m.includes('ollama')) {
-    return 'Local Ollama (Tier 4 Ollama)'
+    return 'Local Ollama (Offline LLM)'
   }
   if (m.includes('cosine')) {
-    return 'Cosine Similarity (Tier 5 Vector Fallback)'
+    return 'Safe Fallback (Tier 5 Queue)'
   }
   if (m.includes('admin') || m.includes('manual')) {
     return 'Admin Manual Override'
