@@ -629,7 +629,7 @@ ${JSON.stringify(payload, null, 2)}
                       <span className="font-bold text-emerald-700 text-sm">{tier.jobsClassified}</span>
                     </div>
                     <div className="rounded-lg bg-surface/80 p-1.5 border border-outline-variant/30">
-                      <span className="text-[10px] text-on-surface-variant block font-medium">Failed</span>
+                      <span className="text-[10px] text-on-surface-variant block font-medium">Jobs Failed</span>
                       <span className={cn('font-bold text-sm', tier.jobsFailed > 0 ? 'text-rose-700' : 'text-on-surface-variant')}>
                         {tier.jobsFailed}
                       </span>
