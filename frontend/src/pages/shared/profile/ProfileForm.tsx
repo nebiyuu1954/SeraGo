@@ -1324,21 +1324,29 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
               {isTalent && (
                 <div className="p-5 sm:p-6 flex flex-col justify-between gap-4 bg-surface-container-low/20">
                   <div className="flex items-center gap-4 sm:gap-5">
-                    {/* Large 80px Hero Tile with 48px cloud_upload Icon */}
-                    <div
+                    {/* Large 80px Hero Button with 48px cloud_upload Icon */}
+                    <button
+                      type="button"
                       onClick={() => resumeInputRef.current?.click()}
+                      disabled={resumeUploading || resumeParsing}
                       className={cn(
-                        'w-20 h-20 rounded-2xl flex items-center justify-center shrink-0 cursor-pointer transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]',
+                        'w-20 h-20 rounded-2xl flex items-center justify-center shrink-0 cursor-pointer transition-all duration-200 hover:scale-[1.03] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2',
                         hasCv
                           ? 'bg-primary/10 text-primary border-2 border-primary/20 hover:border-primary/40 hover:bg-primary/15'
                           : 'bg-primary text-on-primary shadow-md hover:shadow-lg hover:opacity-95',
+                        (resumeUploading || resumeParsing) && 'opacity-60 cursor-wait pointer-events-none',
                       )}
                       title={hasCv ? 'Click to update CV' : 'Click to upload CV'}
+                      aria-label={hasCv ? 'Update CV' : 'Upload CV'}
                     >
-                      <span className="material-symbols-outlined text-[48px] select-none">
-                        cloud_upload
-                      </span>
-                    </div>
+                      {resumeUploading || resumeParsing ? (
+                        <span className="h-8 w-8 animate-spin rounded-full border-3 border-current border-t-transparent" />
+                      ) : (
+                        <span className="material-symbols-outlined text-[48px] select-none">
+                          cloud_upload
+                        </span>
+                      )}
+                    </button>
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
@@ -1364,31 +1372,12 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                     <span className="font-label-xs text-label-xs text-on-surface-variant/70">
                       PDF format • max 10MB
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => resumeInputRef.current?.click()}
-                      disabled={resumeUploading || resumeParsing}
-                      className={cn(
-                        'inline-flex items-center gap-2 rounded-xl px-4 py-2 font-label-md text-label-md transition-all shadow-sm shrink-0',
-                        hasCv
-                          ? 'border border-outline-variant bg-surface-container-lowest text-on-surface hover:border-primary hover:text-primary hover:bg-surface-container-low font-medium'
-                          : 'bg-primary text-on-primary hover:opacity-90 font-semibold',
-                      )}
-                    >
-                      {resumeUploading || resumeParsing ? (
-                        <>
-                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                          <span>{resumeParsing ? 'Analyzing CV…' : 'Uploading…'}</span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="material-symbols-outlined text-[20px]">
-                            cloud_upload
-                          </span>
-                          <span>{hasCv ? 'Update CV' : 'Upload CV'}</span>
-                        </>
-                      )}
-                    </button>
+                    {(resumeUploading || resumeParsing) && (
+                      <span className="flex items-center gap-1.5 text-primary font-label-xs text-label-xs font-medium">
+                        <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        <span>{resumeParsing ? 'Analyzing CV…' : 'Uploading…'}</span>
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
