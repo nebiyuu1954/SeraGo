@@ -1323,46 +1323,44 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
               {/* Right half: CV status & intake (Talent only) */}
               {isTalent && (
                 <div className="p-5 sm:p-6 flex flex-col justify-between gap-4 bg-surface-container-low/20">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3 min-w-0">
-                      <div
-                        className={cn(
-                          'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors',
-                          hasCv
-                            ? 'bg-primary/10 text-primary border border-primary/20'
-                            : 'bg-primary text-on-primary shadow-sm',
+                  <div className="flex items-center gap-4">
+                    {/* Big Industry-Standard Icon */}
+                    <div
+                      className={cn(
+                        'w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center shrink-0 transition-transform',
+                        hasCv
+                          ? 'bg-primary/10 text-primary border border-primary/20'
+                          : 'bg-primary text-on-primary shadow-sm',
+                      )}
+                    >
+                      <span className="material-symbols-outlined text-[28px] sm:text-[32px]">
+                        upload_file
+                      </span>
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-label-md text-label-md font-semibold text-on-surface truncate">
+                          {hasCv ? 'Update CV' : 'Upload CV'}
+                        </h3>
+                        {hasCv && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/40 shrink-0">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            Uploaded
+                          </span>
                         )}
-                      >
-                        <span className="material-symbols-outlined text-[22px]">
-                          upload_file
-                        </span>
                       </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-label-md text-label-md font-semibold text-on-surface truncate">
-                            {hasCv ? 'Update CV' : 'Upload CV'}
-                          </h3>
-                          {hasCv && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/40 shrink-0">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                              Active
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-1 font-body-sm text-body-sm text-on-surface-variant leading-snug line-clamp-2">
-                          {hasCv
-                            ? (resumeDisplayName
-                                ? `Current file: ${resumeDisplayName}.pdf`
-                                : 'Upload a newer resume to keep your profile & matching accurate.')
-                            : 'Upload your CV to auto-fill skills, experience & boost matching.'}
-                        </p>
-                      </div>
+                      <p className="mt-1 font-body-sm text-body-sm text-on-surface-variant leading-snug">
+                        {hasCv
+                          ? 'Keep your profile skills and AI job matching up to date.'
+                          : 'Auto-fill your profile and unlock instant AI job match scores.'}
+                      </p>
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between gap-3 pt-1">
                     <span className="font-label-xs text-label-xs text-on-surface-variant/70">
-                      PDF format, up to 10MB
+                      PDF format • max 10MB
                     </span>
                     <button
                       type="button"
@@ -1371,7 +1369,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                       className={cn(
                         'inline-flex items-center gap-1.5 rounded-xl px-4 py-2 font-label-md text-label-md transition-all shadow-sm shrink-0',
                         hasCv
-                          ? 'border border-outline-variant bg-surface-container-lowest text-on-surface hover:border-primary hover:text-primary hover:bg-surface-container-low'
+                          ? 'border border-outline-variant bg-surface-container-lowest text-on-surface hover:border-primary hover:text-primary hover:bg-surface-container-low font-medium'
                           : 'bg-primary text-on-primary hover:opacity-90 font-semibold',
                       )}
                     >
