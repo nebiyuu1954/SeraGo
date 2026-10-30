@@ -391,7 +391,14 @@ public sealed class ClassificationAuditService
             throw new InvalidOperationException($"AI Judge audit failed: {ex.Message}", ex);
         }
 
-        var evalById = groqResponse.Evaluations.ToDictionary(e => e.JobId, StringComparer.OrdinalIgnoreCase);
+        var evalById = new Dictionary<string, AuditGroqEvaluation>(StringComparer.OrdinalIgnoreCase);
+        foreach (var eval in groqResponse.Evaluations)
+        {
+            if (!string.IsNullOrWhiteSpace(eval.JobId))
+            {
+                evalById[eval.JobId] = eval;
+            }
+        }
         var finalEvaluations = new List<AuditEvaluationResult>(jobs.Count);
         var agreedCount = 0;
         var mismatchedCount = 0;

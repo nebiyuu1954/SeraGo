@@ -568,7 +568,14 @@ public sealed class UnifiedJobClassificationService
         Dictionary<string, Sector> sectorBySlug,
         string method)
     {
-        var map = items.ToDictionary(i => i.JobId, StringComparer.OrdinalIgnoreCase);
+        var map = new Dictionary<string, ClassificationItemResult>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in items)
+        {
+            if (!string.IsNullOrWhiteSpace(item.JobId))
+            {
+                map[item.JobId] = item;
+            }
+        }
         var finalResults = new List<UnifiedJobClassificationResult>(jobs.Count);
 
         foreach (var j in jobs)
