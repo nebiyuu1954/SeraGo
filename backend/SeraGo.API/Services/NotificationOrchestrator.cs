@@ -189,19 +189,6 @@ public sealed class NotificationOrchestrator
                                 fromChatId: new ChatId(channelId),
                                 messageId: (int)job.TelegramChannelMessageId.Value);
 
-                            var jobUrl = $"https://serago.pro.et/jobs/{parsedJobId}?utm_source=telegram&utm_medium=bot_dm&utm_campaign=job_alert";
-                            var companionMarkup = new InlineKeyboardMarkup(new[]
-                            {
-                                new[] { InlineKeyboardButton.WithUrl("🚀 See More & Apply on SeraGo", jobUrl) }
-                            });
-
-                            await telegramClient.SendMessage(
-                                chatId: chatId.Value,
-                                text: message,
-                                parseMode: Telegram.Bot.Types.Enums.ParseMode.Html,
-                                replyParameters: new ReplyParameters { MessageId = forwarded.MessageId },
-                                replyMarkup: companionMarkup);
-
                             notification.TelegramSent = true;
                             notification.TelegramSentAt = DateTimeOffset.UtcNow;
                             await db.SaveChangesAsync();

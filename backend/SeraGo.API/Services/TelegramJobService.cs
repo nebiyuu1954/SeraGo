@@ -683,33 +683,6 @@ public sealed class TelegramJobService
                         fromChatId: channelChatId,
                         messageId: (int)job.TelegramChannelMessageId.Value);
 
-                    // Send interactive companion button so user has 1-click application in bot chat
-                    var jobUrl = BuildJobLink(job, _options.JobLinkBase);
-                    var btnText = buttonText ?? "🚀 See More & Apply on SeraGo";
-                    var replyKeyboard = new InlineKeyboardMarkup(new[]
-                    {
-                        new[] { InlineKeyboardButton.WithUrl(btnText, jobUrl) }
-                    });
-
-                    var resolvedSector = sectorName ?? ResolveSectorName(job) ?? "General";
-                    var captionText = !string.IsNullOrWhiteSpace(header)
-                        ? header
-                        : $"🎯 <i>Matching alert for your sector:</i> <b>{Escape(resolvedSector)}</b>";
-
-                    try
-                    {
-                        await client.SendMessage(
-                            chatId: chatId,
-                            text: captionText,
-                            parseMode: ParseMode.Html,
-                            replyParameters: new ReplyParameters { MessageId = forwarded.MessageId },
-                            replyMarkup: replyKeyboard);
-                    }
-                    catch (Exception replyEx)
-                    {
-                        _logger.LogDebug(replyEx, "Could not send companion reply button for job {JobId} to chatId {ChatId}", job.Id, chatId);
-                    }
-
                     return forwarded;
                 }
                 catch (Exception fwdEx)
