@@ -601,7 +601,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
     kind: 'filled' | 'empty'
     message: string
   } | null>(null)
-  const [resumeCtaDismissed, setResumeCtaDismissed] = useState(false)
   const [reviewProfileData, setReviewProfileData] = useState<{ profile: ParsedResumeProfile; fieldsFound: number } | null>(null)
   const { showToast } = useToast()
   const [validationModalOpen, setValidationModalOpen] = useState(false)
@@ -1071,18 +1070,6 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
 
   const completion = profile?.completion
 
-  /**
-   * True while a talent has nothing meaningful on their profile yet — the only
-   * state that shows the resume-first call to action.
-   */
-  const profileIsEmpty =
-    isTalent &&
-    !formik.values.about.trim() &&
-    formik.values.skills.length === 0 &&
-    formik.values.workExperience.length === 0 &&
-    !formik.values.experienceLevel &&
-    !formik.values.currentProfession.trim()
-
   /* ——— Talent: count fields filled per section for accordion badges ——— */
   const personalFilled = [
     formik.values.firstName,
@@ -1138,6 +1125,8 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
     const cleaned = last.replace(/^\d{8}_\d{6}_/, '').replace(/\.pdf$/i, '')
     return cleaned || last
   })()
+
+  const hasCv = Boolean(formik.values.resumeUrl?.trim())
 
   const avatarInitials = fullName.split(' ').map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
 
@@ -1273,79 +1262,136 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
           </nav>
         </div>
 
-        {/* Completion banner */}
-        {completion && !completion.isComplete && (
-          <div className="mt-6 rounded-2xl border border-surface-variant bg-surface-container-lowest p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <span className="flex items-center gap-2 font-label-md text-label-md font-semibold text-on-surface">
-                <span className="material-symbols-outlined text-primary text-lg">
-                  trending_up
-                </span>
-                Profile Strength: {completion.percentComplete}%
-              </span>
-              <span className="font-label-sm text-label-sm text-on-surface-variant">
-                {completion.missingFields.length} recommended {completion.missingFields.length === 1 ? 'field' : 'fields'} left
-              </span>
-            </div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-container-low">
-              <div
-                className="h-full rounded-full bg-primary transition-all duration-500"
-                style={{ width: `${completion.percentComplete}%` }}
-              />
-            </div>
-            {completion.missingFields.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1.5 items-center">
-                <span className="font-label-xs text-label-xs text-on-surface-variant/70 mr-1">To complete:</span>
-                {completion.missingFields.map((field) => (
-                  <span
-                    key={field}
-                    className="rounded-full bg-surface-container-low border border-surface-variant px-2.5 py-0.5 font-label-xs text-label-xs text-on-surface-variant"
-                  >
-                    {MISSING_LABELS[field] ?? field}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        {/* Completion & CV Intake Banner */}
+        {completion && (isTalent || !completion.isComplete) && (
+          <div className="mt-6 rounded-2xl border border-surface-variant bg-surface-container-lowest shadow-sm overflow-hidden">
+            <div
+              className={cn(
+                'grid grid-cols-1',
+                isTalent && 'md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-surface-variant',
+              )}
+            >
+              {/* Left half: Profile Strength */}
+              <div className="p-5 sm:p-6 flex flex-col justify-between gap-4">
+                <div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-2 font-label-md text-label-md font-semibold text-on-surface">
+                      <span className="material-symbols-outlined text-primary text-lg">
+                        trending_up
+                      </span>
+                      Profile Strength: {completion.percentComplete}%
+                    </span>
+                    <span className="font-label-sm text-label-sm text-on-surface-variant">
+                      {completion.isComplete
+                        ? 'Profile complete'
+                        : `${completion.missingFields.length} recommended ${completion.missingFields.length === 1 ? 'field' : 'fields'} left`}
+                    </span>
+                  </div>
 
-        {/* Resume-first CTA */}
-        {isTalent && !loading && !resumeCtaDismissed && profileIsEmpty && !resumeNotice && (
-          <div className="mt-6 rounded-2xl border border-primary/20 bg-primary-container/10 p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <span className="material-symbols-outlined text-[24px] text-primary mt-0.5">
-                auto_awesome
-              </span>
-              <div>
-                <h3 className="font-label-md text-label-md font-semibold text-on-surface">
-                  Start with your resume
-                </h3>
-                <p className="mt-1 font-body-sm text-body-sm text-on-surface-variant">
-                  Upload your CV and our parser will automatically prefill your skills, experience, and education.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => resumeInputRef.current?.click()}
-                disabled={resumeUploading || resumeParsing}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 font-label-md text-label-md text-on-primary transition-colors hover:opacity-90 disabled:opacity-50 shadow-sm"
-              >
-                {resumeUploading || resumeParsing ? (
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-on-primary/30 border-t-on-primary" />
+                  {/* Progress bar */}
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-container-low">
+                    <div
+                      className={cn(
+                        'h-full rounded-full transition-all duration-500',
+                        completion.percentComplete === 100 ? 'bg-emerald-500' : 'bg-primary',
+                      )}
+                      style={{ width: `${completion.percentComplete}%` }}
+                    />
+                  </div>
+                </div>
+
+                {completion.missingFields.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    <span className="font-label-xs text-label-xs text-on-surface-variant/70 mr-1">To complete:</span>
+                    {completion.missingFields.map((field) => (
+                      <span
+                        key={field}
+                        className="rounded-full bg-surface-container-low border border-surface-variant px-2.5 py-0.5 font-label-xs text-label-xs text-on-surface-variant"
+                      >
+                        {MISSING_LABELS[field] ?? field}
+                      </span>
+                    ))}
+                  </div>
                 ) : (
-                  <span className="material-symbols-outlined text-[18px]">upload_file</span>
+                  <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-label-xs text-label-xs">
+                    <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                    <span>All recommended fields completed</span>
+                  </div>
                 )}
-                <span>{resumeParsing ? 'Reading resume…' : 'Upload CV'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setResumeCtaDismissed(true)}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-2 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-low"
-              >
-                Fill manually
-              </button>
+              </div>
+
+              {/* Right half: CV status & intake (Talent only) */}
+              {isTalent && (
+                <div className="p-5 sm:p-6 flex flex-col justify-between gap-4 bg-surface-container-low/20">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div
+                        className={cn(
+                          'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors',
+                          hasCv
+                            ? 'bg-primary/10 text-primary border border-primary/20'
+                            : 'bg-primary text-on-primary shadow-sm',
+                        )}
+                      >
+                        <span className="material-symbols-outlined text-[22px]">
+                          upload_file
+                        </span>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-label-md text-label-md font-semibold text-on-surface truncate">
+                            {hasCv ? 'Update CV' : 'Upload CV'}
+                          </h3>
+                          {hasCv && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/40 shrink-0">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                              Active
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 font-body-sm text-body-sm text-on-surface-variant leading-snug line-clamp-2">
+                          {hasCv
+                            ? (resumeDisplayName
+                                ? `Current file: ${resumeDisplayName}.pdf`
+                                : 'Upload a newer resume to keep your profile & matching accurate.')
+                            : 'Upload your CV to auto-fill skills, experience & boost matching.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 pt-1">
+                    <span className="font-label-xs text-label-xs text-on-surface-variant/70">
+                      PDF format, up to 10MB
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => resumeInputRef.current?.click()}
+                      disabled={resumeUploading || resumeParsing}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 rounded-xl px-4 py-2 font-label-md text-label-md transition-all shadow-sm shrink-0',
+                        hasCv
+                          ? 'border border-outline-variant bg-surface-container-lowest text-on-surface hover:border-primary hover:text-primary hover:bg-surface-container-low'
+                          : 'bg-primary text-on-primary hover:opacity-90 font-semibold',
+                      )}
+                    >
+                      {resumeUploading || resumeParsing ? (
+                        <>
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                          <span>{resumeParsing ? 'Analyzing CV…' : 'Uploading…'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="material-symbols-outlined text-[18px]">
+                            upload_file
+                          </span>
+                          <span>{hasCv ? 'Update CV' : 'Upload CV'}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
