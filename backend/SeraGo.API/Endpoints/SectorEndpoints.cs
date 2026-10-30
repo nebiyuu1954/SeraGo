@@ -554,13 +554,16 @@ public static class SectorEndpoints
     /// Returns 5 Tier metrics (Row 1) and 5 Daily operational metrics (Row 2) for the given date.
     /// </summary>
     private static async Task<IResult> GetDashboardStatsAsync(
-        DateTime? date,
+        string? date,
         ApplicationDbContext db,
         CancellationToken ct)
     {
-        var targetDate = date.HasValue ? DateOnly.FromDateTime(date.Value) : DateOnly.FromDateTime(DateTime.UtcNow);
-        var startOfDay = new DateTimeOffset(targetDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
-        var endOfDay = new DateTimeOffset(targetDate.ToDateTime(TimeOnly.MaxValue), TimeSpan.Zero);
+        var targetDate = string.IsNullOrWhiteSpace(date) || !DateOnly.TryParse(date, out var parsedDate)
+            ? DateOnly.FromDateTime(DateTime.UtcNow)
+            : parsedDate;
+
+        var startOfDay = new DateTimeOffset(targetDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc), TimeSpan.Zero);
+        var endOfDay = new DateTimeOffset(targetDate.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc), TimeSpan.Zero);
 
         // 1. Fetch exact classification records on this date
         var records = await db.JobClassificationRecords
@@ -640,10 +643,12 @@ public static class SectorEndpoints
         var t4Status = t4FailedRuns >= 3 ? "degraded" : t4Fails.Count > 0 ? "warning" : t4JobsClassified > 0 ? "active" : "idle";
 
         // Tier 5: Safe Uncategorized Fallback
+        var t5Records = records.Where(r => r.ModelUsed.Contains("Safe", StringComparison.OrdinalIgnoreCase) || r.ModelTier.Contains("Safe", StringComparison.OrdinalIgnoreCase) || r.ModelTier.Contains("Tier 5", StringComparison.OrdinalIgnoreCase)).ToList();
         var t5Fails = events.Where(e => e.FallbackTier.Contains("Safe Uncategorized", StringComparison.OrdinalIgnoreCase)).ToList();
-        var t5JobsUnclassified = totalUnclassified;
-        var t5SuccessRuns = t5Fails.Count;
-        var t5Status = totalUnclassified > 0 ? "active" : "idle";
+        var t5JobsClassified = t5Records.Count;
+        var t5JobsFailed = t5Fails.Sum(e => e.JobCount);
+        var t5SuccessRuns = CountRuns(t5Records) + t5Fails.Count;
+        var t5Status = t5JobsClassified > 0 ? "active" : totalUnclassified > 0 ? "warning" : "idle";
 
         var response = new ClassificationDashboardStatsResponse(
             targetDate.ToString("yyyy-MM-dd"),
@@ -651,7 +656,7 @@ public static class SectorEndpoints
             new TierMetricDto("Tier 2", "OpenRouter Nemotron 550B", t2JobsClassified, t2JobsFailed, t2SuccessRuns, t2FailedRuns, t2Status),
             new TierMetricDto("Tier 3", "Groq Llama 3.3 70B", t3JobsClassified, t3JobsFailed, t3SuccessRuns, t3FailedRuns, t3Status),
             new TierMetricDto("Tier 4", "Google Gemini 2.0 Flash", t4JobsClassified, t4JobsFailed, t4SuccessRuns, t4FailedRuns, t4Status),
-            new TierMetricDto("Tier 5", "Safe Uncategorized Fallback", 0, t5JobsUnclassified, t5SuccessRuns, 0, t5Status),
+            new TierMetricDto("Tier 5", "Safe Uncategorized Fallback", t5JobsClassified, t5JobsFailed, t5SuccessRuns, 0, t5Status),
             new DailyOperationalMetricsDto(totalClassified, totalUnclassified, avgConfidence, totalInsertedOrSynced, successRate)
         );
 
