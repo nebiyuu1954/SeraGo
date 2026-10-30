@@ -1323,24 +1323,26 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
               {/* Right half: CV status & intake (Talent only) */}
               {isTalent && (
                 <div className="p-5 sm:p-6 flex flex-col justify-between gap-4 bg-surface-container-low/20">
-                  <div className="flex items-center gap-4">
-                    {/* Big Industry-Standard Icon */}
+                  <div className="flex items-center gap-4 sm:gap-5">
+                    {/* Large 80px Hero Tile with 48px cloud_upload Icon */}
                     <div
+                      onClick={() => resumeInputRef.current?.click()}
                       className={cn(
-                        'w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center shrink-0 transition-transform',
+                        'w-20 h-20 rounded-2xl flex items-center justify-center shrink-0 cursor-pointer transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]',
                         hasCv
-                          ? 'bg-primary/10 text-primary border border-primary/20'
-                          : 'bg-primary text-on-primary shadow-sm',
+                          ? 'bg-primary/10 text-primary border-2 border-primary/20 hover:border-primary/40 hover:bg-primary/15'
+                          : 'bg-primary text-on-primary shadow-md hover:shadow-lg hover:opacity-95',
                       )}
+                      title={hasCv ? 'Click to update CV' : 'Click to upload CV'}
                     >
-                      <span className="material-symbols-outlined text-[28px] sm:text-[32px]">
-                        upload_file
+                      <span className="material-symbols-outlined text-[48px] select-none">
+                        cloud_upload
                       </span>
                     </div>
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <h3 className="font-label-md text-label-md font-semibold text-on-surface truncate">
+                        <h3 className="font-label-lg text-label-lg font-semibold text-on-surface truncate">
                           {hasCv ? 'Update CV' : 'Upload CV'}
                         </h3>
                         {hasCv && (
@@ -1367,7 +1369,7 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                       onClick={() => resumeInputRef.current?.click()}
                       disabled={resumeUploading || resumeParsing}
                       className={cn(
-                        'inline-flex items-center gap-1.5 rounded-xl px-4 py-2 font-label-md text-label-md transition-all shadow-sm shrink-0',
+                        'inline-flex items-center gap-2 rounded-xl px-4 py-2 font-label-md text-label-md transition-all shadow-sm shrink-0',
                         hasCv
                           ? 'border border-outline-variant bg-surface-container-lowest text-on-surface hover:border-primary hover:text-primary hover:bg-surface-container-low font-medium'
                           : 'bg-primary text-on-primary hover:opacity-90 font-semibold',
@@ -1380,8 +1382,8 @@ export default function ProfileForm({ role }: { role: RequiredRole }) {
                         </>
                       ) : (
                         <>
-                          <span className="material-symbols-outlined text-[18px]">
-                            upload_file
+                          <span className="material-symbols-outlined text-[20px]">
+                            cloud_upload
                           </span>
                           <span>{hasCv ? 'Update CV' : 'Upload CV'}</span>
                         </>
